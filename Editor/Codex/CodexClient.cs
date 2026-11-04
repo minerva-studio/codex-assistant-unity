@@ -302,6 +302,10 @@ namespace Minerva.Codex
                 parameters["effort"] = effort;
             }
 
+            // Without this, GPT-family models can run with encrypted reasoning
+            // and no plaintext summary in the persisted turn.
+            parameters["summary"] = "auto";
+
             if (sandboxPolicy != null)
             {
                 parameters["sandboxPolicy"] = sandboxPolicy;

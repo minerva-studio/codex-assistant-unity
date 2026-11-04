@@ -56,6 +56,19 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - `item/agentMessage/delta` streams into a live turn rendered below history. `item/started`,
   `item/completed` and `turn/started` keep the live turn current; `turn/completed` reloads
   `thread/turns/list` and clears the live turn, so history wins.
+- `turn/start` sends `summary: "auto"`. `item/reasoning/summaryPartAdded` and
+  `item/reasoning/summaryTextDelta` append to the live reasoning item; summaries are cached per
+  thread/item and merged into `item/completed` and history reloads. Important observed limit: the local
+  `gpt-6.1-sol` rollouts store reasoning as `encrypted_content` with `summary: []`, even with `auto` or
+  `detailed`; those turns have no plaintext summary and cannot be backfilled. The code will display
+  summaries when a model/backend actually emits them.
+- Historical Process groups are lazy: `FlushProcess` stores their items and renders them only on first
+  expansion; live groups still render immediately. This dropped a 30-turn/71-tool thread from 1,864
+  foldouts and ~1.2 s rebuild to ~35 foldouts and ~0.4 s. Do not eagerly build Process children again.
+- Codex annotations are stripped by `CodexAnnotations.Clean`. `JoinUserContent` turns an image content
+  item into `[Attached image ... data:image/...]`; `CodexMedia.Tokenize` must detect a data URI in that
+  attachment reference and decode it, never pass the data URI as a file path (the old fallback printed the
+  whole base64 payload).
 - Model, reasoning effort and sandbox pills below the input. Values start from effective `config/read`, then
   `thread/resume { excludeTurns: true }` syncs the selected thread's `model`, `reasoningEffort`, `sandbox`
   and `approvalPolicy`. `thread/start` gets model/sandbox/approval. Effort changes call
@@ -76,7 +89,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `Subagent · spawnAgent/sendInput/...` foldout with status, prompt, model/effort, agent states and receiver
   IDs. `subAgentActivity` renders a compact started/completed row. Both expose **Open** buttons that call
   `SelectThread` on the receiver/agent thread. The `multi_agent` feature is stable and enabled by default;
-  whether a model spawns helpers depends on the model/effort, not on this UI.
+  whether a model spawns helpers depends on the model/effort, not on this UI. `CodexThreadInfo.ParentThreadId`
+  comes from the thread's `parentThreadId`; the header shows **← Parent** for those threads and calls
+  `SelectThread(parent)`.
 - `Tools/Minerva/Codex/Send Smoke Test` exercises a lazy thread/start, a second turn, live text, and history
   reconciliation with real turns.
 - Markdown rendering through the UMarkdown fork: headings, lists, quotes, links, tables, code blocks with
@@ -175,7 +190,8 @@ unity command --project-path <proj> package resolve
   `turn/start` safe on threads this process did not create. It returns `model`, `reasoningEffort`, `sandbox`
   (a policy object, not the mode string) and `approvalPolicy` at the top level.
 - `thread/start` takes `model`, `sandbox` (mode string) and `approvalPolicy`; it has no effort parameter.
-  `turn/start` takes `model`, `effort`, `sandboxPolicy` (object) and `approvalPolicy`.
+  `turn/start` takes `model`, `effort`, `sandboxPolicy` (object) and `approvalPolicy`, and always sends
+  `summary: "auto"` in this package.
 - The blocking smoke test cannot run `EditorApplication.update`, so throttled `TranscriptChanged` events do
   not fire there. Observe `LiveTurn` from `Changed` (which fires at completion before the reload) instead.
 - `thread/turns/list` with `itemsView: "summary"` returns only user/agent messages. Use `"full"` for tool and

@@ -22,7 +22,12 @@ All notable changes to this package are documented here.
   model is configurable in Settings.
 - **Fork** copies the selected conversation into a new independent thread.
 - Subagent activity and collaboration tool calls render as Subagent sections with Open buttons; subagent
-  threads are listed in the sidebar.
+  threads are listed in the sidebar and the header provides **← Parent** navigation.
+- Codex file/image attachment annotations are stripped to the actual request, and data-URI image
+  attachments are decoded instead of printed as base64.
+- Historical Process groups render their hidden tool rows lazily, keeping long-thread rebuilds responsive.
+- Reasoning summaries are requested with `summary: "auto"` and live summary deltas are merged into history
+  when the model provides plaintext summaries.
 - Codex executable discovery, including Windows `.cmd` shims and macOS locations that a GUI-launched
   Editor does not inherit from the shell.
 - `CodexClient` wrappers for `initialize`, `thread/list`, `thread/read`, `thread/resume`,

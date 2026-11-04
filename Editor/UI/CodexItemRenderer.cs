@@ -114,7 +114,7 @@ namespace Minerva.Codex
 
         static void RenderUserMessage(VisualElement parent, JObject item)
         {
-            string raw = JoinUserContent(item["content"]);
+            string raw = CodexAnnotations.Clean(JoinUserContent(item["content"]));
             VisualElement bubble = Bubble("YOU", CodexPalette.UserBubble);
             bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(raw)));
             parent.Add(bubble);

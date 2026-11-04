@@ -16,6 +16,7 @@ namespace Minerva.Codex
         public string Preview;
         public string Snippet;
         public string Cwd;
+        public string ParentThreadId;
         public long UpdatedAt;
     }
 
@@ -83,6 +84,8 @@ namespace Minerva.Codex
         readonly List<CodexQueuedMessage> m_Queued = new List<CodexQueuedMessage>();
         readonly Dictionary<string, CodexContextUsage> m_ContextUsage =
             new Dictionary<string, CodexContextUsage>();
+        readonly Dictionary<string, JArray> m_ReasoningSummaries =
+            new Dictionary<string, JArray>();
         readonly StringBuilder m_Stderr = new StringBuilder();
 
         CodexConnection m_Connection;
@@ -1386,7 +1389,7 @@ namespace Minerva.Codex
                 }
             }
 
-            return builder.ToString().Trim();
+            return CodexAnnotations.Clean(builder.ToString().Trim());
         }
 
         static string FindTitleAgentText(JObject turn)
@@ -1545,6 +1548,12 @@ namespace Minerva.Codex
                     break;
                 case "item/agentMessage/delta":
                     OnAgentMessageDelta(parameters);
+                    break;
+                case "item/reasoning/summaryPartAdded":
+                    OnReasoningSummaryPartAdded(parameters);
+                    break;
+                case "item/reasoning/summaryTextDelta":
+                    OnReasoningSummaryDelta(parameters);
                     break;
                 case "turn/completed":
                     OnTurnCompleted(parameters);
@@ -1815,6 +1824,148 @@ namespace Minerva.Codex
             MarkTranscriptChanged(threadId);
         }
 
+        void OnReasoningSummaryPartAdded(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            int summaryIndex = parameters["summaryIndex"]?.Value<int>() ?? 0;
+            if (string.IsNullOrEmpty(itemId) || summaryIndex < 0)
+            {
+                return;
+            }
+
+            JObject item = EnsureReasoningItem(itemId, out JArray summary);
+            while (summary.Count <= summaryIndex)
+            {
+                summary.Add(new JObject
+                {
+                    ["type"] = "summary_text",
+                    ["text"] = string.Empty,
+                });
+            }
+
+            m_ReasoningSummaries[SummaryKey(threadId, itemId)] = (JArray)summary.DeepClone();
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnReasoningSummaryDelta(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            string delta = parameters["delta"]?.Value<string>();
+            int summaryIndex = parameters["summaryIndex"]?.Value<int>() ?? 0;
+            if (string.IsNullOrEmpty(itemId) || string.IsNullOrEmpty(delta) || summaryIndex < 0)
+            {
+                return;
+            }
+
+            JObject item = EnsureReasoningItem(itemId, out JArray summary);
+            while (summary.Count <= summaryIndex)
+            {
+                summary.Add(new JObject
+                {
+                    ["type"] = "summary_text",
+                    ["text"] = string.Empty,
+                });
+            }
+
+            if (summary[summaryIndex] is JObject part)
+            {
+                part["text"] = (part["text"]?.Value<string>() ?? string.Empty) + delta;
+            }
+            else
+            {
+                summary[summaryIndex] = new JObject
+                {
+                    ["type"] = "summary_text",
+                    ["text"] = delta,
+                };
+            }
+
+            m_ReasoningSummaries[SummaryKey(threadId, itemId)] = (JArray)summary.DeepClone();
+            MarkTranscriptChanged(threadId);
+        }
+
+        JObject EnsureReasoningItem(string itemId, out JArray summary)
+        {
+            JArray items = EnsureLiveItems();
+            int index = IndexOfItem(items, itemId);
+            JObject item;
+            if (index < 0)
+            {
+                item = new JObject
+                {
+                    ["id"] = itemId,
+                    ["type"] = "reasoning",
+                };
+                items.Add(item);
+            }
+            else
+            {
+                item = items[index] as JObject;
+                if (item == null)
+                {
+                    item = new JObject
+                    {
+                        ["id"] = itemId,
+                        ["type"] = "reasoning",
+                    };
+                    items[index] = item;
+                }
+            }
+
+            if (item["summary"] is not JArray existing)
+            {
+                existing = new JArray();
+                item["summary"] = existing;
+            }
+
+            summary = existing;
+            return item;
+        }
+
+        static string SummaryKey(string threadId, string itemId)
+        {
+            return $"{threadId}\n{itemId}";
+        }
+
+        void MergeCachedReasoningSummaries(string threadId, JArray items)
+        {
+            if (items == null)
+            {
+                return;
+            }
+
+            foreach (JToken token in items)
+            {
+                if (token is not JObject item ||
+                    item["type"]?.Value<string>() != "reasoning")
+                {
+                    continue;
+                }
+
+                string itemId = item["id"]?.Value<string>();
+                if (string.IsNullOrEmpty(itemId) ||
+                    !m_ReasoningSummaries.TryGetValue(SummaryKey(threadId, itemId), out JArray cached))
+                {
+                    continue;
+                }
+
+                if (item["summary"] is not JArray summary || summary.Count == 0)
+                {
+                    item["summary"] = cached.DeepClone();
+                }
+            }
+        }
+
         void OnTurnCompleted(JObject parameters)
         {
             string threadId = parameters["threadId"]?.Value<string>();
@@ -1907,7 +2058,11 @@ namespace Minerva.Codex
 
             if (authoritative)
             {
-                m_LiveTurn["items"] = new JArray(items);
+                var mergedItems = new JArray(items);
+                MergeCachedReasoningSummaries(
+                    string.IsNullOrEmpty(m_LiveThreadId) ? SelectedThreadId : m_LiveThreadId,
+                    mergedItems);
+                m_LiveTurn["items"] = mergedItems;
                 return;
             }
 
@@ -1941,6 +2096,20 @@ namespace Minerva.Codex
                     JObject merged = (JObject)item.DeepClone();
                     merged["text"] = existing;
                     item = merged;
+                }
+            }
+            else if (index >= 0 && item["type"]?.Value<string>() == "reasoning")
+            {
+                // The completed item can arrive with an empty summary even after
+                // summary deltas populated the live item.
+                if (item["summary"] is not JArray incomingSummary || incomingSummary.Count == 0)
+                {
+                    if (items[index]?["summary"] is JArray existingSummary && existingSummary.Count > 0)
+                    {
+                        JObject merged = (JObject)item.DeepClone();
+                        merged["summary"] = existingSummary.DeepClone();
+                        item = merged;
+                    }
                 }
             }
 
@@ -2184,6 +2353,7 @@ namespace Minerva.Codex
                 {
                     if (token is JObject turn)
                     {
+                        MergeCachedReasoningSummaries(threadId, turn["items"] as JArray);
                         m_Turns.Add(turn);
                     }
                 }
@@ -2289,6 +2459,7 @@ namespace Minerva.Codex
                           ?? thread["title"]?.Value<string>()
                           ?? "(untitled)",
                 Cwd = thread["cwd"]?.Value<string>(),
+                ParentThreadId = thread["parentThreadId"]?.Value<string>(),
                 UpdatedAt = thread["updatedAt"]?.Value<long>() ?? 0,
             };
         }
@@ -2399,6 +2570,7 @@ namespace Minerva.Codex
             m_Turns.Clear();
             m_Threads.Clear();
             m_ContextUsage.Clear();
+            m_ReasoningSummaries.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;
@@ -2425,6 +2597,7 @@ namespace Minerva.Codex
             m_Models.Clear();
             m_Efforts.Clear();
             m_ContextUsage.Clear();
+            m_ReasoningSummaries.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;

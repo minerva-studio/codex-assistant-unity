@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
@@ -108,22 +109,31 @@ namespace Minerva.Codex
         static string TokenizeSegment(string text)
         {
             text = AttachedImage.Replace(text, match =>
-                Token(CodexMediaKind.Image, match.Groups[2].Value.Trim(), null, match.Groups[1].Value));
+            {
+                string reference = match.Groups[2].Value.Trim();
+                string name = match.Groups[1].Value;
+                if (TryDecodeDataImage(reference, out byte[] bytes))
+                {
+                    return Token(CodexMediaKind.Image, null, bytes, name);
+                }
+
+                if (reference.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Never put a failed/oversized data URI back into the label.
+                    return Token(CodexMediaKind.Image, null, null, name);
+                }
+
+                return Token(CodexMediaKind.Image, reference, null, name);
+            });
 
             text = DataImage.Replace(text, match =>
             {
-                int comma = match.Value.IndexOf(',');
-                byte[] bytes = null;
-                try
+                if (TryDecodeDataImage(match.Value, out byte[] bytes))
                 {
-                    bytes = Convert.FromBase64String(match.Value.Substring(comma + 1));
-                }
-                catch (FormatException)
-                {
-                    return match.Value;
+                    return Token(CodexMediaKind.Image, null, bytes, "image");
                 }
 
-                return Token(CodexMediaKind.Image, null, bytes, "image");
+                return Token(CodexMediaKind.Image, null, null, "image");
             });
 
             text = ReplacePaths(text, AudioInCode, CodexMediaKind.Audio);
@@ -131,6 +141,49 @@ namespace Minerva.Codex
             text = ReplacePaths(text, VideoInCode, CodexMediaKind.Video);
             text = ReplacePaths(text, VideoBare, CodexMediaKind.Video);
             return text;
+        }
+
+        static bool TryDecodeDataImage(string value, out byte[] bytes)
+        {
+            bytes = null;
+            if (string.IsNullOrEmpty(value) ||
+                !value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int marker = value.IndexOf(";base64,", StringComparison.OrdinalIgnoreCase);
+            if (marker < 0)
+            {
+                return false;
+            }
+
+            var payload = new StringBuilder(value.Length - marker);
+            for (int index = marker + 8; index < value.Length; index++)
+            {
+                char character = value[index];
+                if (!char.IsWhiteSpace(character))
+                {
+                    payload.Append(character);
+                }
+            }
+
+            // Avoid a multi-second decode/layout for pathological clipboard data.
+            if (payload.Length == 0 || payload.Length > 16_000_000)
+            {
+                return false;
+            }
+
+            try
+            {
+                bytes = Convert.FromBase64String(payload.ToString());
+                return bytes.Length > 0;
+            }
+            catch (FormatException)
+            {
+                bytes = null;
+                return false;
+            }
         }
 
         static string ReplacePaths(string text, Regex pattern, CodexMediaKind kind)
@@ -265,6 +318,86 @@ namespace Minerva.Codex
             {
                 return null;
             }
+        }
+    }
+
+    /// <summary>
+    /// Removes Codex's file/image attachment preamble so the bubble shows the
+    /// user's request instead of "Files mentioned by the user / My request".
+    /// Image payloads stay in the text as [Attached image] tokens and are handled
+    /// by <see cref="CodexMedia"/>.
+    /// </summary>
+    internal static class CodexAnnotations
+    {
+        static readonly Regex FileLine = new Regex(
+            "^\\s*#{1,4}\\s*([^:\\r\\n]+):\\s*([^\\r\\n]+)$",
+            RegexOptions.Multiline | RegexOptions.Compiled);
+
+        static readonly Regex Attachment = new Regex(
+            "\\[Attached image \"[^\"]+\" is saved at:[^\\]]+\\]",
+            RegexOptions.Singleline | RegexOptions.Compiled);
+
+        public static string Clean(string text)
+        {
+            const string headerMarker = "Files mentioned by the user:";
+            if (string.IsNullOrEmpty(text) ||
+                text.IndexOf(headerMarker, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return text;
+            }
+
+            int requestMarker = text.IndexOf("My request:", StringComparison.OrdinalIgnoreCase);
+            string header = requestMarker >= 0 ? text.Substring(0, requestMarker) : text;
+            string request = requestMarker >= 0
+                ? text.Substring(requestMarker + "My request:".Length).Trim()
+                : string.Empty;
+
+            var blocks = new List<string>();
+            var seen = new HashSet<string>();
+            var files = new List<string>();
+            foreach (Match match in FileLine.Matches(header))
+            {
+                string name = match.Groups[1].Value.Trim();
+                string path = match.Groups[2].Value.Trim();
+                if (path.Length == 0 ||
+                    name.Equals("Files mentioned by the user", StringComparison.OrdinalIgnoreCase) ||
+                    name.EndsWith("My request", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (seen.Add("file:" + name))
+                {
+                    files.Add("Attachment: " + name);
+                }
+            }
+
+            if (files.Count > 0)
+            {
+                blocks.Add(string.Join("\n", files));
+            }
+
+            var attachments = new List<string>();
+            foreach (Match match in Attachment.Matches(header))
+            {
+                if (seen.Add("attachment:" + match.Value))
+                {
+                    attachments.Add(match.Value);
+                }
+            }
+
+            if (attachments.Count > 0)
+            {
+                blocks.Add(string.Join("\n", attachments));
+            }
+
+            if (request.Length > 0)
+            {
+                blocks.Add(request);
+            }
+
+            string cleaned = string.Join("\n\n", blocks).Trim();
+            return cleaned.Length > 0 ? cleaned : text;
         }
     }
 }

@@ -30,7 +30,11 @@ tools are next.
 - **Fork** copies the selected conversation into a new thread and opens it. The source conversation is
   unchanged.
 - Subagent tool calls and activity render as **Subagent** sections with **Open** buttons; subagent
-  conversations are also listed in the sidebar.
+  conversations are also listed in the sidebar, and the header shows **← Parent** while viewing a subagent.
+- Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
+  request; base64 image attachments render as images instead of dumping their payload into the transcript.
+  Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of
+  elements during a rebuild.
 - Composer at the bottom of the window: Enter sends while idle, Shift+Enter inserts a newline, and one button
   switches between Send and Stop. While a turn runs, Enter queues a follow-up and Ctrl+Enter steers the
   active turn. Queued messages appear above the composer and can be removed individually.
@@ -128,6 +132,9 @@ sends two real messages, one after creating a thread, and checks streaming and h
   turn with the indicator enabled.
 - Some providers emit a reasoning placeholder with empty `summary` and `content`; the window hides it
   instead of showing a `1 thought` row with nothing inside.
+- Reasoning summaries are requested with `summary: "auto"`. Some GPT-family model builds persist only
+  encrypted reasoning with an empty plaintext `summary`; old turns cannot be backfilled, and those models
+  will show no Thinking text even though reasoning occurred.
 - A domain reload or play-mode transition reconnects to the existing listener, so a running turn continues.
   **Reconnect** or a CODEX_HOME change restarts the listener on purpose; that interrupts an in-flight turn so
   the new config can be loaded.

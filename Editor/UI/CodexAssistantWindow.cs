@@ -27,6 +27,7 @@ namespace Minerva.Codex
         Label m_HeaderMeta;
         Label m_ErrorLabel;
         Button m_RefreshButton;
+        Button m_BackButton;
         Button m_CopyButton;
         Button m_ForkButton;
         Button m_ArchiveButton;
@@ -267,6 +268,12 @@ namespace Minerva.Codex
             m_HeaderMeta.style.color = CodexPalette.Muted;
             m_HeaderMeta.style.whiteSpace = WhiteSpace.Normal;
             headerText.Add(m_HeaderMeta);
+
+            m_BackButton = new Button(GoToParentThread) { text = "← Parent" };
+            m_BackButton.style.marginLeft = 8;
+            m_BackButton.style.display = DisplayStyle.None;
+            m_BackButton.tooltip = "Return to the parent agent conversation";
+            header.Add(m_BackButton);
 
             m_ArchiveButton = new Button(ArchiveSelectedThread) { text = "Archive" };
             m_ArchiveButton.style.marginLeft = 8;
@@ -1640,14 +1647,43 @@ namespace Minerva.Codex
                 foldout.style.marginBottom = 6;
                 foldout.style.color = CodexPalette.Muted;
 
-                foreach (JObject item in items)
+                // History groups are collapsed, so building hundreds of hidden
+                // tool rows up front makes selecting a long thread very slow.
+                // Build that content only when the reader expands the group.
+                var pending = new List<JObject>(items);
+                bool rendered = false;
+                void RenderPending()
                 {
-                    CodexItemRenderer.Render(
-                        foldout,
-                        item,
-                        m_ShowReasoning,
-                        m_ShowToolCalls,
-                        id => m_Workspace?.SelectThread(id));
+                    if (rendered)
+                    {
+                        return;
+                    }
+
+                    rendered = true;
+                    foreach (JObject item in pending)
+                    {
+                        CodexItemRenderer.Render(
+                            foldout,
+                            item,
+                            m_ShowReasoning,
+                            m_ShowToolCalls,
+                            id => m_Workspace?.SelectThread(id));
+                    }
+                }
+
+                if (isLive)
+                {
+                    RenderPending();
+                }
+                else
+                {
+                    foldout.RegisterValueChangedCallback(evt =>
+                    {
+                        if (evt.newValue)
+                        {
+                            RenderPending();
+                        }
+                    });
                 }
 
                 parent.Add(foldout);
@@ -1724,6 +1760,7 @@ namespace Minerva.Codex
                 m_HeaderMeta.text = hasThread
                     ? m_Workspace.SelectedThreadId
                     : m_Workspace.IsConnected ? "Send a message below to start" : string.Empty;
+                m_BackButton.style.display = DisplayStyle.None;
                 m_CopyButton.SetEnabled(hasThread);
                 m_ForkButton.SetEnabled(
                     hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
@@ -1731,12 +1768,26 @@ namespace Minerva.Codex
                 return;
             }
 
+            bool hasParent = !string.IsNullOrEmpty(selected.ParentThreadId);
             m_HeaderTitle.text = DisplayTitle(selected);
-            m_HeaderMeta.text = $"{selected.Cwd}  ·  {selected.Id}";
+            m_HeaderMeta.text = hasParent
+                ? $"{selected.Cwd}  ·  {selected.Id}  ·  subagent"
+                : $"{selected.Cwd}  ·  {selected.Id}";
+            m_BackButton.style.display = hasParent ? DisplayStyle.Flex : DisplayStyle.None;
+            m_BackButton.SetEnabled(hasParent && m_Workspace.IsConnected);
             m_CopyButton.SetEnabled(true);
             m_ForkButton.SetEnabled(
                 m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
             m_ArchiveButton.SetEnabled(m_Workspace.IsConnected && !m_Workspace.IsRunning);
+        }
+
+        void GoToParentThread()
+        {
+            string parentId = m_Workspace?.SelectedThread?.ParentThreadId;
+            if (!string.IsNullOrEmpty(parentId))
+            {
+                m_Workspace.SelectThread(parentId);
+            }
         }
 
         void CopyResumeCommand()
