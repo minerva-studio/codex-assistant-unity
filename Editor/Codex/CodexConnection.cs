@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
@@ -32,6 +33,8 @@ namespace Minerva.Codex
         readonly Process m_Process;
         readonly StreamWriter m_Stdin;
         readonly StreamReader m_Stdout;
+        readonly ClientWebSocket m_Socket;
+        readonly object m_SendLock = new object();
         readonly Thread m_ReaderThread;
         readonly ConcurrentDictionary<long, Action<JToken, CodexRpcError>> m_Pending =
             new ConcurrentDictionary<long, Action<JToken, CodexRpcError>>();
@@ -44,7 +47,19 @@ namespace Minerva.Codex
         public event Action<JObject> ServerRequest;
         public event Action<string> Disconnected;
 
-        public bool IsOpen => !m_Closed;
+        public bool IsOpen =>
+            !m_Closed && (m_Socket == null || m_Socket.State == WebSocketState.Open);
+
+        public CodexConnection(ClientWebSocket socket)
+        {
+            m_Socket = socket;
+            m_ReaderThread = new Thread(ReadWebSocketLoop)
+            {
+                IsBackground = true,
+                Name = "Codex app-server websocket reader",
+            };
+            m_ReaderThread.Start();
+        }
 
         public CodexConnection(Process process)
         {
@@ -134,8 +149,21 @@ namespace Minerva.Codex
             string line = message.ToString(Formatting.None);
             try
             {
-                lock (m_Stdin)
+                lock (m_SendLock)
                 {
+                    if (m_Socket != null)
+                    {
+                        var segment = new ArraySegment<byte>(Encoding.UTF8.GetBytes(line));
+                        m_Socket.SendAsync(
+                                segment,
+                                WebSocketMessageType.Text,
+                                true,
+                                CancellationToken.None)
+                            .GetAwaiter()
+                            .GetResult();
+                        return;
+                    }
+
                     m_Stdin.WriteLine(line);
                 }
             }
@@ -152,23 +180,7 @@ namespace Minerva.Codex
                 string line;
                 while ((line = m_Stdout.ReadLine()) != null)
                 {
-                    if (line.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    JObject message;
-                    try
-                    {
-                        message = JObject.Parse(line);
-                    }
-                    catch (JsonException exception)
-                    {
-                        Debug.LogWarning($"[Codex] Ignoring malformed app-server output: {exception.Message}");
-                        continue;
-                    }
-
-                    Route(message);
+                    HandleLine(line);
                 }
             }
             catch (Exception exception)
@@ -180,13 +192,89 @@ namespace Minerva.Codex
             }
             finally
             {
-                m_Closed = true;
-                FailPending("app-server closed its output stream");
-                Action<string> handler = Disconnected;
-                if (handler != null)
+                NotifyClosed("app-server exited");
+            }
+        }
+
+        void ReadWebSocketLoop()
+        {
+            var buffer = new byte[64 * 1024];
+            var message = new StringBuilder();
+            try
+            {
+                while (!m_Closed)
                 {
-                    EditorDispatcher.Enqueue(() => handler("app-server exited"));
+                    WebSocketReceiveResult result = m_Socket
+                        .ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None)
+                        .GetAwaiter()
+                        .GetResult();
+
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        break;
+                    }
+
+                    message.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                    if (!result.EndOfMessage)
+                    {
+                        continue;
+                    }
+
+                    string text = message.ToString();
+                    message.Clear();
+                    foreach (string line in text.Split('\n'))
+                    {
+                        HandleLine(line.TrimEnd('\r'));
+                    }
                 }
+            }
+            catch (Exception exception)
+            {
+                if (!m_Closed)
+                {
+                    Debug.LogWarning($"[Codex] app-server websocket failed: {exception.Message}");
+                }
+            }
+            finally
+            {
+                NotifyClosed("app-server disconnected");
+            }
+        }
+
+        void HandleLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return;
+            }
+
+            JObject message;
+            try
+            {
+                message = JObject.Parse(line);
+            }
+            catch (JsonException exception)
+            {
+                Debug.LogWarning($"[Codex] Ignoring malformed app-server output: {exception.Message}");
+                return;
+            }
+
+            Route(message);
+        }
+
+        void NotifyClosed(string reason)
+        {
+            if (m_Closed)
+            {
+                return;
+            }
+
+            m_Closed = true;
+            FailPending("app-server connection closed");
+            Action<string> handler = Disconnected;
+            if (handler != null)
+            {
+                EditorDispatcher.Enqueue(() => handler(reason));
             }
         }
 
@@ -264,38 +352,74 @@ namespace Minerva.Codex
         {
             m_Closed = true;
 
-            try
+            if (m_Socket != null)
             {
-                lock (m_Stdin)
+                try
                 {
-                    m_Stdin.Dispose();
+                    if (m_Socket.State == WebSocketState.Open ||
+                        m_Socket.State == WebSocketState.CloseReceived)
+                    {
+                        m_Socket
+                            .CloseAsync(
+                                WebSocketCloseStatus.NormalClosure,
+                                "closing",
+                                CancellationToken.None)
+                            .Wait(500);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Already closed.
+                }
+
+                try
+                {
+                    m_Socket.Dispose();
+                }
+                catch (Exception)
+                {
+                    // Nothing useful to do on shutdown.
                 }
             }
-            catch (Exception)
-            {
-                // Already closed.
-            }
 
-            try
+            if (m_Stdin != null)
             {
-                if (!m_Process.HasExited)
+                try
                 {
-                    m_Process.Kill();
+                    lock (m_SendLock)
+                    {
+                        m_Stdin.Dispose();
+                    }
+                }
+                catch (Exception)
+                {
+                    // Already closed.
                 }
             }
-            catch (Exception)
+
+            if (m_Process != null)
             {
-                // Raced with exit.
+                try
+                {
+                    if (!m_Process.HasExited)
+                    {
+                        m_Process.Kill();
+                    }
+                }
+                catch (Exception)
+                {
+                    // Raced with exit.
+                }
             }
 
-            if (m_ReaderThread.IsAlive)
+            if (m_ReaderThread != null && m_ReaderThread.IsAlive)
             {
                 m_ReaderThread.Join(500);
             }
 
             try
             {
-                m_Process.Dispose();
+                m_Process?.Dispose();
             }
             catch (Exception)
             {

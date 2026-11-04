@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net.WebSockets;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -174,12 +175,12 @@ namespace Minerva.Codex
             }
         }
 
-        public void Connect(string projectRoot, string codexHome = null)
+        public void Connect(string projectRoot, string codexHome = null, bool restartServer = false)
         {
             string requestedHome = string.IsNullOrWhiteSpace(codexHome) ? null : codexHome.Trim();
             bool homeChanged = !string.Equals(m_CodexHome, requestedHome, StringComparison.OrdinalIgnoreCase);
 
-            if (m_Connection != null && m_Ready && !homeChanged)
+            if (m_Connection != null && m_Ready && !homeChanged && !restartServer)
             {
                 return;
             }
@@ -222,8 +223,22 @@ namespace Minerva.Codex
             try
             {
                 CodexLaunchSpec spec = CodexPaths.Resolve();
-                m_Process = CodexAppServerProcess.Start(spec, projectRoot, m_CodexHome, m_Stderr);
-                m_Connection = new CodexConnection(m_Process);
+                if (CodexWebSocketHost.TryConnect(
+                        spec,
+                        projectRoot,
+                        m_CodexHome,
+                        restartServer,
+                        m_Stderr,
+                        out ClientWebSocket socket))
+                {
+                    m_Connection = new CodexConnection(socket);
+                }
+                else
+                {
+                    m_Process = CodexAppServerProcess.Start(spec, projectRoot, m_CodexHome, m_Stderr);
+                    m_Connection = new CodexConnection(m_Process);
+                }
+
                 m_Connection.Disconnected += OnDisconnected;
                 m_Connection.Notification += OnNotification;
                 m_Client = new CodexClient(m_Connection);
@@ -1479,13 +1494,30 @@ namespace Minerva.Codex
                 }
             }
 
+            // A daemon keeps the turn running across a domain reload. Hydrating
+            // the thread again must put that turn back into the live slot.
+            int activeIndex = m_Turns.FindIndex(
+                turn => turn["status"]?.Value<string>() == "inProgress");
+            if (activeIndex >= 0)
+            {
+                JObject active = m_Turns[activeIndex];
+                m_Turns.RemoveAt(activeIndex);
+                m_LiveTurn = active;
+                m_LiveThreadId = threadId;
+                m_ActiveThreadId = threadId;
+                m_ActiveTurnId = active["id"]?.Value<string>();
+                IsRunning = true;
+            }
+
             if (!IsRunning && generation == m_TurnGeneration && m_LiveThreadId == threadId)
             {
                 m_LiveTurn = null;
                 m_LiveThreadId = null;
             }
 
-            Status = m_Turns.Count == 1 ? "1 turn" : $"{m_Turns.Count} turns";
+            Status = IsRunning
+                ? "Codex is working..."
+                : m_Turns.Count == 1 ? "1 turn" : $"{m_Turns.Count} turns";
             Changed?.Invoke();
         }
 

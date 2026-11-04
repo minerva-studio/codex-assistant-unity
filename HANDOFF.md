@@ -4,9 +4,9 @@ State of the Codex Assistant Unity package, so work can continue without the pre
 
 ## Product
 
-A Unity Editor window that drives `codex app-server` directly and renders conversations the way Codex writes
-them. Threads are shared with the Codex CLI and Codex Desktop through the same `CODEX_HOME`; the package stores
-no conversation state of its own.
+A Unity Editor window that drives `codex app-server` through a persistent localhost WebSocket listener and
+renders conversations the way Codex writes them. Threads are shared with the Codex CLI and Codex Desktop
+through the same `CODEX_HOME`; the package stores no conversation state of its own.
 
 ## Repositories
 
@@ -23,7 +23,14 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 
 ## What works
 
-- Transport: JSONL JSON-RPC over stdio, background reader, callbacks marshalled to the main thread.
+- Transport: `CodexWebSocketHost` starts `codex app-server --listen ws://127.0.0.1:<port>` for each
+  CODEX_HOME and stores the port/pid in `EditorPrefs` (`Minerva.Codex.WebSocket.<homeHash>.Port`/`.Pid`).
+  `CodexConnection` reads/writes JSON-RPC over the WebSocket on a background thread and marshals callbacks to
+  the main thread. A domain reload closes the client socket but not the listener; `OnEnable` reconnects to the
+  same port, so a running turn continues and the selected thread is restored. `Connect(..., restartServer:
+  true)` (Reconnect / home change) kills and restarts the listener to reload config. If the listener cannot
+  start, `Connect` falls back to a direct stdio `codex app-server`; that path still loses a turn on reload.
+  The listener is stopped on `EditorApplication.quitting`; a crashed editor can leave it for the next connect.
 - `initialize`, `thread/list`, `thread/search`, `thread/read`, `thread/resume`, `thread/archive`,
   `thread/unsubscribe`, `thread/turns/list`, `turn/start`, `turn/interrupt`, `config/read`, `model/list`
   wrappers exist in `CodexClient`.
@@ -93,22 +100,25 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   cached thread entry when the selected thread is filtered out, so the header keeps its title.
 - Settings live in `EditorPrefs` under `Minerva.Codex.*`: context indicator (default **off**), show reasoning
   (default on), show tool calls (default on), and CODEX_HOME (empty = process default). CODEX_HOME is set as
-  an environment variable on the app-server process; changing it disposes and reconnects the workspace.
-- `CodexPreferences.ReloadRequested` is the explicit backend reload path: it disposes/restarts app-server
+  an environment variable when the listener starts; changing it starts that home's listener and reconnects.
+- `CodexPreferences.ReloadRequested` is the explicit backend reload path: it disposes/restarts the listener
   without changing the home, clearing models and reloading `config/read` + `model/list`. Settings exposes it
   as **Reconnect**; applying an unchanged CODEX_HOME also calls it so edits to `config.toml`/`models.json`
   are picked up.
+- `OnTurnsLoaded` treats the newest `inProgress` turn as the live turn (and removes it from history), so a
+  reconnect during a running turn restores Stop/live rendering. The WebSocket path was tested: a forced
+  `EditorUtility.RequestScriptReload()` kept the same listener PID, restored the selected thread, and the
+  running turn completed as the next turn instead of being interrupted.
 - Context usage comes from `thread/tokenUsage/updated` notifications. The indicator uses
   `last.totalTokens` / `modelContextWindow` (config `model_context_window` as fallback) and stays hidden until
   the setting is enabled.
 
-## Next task: approvals, thread management, reconnect
+## Next task: approvals and thread management
 
 1. Approvals: app-server sends `ServerRequest` for command execution / file change; render accept/decline
    with session scope. `CodexConnection.ServerRequest` already exists but nothing subscribes.
 2. Thread management: rename, paginated history, unarchive view.
-3. Domain reload: reconnect to the app-server, restore the selected thread, and resume the turn view.
-4. Optional: refresh the sidebar thread entry automatically after the first turn so its preview/updatedAt
+3. Optional: refresh the sidebar thread entry automatically after the first turn so its preview/updatedAt
    match the store, without triggering the auto-select path in `OnThreadsLoaded`.
 
 ## Workflow that works on this machine
@@ -157,7 +167,19 @@ unity command --project-path <proj> package resolve
   as `ModelsResponse { models: [...] }`. A missing file makes app-server fail config load. The catalog now
   provides DeepSeek models; the user owns the API key in that home.
 - App-server loads `model_catalog_json` only at startup. Editing it, or changing CODEX_HOME, requires a
-  reconnect. The UI clears its model list on reconnect; `Reconnect` in Settings is the manual path.
+  reconnect. The UI clears its model list on reconnect; `Reconnect` in Settings is the manual path, and it
+  restarts the WebSocket listener rather than only reconnecting the socket.
+- A plain domain reload must **not** restart the listener: that is the whole point of the persistent
+  transport. `CodexAssistantWindow.ReloadBackend` passes `restartServer: true`; `OnEnable` and
+  `RefreshOrReconnect` pass the default `false`.
+- The listener is a console process with stdout/stderr inherited from the editor. It is started with
+  `UseShellExecute = false`, no redirection, and `CreateNoWindow = true`; do not add redirected readers that
+  live in the domain, or a reload can close the server's pipes. `Process.Dispose()` after readiness is fine;
+  it does not kill the OS process.
+- The listener binds `127.0.0.1` and has no extra auth beyond that. Keep it localhost-only.
+- `CodexWebSocketHost.TryConnect` waits up to 15 s for the socket; the first call blocks the editor's main
+  thread while it starts. If startup fails, remove the stale port/pid keys or let the next call replace them;
+  the direct stdio fallback is automatic.
 - CODEX_HOME and provider API keys are inherited by app-server when the process starts. Setting an API key
   with `setx` after Unity is already running requires a Unity restart before a newly started app-server sees it.
 - Codex Desktop groups threads by project by default; switch to chronological order to see CLI/Unity threads.

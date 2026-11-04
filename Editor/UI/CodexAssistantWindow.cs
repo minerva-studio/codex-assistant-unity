@@ -932,7 +932,7 @@ namespace Minerva.Codex
             }
 
             m_Workspace.Dispose();
-            m_Workspace.Connect(ProjectRoot, m_CodexHome);
+            m_Workspace.Connect(ProjectRoot, m_CodexHome, true);
         }
 
         void UpdateSidebarFilters()

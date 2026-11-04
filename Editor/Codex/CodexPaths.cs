@@ -10,6 +10,12 @@ namespace Minerva.Codex
         public string FileName;
         public string Arguments;
         public string ResolvedPath;
+        public bool IsBatch;
+
+        public string ArgumentsFor(string command)
+        {
+            return IsBatch ? $"/c \"\"{ResolvedPath}\" {command}\"" : command;
+        }
 
         public override string ToString()
         {
@@ -139,6 +145,7 @@ namespace Minerva.Codex
                     FileName = commandProcessor,
                     Arguments = $"/c \"\"{path}\" {AppServerArguments}\"",
                     ResolvedPath = path,
+                    IsBatch = true,
                 };
             }
 

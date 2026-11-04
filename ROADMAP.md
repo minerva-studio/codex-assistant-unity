@@ -17,14 +17,15 @@
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Settings can hide reasoning or tools; tool screenshots render as images.
 - Optional context-window indicator derived from token-usage notifications.
-- Settings panel and configurable CODEX_HOME; changing it restarts the app-server and refreshes the model
+- Persistent localhost WebSocket app-server per CODEX_HOME; domain reload and play mode only reconnect the
+  window, keep a running turn alive and restore the selected thread. Direct stdio remains the fallback.
+- Settings panel and configurable CODEX_HOME; changing it restarts the listener and refreshes the model
   catalog. **Reconnect** reloads config/providers/models without changing the home.
 
 ## Next
 
 - Approvals: command execution and file change requests, with accept/decline and session scope.
 - Thread management: rename, paginated history, unarchive.
-- Domain reload: reconnect to the existing thread and restore the last selection.
 
 ## Later
 

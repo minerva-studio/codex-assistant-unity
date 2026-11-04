@@ -8,6 +8,11 @@ All notable changes to this package are documented here.
 
 - JSON-RPC over newline-delimited JSON transport for `codex app-server`, with the reader on a
   background thread and callbacks dispatched to the Unity main thread.
+- Persistent localhost WebSocket app-server per `CODEX_HOME`, with stdio fallback. Domain reloads and
+  play-mode transitions reconnect the window without interrupting a running turn, and restore the
+  selected thread.
+- Intermediate agent replies join the collapsible Process group, reasoning is shown inline, and
+  `imageView` tool results render as images.
 - Codex executable discovery, including Windows `.cmd` shims and macOS locations that a GUI-launched
   Editor does not inherit from the shell.
 - `CodexClient` wrappers for `initialize`, `thread/list`, `thread/read`, `thread/resume`,
