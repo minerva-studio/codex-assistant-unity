@@ -53,8 +53,12 @@ namespace Minerva.Codex
 
         static void RenderUserMessage(VisualElement parent, JObject item)
         {
+            string raw = JoinUserContent(item["content"]);
+            string cleaned = CodexAttachments.Extract(raw, out var images, out var audioPaths);
+
             VisualElement bubble = Bubble("YOU", CodexPalette.UserBubble);
-            AddText(bubble, JoinUserContent(item["content"]));
+            AddText(bubble, cleaned);
+            CodexAttachments.Render(bubble, images, audioPaths);
             parent.Add(bubble);
         }
 
@@ -66,8 +70,11 @@ namespace Minerva.Codex
                 return;
             }
 
+            string cleaned = CodexAttachments.Extract(text, out var images, out var audioPaths);
+
             VisualElement bubble = Bubble("CODEX", CodexPalette.AgentBubble);
-            bubble.Add(CodexMarkdown.Render(text));
+            bubble.Add(CodexMarkdown.Render(cleaned));
+            CodexAttachments.Render(bubble, images, audioPaths);
             parent.Add(bubble);
         }
 
@@ -328,7 +335,7 @@ namespace Minerva.Codex
                         break;
                     case "image":
                     case "localImage":
-                        builder.AppendLine($"[image] {part["path"] ?? part["url"]}");
+                        builder.AppendLine($"[Attached image \"image\" is saved at: {part["path"] ?? part["url"]}]");
                         break;
                     default:
                         builder.AppendLine($"[{kind}]");
