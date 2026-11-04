@@ -54,11 +54,8 @@ namespace Minerva.Codex
         static void RenderUserMessage(VisualElement parent, JObject item)
         {
             string raw = JoinUserContent(item["content"]);
-            string cleaned = CodexAttachments.Extract(raw, out var images, out var audioPaths);
-
             VisualElement bubble = Bubble("YOU", CodexPalette.UserBubble);
-            AddText(bubble, cleaned);
-            CodexAttachments.Render(bubble, images, audioPaths);
+            bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(raw)));
             parent.Add(bubble);
         }
 
@@ -70,11 +67,8 @@ namespace Minerva.Codex
                 return;
             }
 
-            string cleaned = CodexAttachments.Extract(text, out var images, out var audioPaths);
-
             VisualElement bubble = Bubble("CODEX", CodexPalette.AgentBubble);
-            bubble.Add(CodexMarkdown.Render(cleaned));
-            CodexAttachments.Render(bubble, images, audioPaths);
+            bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
             parent.Add(bubble);
         }
 

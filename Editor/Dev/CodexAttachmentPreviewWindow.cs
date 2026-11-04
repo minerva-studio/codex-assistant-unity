@@ -52,6 +52,9 @@ namespace Minerva.Codex.Editor.Dev
 
             string longWav = @"C:\Users\wende\Documents\Minerva Game Studio\library-of-meialia\Assets\Contents\Audio\Ambient\Ambient_Desert.wav";
             scroll.Add(Render(UserMessage($"长 WAV 测试：{longWav}")));
+
+            string video = @"C:\Users\wende\Documents\Minerva Game Studio\Artifacts\player-crawl-20261028\balance\crawl-balanced.mp4";
+            scroll.Add(Render(UserMessage($"视频测试：{video}")));
         }
 
         static VisualElement Render(JObject item)

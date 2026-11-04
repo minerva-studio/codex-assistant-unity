@@ -30,6 +30,7 @@ namespace Minerva.Codex
             var factory = new DefaultMarkdownVisualElementFactory
             {
                 ImageBaseDirectory = ProjectRoot,
+                MediaResolver = CodexMedia.Render,
             };
 
             return UnityMarkdown.ToVisualElement(markdown, style, factory);
