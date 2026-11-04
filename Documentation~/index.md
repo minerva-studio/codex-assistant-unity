@@ -14,6 +14,8 @@ the CLI.
 | `CodexAppServerProcess.Start(...)` | Starts `codex app-server` with piped stdio. |
 | `CodexConnection` | JSON-RPC framing, request/response correlation, notification routing. |
 | `CodexClient` | The protocol calls the assistant uses. |
+| `CodexWorkspace` | Owns the connection, the thread list and the turns shown by the window. |
+| `CodexAssistantWindow` | Read-only conversation browser at **Window > Minerva > Codex Assistant**. |
 
 All callbacks arrive on the Unity main thread through `EditorDispatcher`.
 

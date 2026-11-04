@@ -14,3 +14,6 @@ All notable changes to this package are documented here.
   `thread/turns/list`, `turn/start` and `turn/interrupt`.
 - `Tools > Minerva > Codex > Diagnose App Server` and a batchmode smoke test that reads the shared
   Codex thread store.
+- Read-only `Window > Minerva > Codex Assistant`: thread list, turn history, item rendering for user
+  messages, agent messages, reasoning, commands, file changes, MCP calls, plans and reviews.
+  `Copy resume` copies the CLI command for the selected thread.

@@ -14,8 +14,9 @@ and the same one Codex Desktop lists in its sidebar (switch it to chronological 
 
 ## Status
 
-Early development. The transport, process supervision and shared-history reads are in place and
-verified against Codex CLI 0.166.0 on Unity 6000.3. The chat window is next.
+Early development. The transport, process supervision, shared-history reads and a read-only
+conversation window are in place, verified against Codex CLI 0.166.0 on Unity 6000.3. Sending
+messages, approvals and Unity-side tools are next.
 
 ## Requirements
 
@@ -39,12 +40,13 @@ or point Package Manager at a local clone:
 
 ## Try it
 
-Until the window lands, use the diagnostic entry point:
-
 1. Open a project with the package installed.
-2. Select **Tools > Minerva > Codex > Diagnose App Server**.
-3. The Console prints the Codex handshake, the threads Codex already knows about, and the turn
-   history of the most recent one.
+2. Select **Window > Minerva > Codex Assistant**.
+3. Pick a conversation on the left. These are the threads Codex already knows about; **Copy resume**
+   puts the matching `codex resume <thread-id>` command on the clipboard.
+
+If the window shows nothing, run **Tools > Minerva > Codex > Diagnose App Server** and check the
+Console. It prints the handshake, the thread list and one thread's turns without any UI.
 
 Headless:
 
