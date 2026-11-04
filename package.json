@@ -1,0 +1,25 @@
+{
+  "name": "com.minervagamestudio.codex.assistant",
+  "version": "0.1.0",
+  "displayName": "Codex Assistant",
+  "description": "Editor client for the Codex app-server protocol. Conversations live in Codex's own store, so threads can be resumed from Codex CLI and Codex Desktop.",
+  "unity": "6000.3",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
+  "keywords": [
+    "codex",
+    "ai",
+    "assistant",
+    "editor",
+    "minerva game studio"
+  ],
+  "author": {
+    "name": "Minerva Game Studio",
+    "email": "library.of.meialia@gmail.com",
+    "url": "https://github.com/minerva-studio/codex-assistant-unity"
+  },
+  "documentationUrl": "https://github.com/minerva-studio/codex-assistant-unity#readme",
+  "changelogUrl": "https://github.com/minerva-studio/codex-assistant-unity/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/minerva-studio/codex-assistant-unity/blob/main/LICENSE.md"
+}
