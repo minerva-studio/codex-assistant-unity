@@ -13,10 +13,13 @@ namespace Minerva.Codex
     /// </summary>
     internal sealed class CodexVideoRow : VisualElement
     {
+        static AudioSource s_AudioInit;
+        static AudioClip s_AudioInitClip;
+        static bool s_PreviousMute;
+
         readonly string m_Path;
         readonly GameObject m_Object;
         readonly VideoPlayer m_Player;
-        readonly AudioSource m_Audio;
         readonly RenderTexture m_Target;
         readonly Image m_Screen;
         readonly Button m_PlayButton;
@@ -39,12 +42,12 @@ namespace Minerva.Codex
             m_Player.renderMode = VideoRenderMode.RenderTexture;
             m_Player.targetTexture = m_Target;
 
-            m_Audio = m_Object.AddComponent<AudioSource>();
-            m_Audio.playOnAwake = false;
-            m_Audio.volume = 1f;
-            m_Player.audioOutputMode = VideoAudioOutputMode.AudioSource;
-            m_Player.EnableAudioTrack(0, true);
-            m_Player.SetTargetAudioSource(0, m_Audio);
+            // Direct output, not AudioSource: an AudioSource does not run in edit mode,
+            // so routing the track into one produces silence.
+            m_Player.audioOutputMode = VideoAudioOutputMode.Direct;
+            m_Player.SetDirectAudioVolume(0, 1f);
+
+            EnsureAudioInitialized();
 
             m_Player.prepareCompleted += OnPrepared;
             m_Player.Prepare();
@@ -105,6 +108,25 @@ namespace Minerva.Codex
             RegisterCallback<DetachFromPanelEvent>(_ => Dispose());
         }
 
+        /// <summary>
+        /// The editor audio system is not initialized in edit mode until something plays.
+        /// A dummy clip kicks it awake so VideoPlayer direct audio is audible.
+        /// </summary>
+        static void EnsureAudioInitialized()
+        {
+            if (s_AudioInit != null)
+            {
+                return;
+            }
+
+            s_AudioInitClip = AudioClip.Create("CodexAudioInit", 4410, 1, 44100, false);
+            var host = new GameObject("CodexAudioInit") { hideFlags = HideFlags.HideAndDontSave };
+            s_AudioInit = host.AddComponent<AudioSource>();
+            s_AudioInit.clip = s_AudioInitClip;
+            s_AudioInit.playOnAwake = false;
+            s_AudioInit.volume = 0f;
+        }
+
         void OnPrepared(VideoPlayer player)
         {
             m_Prepared = true;
@@ -126,6 +148,11 @@ namespace Minerva.Codex
                 m_Player.Pause();
                 m_Playing = false;
                 m_PlayButton.text = "▶";
+                if (s_PreviousMute)
+                {
+                    EditorUtility.audioMasterMute = true;
+                    s_PreviousMute = false;
+                }
             }
             else
             {
@@ -134,6 +161,9 @@ namespace Minerva.Codex
                     m_Player.time = 0;
                 }
 
+                s_PreviousMute = EditorUtility.audioMasterMute;
+                EditorUtility.audioMasterMute = false;
+                s_AudioInit?.Play();
                 m_Player.Play();
                 m_Playing = true;
                 m_PlayButton.text = "⏸";
@@ -151,6 +181,11 @@ namespace Minerva.Codex
             {
                 m_Playing = false;
                 m_PlayButton.text = "▶";
+                if (s_PreviousMute)
+                {
+                    EditorUtility.audioMasterMute = true;
+                    s_PreviousMute = false;
+                }
             }
 
             UpdateVisuals();
@@ -171,7 +206,6 @@ namespace Minerva.Codex
             {
                 m_Player.prepareCompleted -= OnPrepared;
                 m_Player.Stop();
-                m_Audio.Stop();
             }
             catch (Exception)
             {
