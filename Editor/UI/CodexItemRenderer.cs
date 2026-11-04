@@ -60,8 +60,14 @@ namespace Minerva.Codex
 
         static void RenderAgentMessage(VisualElement parent, JObject item)
         {
+            string text = item["text"]?.Value<string>();
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
             VisualElement bubble = Bubble("CODEX", CodexPalette.AgentBubble);
-            AddText(bubble, item["text"]?.Value<string>());
+            bubble.Add(CodexMarkdown.Render(text));
             parent.Add(bubble);
         }
 

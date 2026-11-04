@@ -2,7 +2,8 @@
   "name": "Minerva.Codex.Editor",
   "rootNamespace": "Minerva.Codex",
   "references": [
-    "Newtonsoft.Json"
+    "Newtonsoft.Json",
+    "UMarkdown"
   ],
   "includePlatforms": [
     "Editor"

@@ -29,8 +29,13 @@ namespace Minerva.Codex
         public static void Open()
         {
             var window = GetWindow<CodexAssistantWindow>();
-            window.titleContent = new GUIContent("Codex");
+            window.titleContent = new GUIContent("Codex Assistant");
             window.minSize = new Vector2(720, 420);
+            if (window.position.width < 720 || window.position.height < 420)
+            {
+                window.position = new Rect(window.position.x, window.position.y, 1100, 720);
+            }
+
             window.Show();
         }
 
