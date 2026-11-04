@@ -178,6 +178,11 @@ namespace Minerva.Codex
 
         static VisualElement BuildVideo(CodexMediaItem item)
         {
+            if (!string.IsNullOrEmpty(item.Path) && File.Exists(item.Path))
+            {
+                return new CodexVideoRow(item.Path);
+            }
+
             var card = new VisualElement();
             card.style.flexDirection = FlexDirection.Row;
             card.style.alignItems = Align.Center;
