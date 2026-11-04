@@ -216,6 +216,25 @@ namespace Minerva.Codex
             Request("thread/turns/list", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);
         }
 
+        /// <summary>
+        /// Updates the thread's sticky settings. This is the API path for changing
+        /// reasoning effort between turns; it avoids restarting the thread.
+        /// </summary>
+        public void UpdateThreadSettings(
+            string threadId,
+            string effort,
+            Action<JObject> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["threadId"] = threadId,
+                ["effort"] = effort,
+            };
+
+            Request("thread/settings/update", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
         public void StartTurn(
             string threadId,
             string text,
@@ -230,11 +249,7 @@ namespace Minerva.Codex
             var parameters = new JObject
             {
                 ["threadId"] = threadId,
-                ["input"] = new JArray(new JObject
-                {
-                    ["type"] = "text",
-                    ["text"] = text,
-                }),
+                ["input"] = TextInput(text),
             };
 
             if (!string.IsNullOrEmpty(cwd))
@@ -260,6 +275,84 @@ namespace Minerva.Codex
             AddIfPresent(parameters, "approvalPolicy", approvalPolicy);
 
             Request("turn/start", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        /// <summary>Adds input to the active turn without interrupting its tools.</summary>
+        public void SteerTurn(
+            string threadId,
+            string expectedTurnId,
+            string text,
+            Action<JObject> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["threadId"] = threadId,
+                ["expectedTurnId"] = expectedTurnId,
+                ["input"] = TextInput(text),
+            };
+
+            Request("turn/steer", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        public void AddQueuedTurn(
+            string threadId,
+            string clientUserMessageId,
+            string text,
+            Action<JObject> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["threadId"] = threadId,
+                ["clientUserMessageId"] = clientUserMessageId,
+                ["input"] = TextInput(text),
+            };
+
+            Request("thread/queue/add", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        public void ListQueuedTurns(
+            string threadId,
+            int limit,
+            Action<JArray> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["threadId"] = threadId,
+                ["limit"] = limit,
+            };
+
+            Request(
+                "thread/queue/list",
+                parameters,
+                result => onResult?.Invoke(result?["data"] as JArray),
+                onError);
+        }
+
+        public void DeleteQueuedTurn(
+            string threadId,
+            string queuedSubmissionId,
+            Action onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["threadId"] = threadId,
+                ["queuedSubmissionId"] = queuedSubmissionId,
+            };
+
+            Request("thread/queue/delete", parameters, _ => onResult?.Invoke(), onError);
+        }
+
+        static JArray TextInput(string text)
+        {
+            return new JArray(new JObject
+            {
+                ["type"] = "text",
+                ["text"] = text,
+            });
         }
 
         static void AddIfPresent(JObject target, string name, JToken value)

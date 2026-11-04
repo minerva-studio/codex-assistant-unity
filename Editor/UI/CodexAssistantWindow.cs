@@ -42,11 +42,15 @@ namespace Minerva.Codex
         VisualElement m_ContextDot;
         Label m_ContextLabel;
         Label m_SettingsSourceLabel;
+        Label m_ComposerHint;
         VisualElement m_LiveContainer;
         VisualElement m_ComposerCard;
+        VisualElement m_QueueStrip;
         VisualElement m_Popup;
         VisualElement m_PopupScrim;
 
+        bool m_FollowTranscript = true;
+        string m_LastTranscriptThreadId;
         bool m_ShowContextIndicator;
         bool m_ShowReasoning = true;
         bool m_ShowToolCalls = true;
@@ -278,6 +282,8 @@ namespace Minerva.Codex
             m_Transcript.style.flexGrow = 1;
             m_Transcript.style.paddingTop = 8;
             m_Transcript.verticalScrollerVisibility = ScrollerVisibility.Auto;
+            m_Transcript.verticalScroller.valueChanged += _ =>
+                m_FollowTranscript = IsTranscriptAtBottom();
             content.Add(m_Transcript);
 
             content.Add(BuildComposer());
@@ -329,6 +335,13 @@ namespace Minerva.Codex
             m_ComposerCard.style.paddingRight = 8;
             m_ComposerCard.style.paddingTop = 6;
             m_ComposerCard.style.paddingBottom = 6;
+
+            m_QueueStrip = new VisualElement { name = "codex-queue" };
+            m_QueueStrip.style.flexDirection = FlexDirection.Column;
+            m_QueueStrip.style.marginBottom = 6;
+            m_QueueStrip.style.display = DisplayStyle.None;
+            composer.Add(m_QueueStrip);
+
             composer.Add(m_ComposerCard);
 
             m_Composer = new TextField { multiline = true, name = "codex-composer" };
@@ -359,11 +372,11 @@ namespace Minerva.Codex
             meta.style.marginTop = 2;
             m_ComposerCard.Add(meta);
 
-            var hint = new Label("Enter to send  ·  Shift+Enter for a new line");
-            hint.style.fontSize = 9;
-            hint.style.color = CodexPalette.Muted;
-            hint.style.flexGrow = 1;
-            meta.Add(hint);
+            m_ComposerHint = new Label("Enter to send  ·  Shift+Enter for a new line");
+            m_ComposerHint.style.fontSize = 9;
+            m_ComposerHint.style.color = CodexPalette.Muted;
+            m_ComposerHint.style.flexGrow = 1;
+            meta.Add(m_ComposerHint);
 
             m_SettingsSourceLabel = new Label(string.Empty);
             m_SettingsSourceLabel.name = "codex-settings-source";
@@ -875,6 +888,7 @@ namespace Minerva.Codex
             UpdateHeader();
             UpdateSettingsBar();
             UpdateComposer();
+            RefreshQueueStrip();
             UpdateContextIndicator();
 
             bool hasError = !string.IsNullOrEmpty(m_Workspace.Error);
@@ -1093,7 +1107,7 @@ namespace Minerva.Codex
             bool hasText = !string.IsNullOrWhiteSpace(m_Composer.value);
             bool settingsReady = m_Workspace != null && m_Workspace.SettingsLoaded;
 
-            m_Composer.SetEnabled(ready && settingsReady && !running);
+            m_Composer.SetEnabled(ready && settingsReady);
 
             bool actionEnabled = running
                 ? m_Workspace != null && m_Workspace.CanStop
@@ -1105,6 +1119,92 @@ namespace Minerva.Codex
                 ? CodexPalette.DisabledAction
                 : running ? CodexPalette.StopAction : CodexPalette.SendAction;
             m_ActionButton.tooltip = running ? "Interrupt the running turn" : "Send message";
+
+            string steerKey = Application.platform == RuntimePlatform.OSXEditor ? "Cmd+Enter" : "Ctrl+Enter";
+            string hint = running
+                ? $"Enter to queue  ·  {steerKey} to steer"
+                : "Enter to send  ·  Shift+Enter for a new line";
+            if (m_ComposerHint != null)
+            {
+                m_ComposerHint.text = hint;
+            }
+
+            m_Composer.tooltip = running
+                ? $"Enter queues for after this turn; {steerKey} steers the active turn"
+                : "Enter to send · Shift+Enter for a new line";
+        }
+
+        void RefreshQueueStrip()
+        {
+            if (m_QueueStrip == null)
+            {
+                return;
+            }
+
+            m_QueueStrip.Clear();
+            IReadOnlyList<CodexQueuedMessage> queued = m_Workspace?.QueuedMessages;
+            if (queued == null || queued.Count == 0 || string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
+            {
+                m_QueueStrip.style.display = DisplayStyle.None;
+                return;
+            }
+
+            m_QueueStrip.style.display = DisplayStyle.Flex;
+            var header = new Label(queued.Count == 1 ? "Queued · 1" : $"Queued · {queued.Count}");
+            header.style.fontSize = 9;
+            header.style.unityFontStyleAndWeight = FontStyle.Bold;
+            header.style.color = CodexPalette.Muted;
+            header.style.marginBottom = 3;
+            m_QueueStrip.Add(header);
+
+            foreach (CodexQueuedMessage message in queued)
+            {
+                var row = new VisualElement();
+                row.style.flexDirection = FlexDirection.Row;
+                row.style.alignItems = Align.Center;
+                row.style.backgroundColor = CodexPalette.Pill;
+                row.style.borderTopLeftRadius = 7;
+                row.style.borderTopRightRadius = 7;
+                row.style.borderBottomLeftRadius = 7;
+                row.style.borderBottomRightRadius = 7;
+                row.style.paddingLeft = 8;
+                row.style.paddingRight = 4;
+                row.style.paddingTop = 3;
+                row.style.paddingBottom = 3;
+                row.style.marginBottom = 3;
+
+                var text = new Label(message.Text);
+                text.style.flexGrow = 1;
+                text.style.fontSize = 10;
+                text.style.color = CodexPalette.Text;
+                text.style.whiteSpace = WhiteSpace.Normal;
+                text.style.overflow = Overflow.Hidden;
+                text.style.maxHeight = 46;
+                text.tooltip = message.Text;
+                row.Add(text);
+
+                var remove = new Button(() => m_Workspace?.RemoveQueuedMessage(message.Id))
+                {
+                    text = "×",
+                };
+                remove.tooltip = "Remove from queue";
+                remove.style.width = 18;
+                remove.style.height = 18;
+                remove.style.minWidth = 18;
+                remove.style.marginLeft = 6;
+                remove.style.paddingLeft = 0;
+                remove.style.paddingRight = 0;
+                remove.style.borderTopWidth = 0;
+                remove.style.borderBottomWidth = 0;
+                remove.style.borderLeftWidth = 0;
+                remove.style.borderRightWidth = 0;
+                remove.style.backgroundColor = Color.clear;
+                remove.style.color = CodexPalette.Muted;
+                remove.style.fontSize = 12;
+                row.Add(remove);
+
+                m_QueueStrip.Add(row);
+            }
         }
 
         void OnComposerAction()
@@ -1126,16 +1226,16 @@ namespace Minerva.Codex
                 return;
             }
 
-            if (keyEvent.shiftKey || keyEvent.ctrlKey || keyEvent.commandKey || keyEvent.altKey)
+            if (keyEvent.shiftKey || keyEvent.altKey)
             {
                 return;
             }
 
             keyEvent.StopPropagation();
-            SendComposer();
+            SendComposer(keyEvent.ctrlKey || keyEvent.commandKey);
         }
 
-        void SendComposer()
+        void SendComposer(bool steer = false)
         {
             if (m_Workspace == null)
             {
@@ -1143,11 +1243,31 @@ namespace Minerva.Codex
             }
 
             string text = m_Composer.value?.Trim();
-            if (string.IsNullOrEmpty(text) || !m_Workspace.SendMessage(text))
+            if (string.IsNullOrEmpty(text))
             {
                 return;
             }
 
+            bool accepted;
+            if (m_Workspace.IsRunning)
+            {
+                accepted = steer ? m_Workspace.SteerMessage(text) : m_Workspace.QueueMessage(text);
+                if (!accepted && steer)
+                {
+                    accepted = m_Workspace.QueueMessage(text);
+                }
+            }
+            else
+            {
+                accepted = m_Workspace.SendMessage(text);
+            }
+
+            if (!accepted)
+            {
+                return;
+            }
+
+            m_FollowTranscript = true;
             m_Composer.SetValueWithoutNotify(string.Empty);
             UpdateComposer();
         }
@@ -1318,8 +1438,15 @@ namespace Minerva.Codex
 
         void RebuildTranscript()
         {
+            string threadId = m_Workspace.SelectedThreadId;
+            if (!string.Equals(threadId, m_LastTranscriptThreadId, StringComparison.Ordinal))
+            {
+                m_LastTranscriptThreadId = threadId;
+                m_FollowTranscript = true;
+            }
+
             Vector2 previousOffset = m_Transcript.scrollOffset;
-            bool stickToBottom = IsTranscriptAtBottom();
+            bool stickToBottom = m_FollowTranscript || IsTranscriptAtBottom();
 
             m_Transcript.Clear();
             m_LiveContainer = null;
@@ -1373,7 +1500,7 @@ namespace Minerva.Codex
             }
 
             Vector2 previousOffset = m_Transcript.scrollOffset;
-            bool stickToBottom = IsTranscriptAtBottom();
+            bool stickToBottom = m_FollowTranscript || IsTranscriptAtBottom();
 
             m_LiveContainer.Clear();
             RenderTurn(m_LiveContainer, liveTurn, true);
@@ -1521,18 +1648,26 @@ namespace Minerva.Codex
 
         bool IsTranscriptAtBottom()
         {
-            float contentHeight = m_Transcript.contentContainer.layout.height;
-            return contentHeight <= 0 ||
-                   m_Transcript.scrollOffset.y + m_Transcript.layout.height >= contentHeight - 24;
+            Scroller scroller = m_Transcript.verticalScroller;
+            return scroller.highValue <= 0 || scroller.value >= scroller.highValue - 24;
         }
 
         void RestoreScroll(Vector2 previousOffset, bool stickToBottom)
         {
             m_Transcript.schedule.Execute(() =>
             {
-                m_Transcript.scrollOffset = stickToBottom
-                    ? new Vector2(0, m_Transcript.contentContainer.layout.height)
-                    : previousOffset;
+                if (stickToBottom)
+                {
+                    float maxOffset = Math.Max(
+                        m_Transcript.verticalScroller.highValue,
+                        m_Transcript.contentContainer.layout.height - m_Transcript.layout.height);
+                    m_Transcript.scrollOffset = new Vector2(0, Math.Max(0, maxOffset));
+                    m_FollowTranscript = true;
+                }
+                else
+                {
+                    m_Transcript.scrollOffset = previousOffset;
+                }
             });
         }
 

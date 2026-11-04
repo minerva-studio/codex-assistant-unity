@@ -13,6 +13,10 @@ All notable changes to this package are documented here.
   selected thread.
 - Intermediate agent replies join the collapsible Process group, reasoning is shown inline, and
   `imageView` tool results render as images.
+- Steering and queuing while a turn runs: Enter persists a queued follow-up through
+  `thread/queue/add`, Ctrl+Enter steers through `turn/steer`, and queued messages show above the composer.
+- Reasoning-effort changes use `thread/settings/update` and later turns omit the per-turn effort override.
+- The transcript follows the bottom by default and stops following when the reader scrolls up.
 - Codex executable discovery, including Windows `.cmd` shims and macOS locations that a GUI-launched
   Editor does not inherit from the shell.
 - `CodexClient` wrappers for `initialize`, `thread/list`, `thread/read`, `thread/resume`,

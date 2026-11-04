@@ -36,6 +36,12 @@ namespace Minerva.Codex
             WindowTokens > 0 ? Math.Min(1.0, (double)UsedTokens / WindowTokens) : 0.0;
     }
 
+    internal sealed class CodexQueuedMessage
+    {
+        public string Id;
+        public string Text;
+    }
+
     internal sealed class CodexModelInfo
     {
         public string Id;
@@ -69,6 +75,7 @@ namespace Minerva.Codex
         readonly List<JObject> m_Turns = new List<JObject>();
         readonly List<CodexModelInfo> m_Models = new List<CodexModelInfo>();
         readonly List<string> m_Efforts = new List<string>();
+        readonly List<CodexQueuedMessage> m_Queued = new List<CodexQueuedMessage>();
         readonly Dictionary<string, CodexContextUsage> m_ContextUsage =
             new Dictionary<string, CodexContextUsage>();
         readonly StringBuilder m_Stderr = new StringBuilder();
@@ -101,6 +108,9 @@ namespace Minerva.Codex
         string m_SettingsError;
         string m_SettingsSource = "config";
         JToken m_ApprovalPolicy;
+        string m_EffortSyncedThreadId;
+
+        int m_QueueGeneration;
 
         bool m_StreamSubscribed;
         bool m_StreamDirty;
@@ -128,6 +138,7 @@ namespace Minerva.Codex
 
         public IReadOnlyList<CodexModelInfo> Models => m_Models;
         public IReadOnlyList<string> Efforts => m_Efforts;
+        public IReadOnlyList<CodexQueuedMessage> QueuedMessages => m_Queued;
         public IReadOnlyList<string> SandboxModes => s_SandboxModes;
         public bool SettingsLoaded => m_ConfigLoaded;
         public string SettingsError => m_SettingsError;
@@ -217,6 +228,9 @@ namespace Minerva.Codex
             SelectedSandbox = null;
             m_Models.Clear();
             m_Efforts.Clear();
+            m_Queued.Clear();
+            m_QueueGeneration++;
+            m_EffortSyncedThreadId = null;
             Changed?.Invoke();
             SettingsChanged?.Invoke();
 
@@ -405,6 +419,9 @@ namespace Minerva.Codex
             m_SelectedThreadInfo = FindThread(threadId);
             SelectedCwd = m_SelectedThreadInfo?.Cwd;
             m_Turns.Clear();
+            m_EffortSyncedThreadId = null;
+            m_Queued.Clear();
+            m_QueueGeneration++;
             Status = "Loading conversation...";
             Changed?.Invoke();
             ContextChanged?.Invoke();
@@ -444,6 +461,9 @@ namespace Minerva.Codex
             m_LiveThreadId = null;
             m_ActiveThreadId = null;
             m_ActiveTurnId = null;
+            m_EffortSyncedThreadId = null;
+            m_Queued.Clear();
+            m_QueueGeneration++;
             m_InitialSelectionDone = true;
             Error = null;
             Status = "New conversation";
@@ -495,8 +515,213 @@ namespace Minerva.Codex
         }
 
         /// <summary>
-        /// Interrupts the running turn. The composer stays disabled until
-        /// app-server reports <c>turn/completed</c>.
+        /// Adds <paramref name="text"/> to the active turn without interrupting it.
+        /// Returns false when there is no steerable turn; the caller can queue instead.
+        /// </summary>
+        public bool SteerMessage(string text)
+        {
+            if (!m_Ready || !IsRunning || string.IsNullOrWhiteSpace(text) ||
+                string.IsNullOrEmpty(SelectedThreadId) || string.IsNullOrEmpty(m_ActiveTurnId))
+            {
+                return false;
+            }
+
+            string threadId = SelectedThreadId;
+            string turnId = m_ActiveTurnId;
+            string trimmed = text.Trim();
+            Error = null;
+            Status = "Steering...";
+            Changed?.Invoke();
+
+            m_Client.SteerTurn(
+                threadId,
+                turnId,
+                trimmed,
+                result =>
+                {
+                    if (SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    string returnedTurnId = result?["turnId"]?.Value<string>();
+                    if (!string.IsNullOrEmpty(returnedTurnId))
+                    {
+                        m_ActiveTurnId = returnedTurnId;
+                    }
+
+                    Status = "Codex is working...";
+                    Changed?.Invoke();
+                },
+                message =>
+                {
+                    if (SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    Debug.LogWarning($"[Codex] turn/steer failed, queueing instead: {message}");
+                    if (!QueueMessage(trimmed))
+                    {
+                        Error = $"Steering failed: {message}";
+                        Status = "Steering failed";
+                        Changed?.Invoke();
+                    }
+                });
+
+            return true;
+        }
+
+        /// <summary>
+        /// Persists a future turn. app-server owns the queue; the next queued item
+        /// starts when this thread becomes idle.
+        /// </summary>
+        public bool QueueMessage(string text)
+        {
+            if (!m_Ready || string.IsNullOrWhiteSpace(text) || string.IsNullOrEmpty(SelectedThreadId))
+            {
+                return false;
+            }
+
+            string threadId = SelectedThreadId;
+            string trimmed = text.Trim();
+            Error = null;
+
+            m_Client.AddQueuedTurn(
+                threadId,
+                Guid.NewGuid().ToString("N"),
+                trimmed,
+                _ =>
+                {
+                    if (SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    Status = IsRunning ? "Queued for after this turn" : "Starting queued message...";
+                    Changed?.Invoke();
+                    LoadQueue(threadId);
+                },
+                message =>
+                {
+                    if (SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    Error = $"Could not queue message: {message}";
+                    Status = "Queue failed";
+                    Changed?.Invoke();
+                });
+
+            return true;
+        }
+
+        public void RemoveQueuedMessage(string queuedId)
+        {
+            if (string.IsNullOrEmpty(queuedId) || string.IsNullOrEmpty(SelectedThreadId))
+            {
+                return;
+            }
+
+            string threadId = SelectedThreadId;
+            m_Queued.RemoveAll(message => message.Id == queuedId);
+            Changed?.Invoke();
+            m_Client.DeleteQueuedTurn(
+                threadId,
+                queuedId,
+                () => LoadQueue(threadId),
+                message =>
+                {
+                    if (SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    Error = $"Could not remove queued message: {message}";
+                    LoadQueue(threadId);
+                    Changed?.Invoke();
+                });
+        }
+
+        void LoadQueue(string threadId)
+        {
+            if (!m_Ready || m_Client == null || string.IsNullOrEmpty(threadId))
+            {
+                return;
+            }
+
+            int generation = ++m_QueueGeneration;
+            m_Client.ListQueuedTurns(
+                threadId,
+                100,
+                data =>
+                {
+                    if (generation != m_QueueGeneration || SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    m_Queued.Clear();
+                    if (data != null)
+                    {
+                        foreach (JToken token in data)
+                        {
+                            if (token is not JObject entry)
+                            {
+                                continue;
+                            }
+
+                            string id = entry["id"]?.Value<string>();
+                            string text = QueuedText(entry["input"]);
+                            if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(text))
+                            {
+                                m_Queued.Add(new CodexQueuedMessage { Id = id, Text = text });
+                            }
+                        }
+                    }
+
+                    Changed?.Invoke();
+                },
+                message =>
+                {
+                    if (generation != m_QueueGeneration || SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    m_Queued.Clear();
+                    Debug.LogWarning($"[Codex] thread/queue/list failed: {message}");
+                    Changed?.Invoke();
+                });
+        }
+
+        static string QueuedText(JToken input)
+        {
+            if (input is not JArray items)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+            foreach (JToken item in items)
+            {
+                if (item?["type"]?.Value<string>() == "text")
+                {
+                    string text = item["text"]?.Value<string>();
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        parts.Add(text);
+                    }
+                }
+            }
+
+            return string.Join("\n", parts);
+        }
+
+        /// <summary>
+        /// Interrupts the running turn. The composer remains available for
+        /// queueing or steering until <c>turn/completed</c> arrives.
         /// </summary>
         public void Stop()
         {
@@ -525,8 +750,10 @@ namespace Minerva.Codex
             }
 
             m_SettingsSource = "custom";
+            m_EffortSyncedThreadId = null;
             RebuildEfforts();
             SettingsChanged?.Invoke();
+            ApplyEffortToThread();
         }
 
         public void SetEffort(string effort)
@@ -538,7 +765,48 @@ namespace Minerva.Codex
 
             SelectedEffort = effort;
             m_SettingsSource = "custom";
+            m_EffortSyncedThreadId = null;
             SettingsChanged?.Invoke();
+            ApplyEffortToThread();
+        }
+
+        /// <summary>
+        /// Uses the thread-settings API for a change that should apply to later
+        /// turns. The next turn can then omit the effort override, which keeps
+        /// Codex's prompt cache path stable.
+        /// </summary>
+        void ApplyEffortToThread()
+        {
+            if (!m_Ready || m_Client == null || string.IsNullOrEmpty(SelectedThreadId) ||
+                string.IsNullOrEmpty(SelectedEffort))
+            {
+                return;
+            }
+
+            string threadId = SelectedThreadId;
+            string effort = SelectedEffort;
+            m_Client.UpdateThreadSettings(
+                threadId,
+                effort,
+                _ =>
+                {
+                    if (SelectedThreadId == threadId && SelectedEffort == effort)
+                    {
+                        m_EffortSyncedThreadId = threadId;
+                    }
+                },
+                message =>
+                {
+                    if (SelectedThreadId != threadId)
+                    {
+                        return;
+                    }
+
+                    m_EffortSyncedThreadId = null;
+                    m_SettingsError = "Reasoning effort will apply on the next turn.";
+                    Debug.LogWarning($"[Codex] thread/settings/update failed: {message}");
+                    SettingsChanged?.Invoke();
+                });
         }
 
         public void SetSandbox(string sandbox)
@@ -735,7 +1003,7 @@ namespace Minerva.Codex
                 m_SelectedThreadInfo = Parse(thread);
             }
 
-            ApplyThreadSettings(result);
+            ApplyThreadSettings(threadId, result);
             LoadTurns(threadId);
         }
 
@@ -750,7 +1018,7 @@ namespace Minerva.Codex
             LoadTurns(threadId);
         }
 
-        void ApplyThreadSettings(JObject resume)
+        void ApplyThreadSettings(string threadId, JObject resume)
         {
             if (resume == null)
             {
@@ -767,6 +1035,7 @@ namespace Minerva.Codex
             if (!string.IsNullOrEmpty(effort))
             {
                 SelectedEffort = effort;
+                m_EffortSyncedThreadId = threadId;
             }
 
             string sandbox = MapSandboxPolicy(resume["sandbox"]);
@@ -836,6 +1105,9 @@ namespace Minerva.Codex
             m_SelectedThreadInfo = info;
             SelectedCwd = info.Cwd ?? m_ProjectRoot;
             m_Turns.Clear();
+            m_EffortSyncedThreadId = null;
+            m_Queued.Clear();
+            m_QueueGeneration++;
             m_LiveThreadId = threadId;
             Changed?.Invoke();
             StartTurn(threadId, text);
@@ -849,12 +1121,14 @@ namespace Minerva.Codex
 
             string requested = threadId;
             JObject sandboxPolicy = BuildSandboxPolicy(SelectedSandbox);
+            bool effortSynced = m_EffortSyncedThreadId == threadId;
+            string effort = effortSynced ? null : SelectedEffort;
             m_Client.StartTurn(
                 threadId,
                 text,
                 SelectedCwd,
                 SelectedModel,
-                SelectedEffort,
+                effort,
                 sandboxPolicy,
                 m_ApprovalPolicy,
                 result =>
@@ -862,6 +1136,12 @@ namespace Minerva.Codex
                     if (!IsRunning || m_ActiveThreadId != requested)
                     {
                         return;
+                    }
+
+                    if (!string.IsNullOrEmpty(effort))
+                    {
+                        // turn/start makes the effort sticky for later turns.
+                        m_EffortSyncedThreadId = requested;
                     }
 
                     JObject turn = result?["turn"] as JObject;
@@ -921,6 +1201,12 @@ namespace Minerva.Codex
                 case "thread/name/updated":
                     OnThreadNameUpdated(parameters);
                     break;
+                case "thread/settings/updated":
+                    OnThreadSettingsUpdated(parameters);
+                    break;
+                case "thread/queue/changed":
+                    OnQueueChanged(parameters);
+                    break;
                 case "thread/tokenUsage/updated":
                     OnTokenUsageUpdated(parameters);
                     break;
@@ -943,6 +1229,37 @@ namespace Minerva.Codex
             }
 
             Changed?.Invoke();
+        }
+
+        void OnThreadSettingsUpdated(JObject parameters)
+        {
+            string threadId = parameters["threadId"]?.Value<string>();
+            if (threadId != SelectedThreadId)
+            {
+                return;
+            }
+
+            JObject settings = parameters["threadSettings"] as JObject;
+            string effort = settings?["effort"]?.Value<string>();
+            if (string.IsNullOrEmpty(effort))
+            {
+                return;
+            }
+
+            SelectedEffort = effort;
+            m_EffortSyncedThreadId = threadId;
+            m_SettingsError = null;
+            m_SettingsSource = "thread";
+            SettingsChanged?.Invoke();
+        }
+
+        void OnQueueChanged(JObject parameters)
+        {
+            string threadId = parameters["threadId"]?.Value<string>();
+            if (threadId == SelectedThreadId)
+            {
+                LoadQueue(threadId);
+            }
         }
 
         void OnTokenUsageUpdated(JObject parameters)
@@ -1008,6 +1325,9 @@ namespace Minerva.Codex
             m_Turns.Clear();
             m_LiveTurn = null;
             m_LiveThreadId = null;
+            m_EffortSyncedThreadId = null;
+            m_Queued.Clear();
+            m_QueueGeneration++;
 
             if (m_Threads.Count > 0)
             {
@@ -1023,15 +1343,26 @@ namespace Minerva.Codex
 
         void OnTurnStarted(JObject parameters)
         {
-            if (!IsRunning)
-            {
-                return;
-            }
-
             string threadId = parameters["threadId"]?.Value<string>();
             if (string.IsNullOrEmpty(threadId))
             {
                 return;
+            }
+
+            if (threadId != SelectedThreadId && threadId != m_LiveThreadId)
+            {
+                return;
+            }
+
+            if (!IsRunning)
+            {
+                // A queued turn can start from the server after the previous one
+                // completes; adopt it so the composer and live view stay in sync.
+                IsRunning = true;
+                m_TurnGeneration++;
+                m_LiveThreadId = threadId;
+                m_LiveTurn = new JObject();
+                m_ActiveTurnId = null;
             }
 
             if (string.IsNullOrEmpty(m_LiveThreadId))
@@ -1519,6 +1850,7 @@ namespace Minerva.Codex
                 ? "Codex is working..."
                 : m_Turns.Count == 1 ? "1 turn" : $"{m_Turns.Count} turns";
             Changed?.Invoke();
+            LoadQueue(threadId);
         }
 
         void OnDisconnected(string reason)
@@ -1699,6 +2031,9 @@ namespace Minerva.Codex
             m_Turns.Clear();
             m_Threads.Clear();
             m_ContextUsage.Clear();
+            m_Queued.Clear();
+            m_QueueGeneration++;
+            m_EffortSyncedThreadId = null;
             ThreadsLoaded = false;
             m_InitialSelectionDone = false;
             StopStreamingUpdates();
@@ -1719,6 +2054,9 @@ namespace Minerva.Codex
             m_Models.Clear();
             m_Efforts.Clear();
             m_ContextUsage.Clear();
+            m_Queued.Clear();
+            m_QueueGeneration++;
+            m_EffortSyncedThreadId = null;
             StopStreamingUpdates();
             CancelSearchDebounce();
             m_Connection?.Dispose();

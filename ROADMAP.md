@@ -9,9 +9,11 @@
   seek, audio) placed where the message references them.
 - `Copy resume` for the selected thread.
 - Composer: send, start a thread on first send, stream assistant deltas, stop a running turn, Enter to send
-  and Shift+Enter for a newline.
+  or queue, Ctrl+Enter to steer, Shift+Enter for a newline. Queued follow-ups show above the composer and
+  auto-dispatch when the turn ends.
 - Model, reasoning effort and sandbox selectors, seeded from `config/read`, synced from `thread/resume`, and
-  sent on `thread/start` / `turn/start`.
+  sent on `thread/start` / `turn/start`. Effort changes use `thread/settings/update` to keep the cache path
+  stable; the transcript follows the bottom unless the reader scrolls up.
 - Thread navigation: content search, current-project/all-projects scope, titles, archive, and a new
   conversation action.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay

@@ -45,15 +45,24 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   message in the turn). Final answers stay as normal bubbles. Expanding Process shows reasoning inline (no
   nested Thinking foldout) and renders `imageView` paths through `CodexMedia.RenderImage`. The settings panel
   can hide reasoning or tool records.
-- Composer sends messages: no selection starts a thread, otherwise starts a turn. Enter sends, Shift+Enter
-  inserts a newline, one button switches Send/Stop, and the input is disabled while running.
+- Composer sends messages: no selection starts a thread, otherwise starts a turn. Enter sends while idle,
+  Shift+Enter inserts a newline, one button switches Send/Stop. While running the input stays enabled:
+  Enter queues through `thread/queue/add`, Ctrl+Enter steers through `turn/steer`. The queued strip above
+  the composer lists persisted queue rows and can delete them. 0.166 dispatches queued rows itself once the
+  thread is idle; do **not** call `thread/queue/start` manually. A queued `turn/started` arrives while
+  `IsRunning` is false; `OnTurnStarted` adopts it and locks the composer again.
 - `item/agentMessage/delta` streams into a live turn rendered below history. `item/started`,
   `item/completed` and `turn/started` keep the live turn current; `turn/completed` reloads
   `thread/turns/list` and clears the live turn, so history wins.
 - Model, reasoning effort and sandbox pills below the input. Values start from effective `config/read`, then
   `thread/resume { excludeTurns: true }` syncs the selected thread's `model`, `reasoningEffort`, `sandbox`
-  and `approvalPolicy`. `thread/start` gets model/sandbox/approval; `turn/start` gets model/effort/
-  `sandboxPolicy`/approval.
+  and `approvalPolicy`. `thread/start` gets model/sandbox/approval. Effort changes call
+  `thread/settings/update { threadId, effort }` and mark the thread synced on success; `turn/start` then
+  omits `effort` (falling back to the per-turn override if the API fails). Other turn params still pass
+  model/`sandboxPolicy`/approval.
+- The transcript follows the bottom while `m_FollowTranscript` is true. It is reset on a thread change or
+  send, and cleared when the user scrolls away from the bottom; streaming updates then preserve their
+  position instead of yanking them down.
 - `Tools/Minerva/Codex/Send Smoke Test` exercises a lazy thread/start, a second turn, live text, and history
   reconciliation with real turns.
 - Markdown rendering through the UMarkdown fork: headings, lists, quotes, links, tables, code blocks with
@@ -166,6 +175,12 @@ unity command --project-path <proj> package resolve
   was created on this machine. Its `model_catalog_json` must point at an existing catalog: the file is parsed
   as `ModelsResponse { models: [...] }`. A missing file makes app-server fail config load. The catalog now
   provides DeepSeek models; the user owns the API key in that home.
+- `thread/settings/update` returns `{}`; the effective values arrive in `thread/settings/updated` under
+  `threadSettings`. `turn/start` must omit `effort` only when the selected thread is marked synced; if the
+  update request fails, clear the mark so the next turn still applies the override.
+- 0.166's `thread/queue/add` dispatches queued rows itself when the thread becomes idle. A queued
+  `turn/started` can therefore arrive after `IsRunning` was set false; `OnTurnStarted` must adopt it instead
+  of returning early. Do not call `thread/queue/start` in this flow.
 - App-server loads `model_catalog_json` only at startup. Editing it, or changing CODEX_HOME, requires a
   reconnect. The UI clears its model list on reconnect; `Reconnect` in Settings is the manual path, and it
   restarts the WebSocket listener rather than only reconnecting the socket.

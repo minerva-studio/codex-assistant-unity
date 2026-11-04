@@ -26,15 +26,19 @@ tools are next.
 - Sidebar search across thread content, a **This project / All projects** scope filter, thread titles, and
   an **Archive** action for the selected thread. Archived threads stay hidden.
 - **New conversation** starts a thread on the first message without creating a zero-turn thread.
-- Composer at the bottom of the window: Enter sends, Shift+Enter inserts a newline, and one button switches
-  between Send and Stop. Input is disabled while a turn runs.
+- Composer at the bottom of the window: Enter sends while idle, Shift+Enter inserts a newline, and one button
+  switches between Send and Stop. While a turn runs, Enter queues a follow-up and Ctrl+Enter steers the
+  active turn. Queued messages appear above the composer and can be removed individually.
 - Assistant replies stream into the transcript as Codex writes them; the completed turn is reloaded from
   history so the transcript matches the stored conversation.
 - The app-server runs as a localhost WebSocket listener per CODEX_HOME instead of a stdio child. A domain
   reload or entering play mode only reconnects the window: the running turn continues and the selected
   thread is restored. If the listener cannot start, the package falls back to stdio.
 - Model, reasoning effort and sandbox selectors. Their initial values come from the effective Codex config,
-  and selecting a conversation syncs the values that thread actually uses.
+  and selecting a conversation syncs the values that thread actually uses. Effort changes go through
+  `thread/settings/update`; later turns omit the per-turn effort override, so Codex keeps its normal prompt
+  cache path. The window follows the transcript to the bottom by default and stops following while you read
+  older messages.
 - Tool usage (commands, file edits, MCP calls, web searches), intermediate Codex replies and thinking are
   grouped into one **Process** row per stretch; only the turn's final answer stays as a normal message.
   While the turn is live the row is expanded so work is visible; completed history collapses it. Expanding
