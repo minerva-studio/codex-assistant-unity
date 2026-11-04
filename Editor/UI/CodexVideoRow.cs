@@ -16,6 +16,7 @@ namespace Minerva.Codex
         readonly string m_Path;
         readonly GameObject m_Object;
         readonly VideoPlayer m_Player;
+        readonly AudioSource m_Audio;
         readonly RenderTexture m_Target;
         readonly Image m_Screen;
         readonly Button m_PlayButton;
@@ -37,7 +38,14 @@ namespace Minerva.Codex
             m_Player.url = new Uri(path).AbsoluteUri;
             m_Player.renderMode = VideoRenderMode.RenderTexture;
             m_Player.targetTexture = m_Target;
-            m_Player.audioOutputMode = VideoAudioOutputMode.None;
+
+            m_Audio = m_Object.AddComponent<AudioSource>();
+            m_Audio.playOnAwake = false;
+            m_Audio.volume = 1f;
+            m_Player.audioOutputMode = VideoAudioOutputMode.AudioSource;
+            m_Player.EnableAudioTrack(0, true);
+            m_Player.SetTargetAudioSource(0, m_Audio);
+
             m_Player.prepareCompleted += OnPrepared;
             m_Player.Prepare();
 
@@ -163,6 +171,7 @@ namespace Minerva.Codex
             {
                 m_Player.prepareCompleted -= OnPrepared;
                 m_Player.Stop();
+                m_Audio.Stop();
             }
             catch (Exception)
             {
