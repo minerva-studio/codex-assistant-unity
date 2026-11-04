@@ -158,7 +158,8 @@ namespace Minerva.Codex
             string sandbox,
             JToken approvalPolicy,
             Action<JObject> onResult,
-            Action<string> onError)
+            Action<string> onError,
+            bool ephemeral = false)
         {
             var parameters = new JObject();
             if (!string.IsNullOrEmpty(cwd))
@@ -177,8 +178,42 @@ namespace Minerva.Codex
             }
 
             AddIfPresent(parameters, "approvalPolicy", approvalPolicy);
+            if (ephemeral)
+            {
+                parameters["ephemeral"] = true;
+            }
 
             Request("thread/start", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        public void ForkThread(
+            string threadId,
+            bool excludeTurns,
+            Action<JObject> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject { ["threadId"] = threadId };
+            if (excludeTurns)
+            {
+                parameters["excludeTurns"] = true;
+            }
+
+            Request("thread/fork", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        public void SetThreadName(
+            string threadId,
+            string name,
+            Action onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["threadId"] = threadId,
+                ["name"] = name,
+            };
+
+            Request("thread/name/set", parameters, _ => onResult?.Invoke(), onError);
         }
 
         public void ReadConfig(string cwd, Action<JObject> onResult, Action<string> onError)

@@ -28,6 +28,7 @@ namespace Minerva.Codex
         Label m_ErrorLabel;
         Button m_RefreshButton;
         Button m_CopyButton;
+        Button m_ForkButton;
         Button m_ArchiveButton;
         Button m_SettingsButton;
         Button m_NewButton;
@@ -277,6 +278,12 @@ namespace Minerva.Codex
             m_CopyButton.style.marginLeft = 8;
             m_CopyButton.SetEnabled(false);
             header.Add(m_CopyButton);
+
+            m_ForkButton = new Button(ForkConversation) { text = "Fork" };
+            m_ForkButton.style.marginLeft = 8;
+            m_ForkButton.SetEnabled(false);
+            m_ForkButton.tooltip = "Copy this conversation into a new thread and open it";
+            header.Add(m_ForkButton);
 
             m_Transcript = new ScrollView(ScrollViewMode.Vertical);
             m_Transcript.style.flexGrow = 1;
@@ -1295,6 +1302,25 @@ namespace Minerva.Codex
             m_Composer?.Focus();
         }
 
+        void ForkConversation()
+        {
+            if (m_Workspace == null || !m_Workspace.IsConnected || m_Workspace.IsRunning)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
+            {
+                return;
+            }
+
+            m_ForkButton.SetEnabled(false);
+            if (!m_Workspace.ForkSelectedThread())
+            {
+                m_ForkButton.SetEnabled(true);
+            }
+        }
+
         void ArchiveSelectedThread()
         {
             if (m_Workspace == null || !m_Workspace.IsConnected || m_Workspace.IsRunning)
@@ -1616,7 +1642,12 @@ namespace Minerva.Codex
 
                 foreach (JObject item in items)
                 {
-                    CodexItemRenderer.Render(foldout, item, m_ShowReasoning, m_ShowToolCalls);
+                    CodexItemRenderer.Render(
+                        foldout,
+                        item,
+                        m_ShowReasoning,
+                        m_ShowToolCalls,
+                        id => m_Workspace?.SelectThread(id));
                 }
 
                 parent.Add(foldout);
@@ -1694,6 +1725,8 @@ namespace Minerva.Codex
                     ? m_Workspace.SelectedThreadId
                     : m_Workspace.IsConnected ? "Send a message below to start" : string.Empty;
                 m_CopyButton.SetEnabled(hasThread);
+                m_ForkButton.SetEnabled(
+                    hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
                 m_ArchiveButton.SetEnabled(hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning);
                 return;
             }
@@ -1701,6 +1734,8 @@ namespace Minerva.Codex
             m_HeaderTitle.text = DisplayTitle(selected);
             m_HeaderMeta.text = $"{selected.Cwd}  ·  {selected.Id}";
             m_CopyButton.SetEnabled(true);
+            m_ForkButton.SetEnabled(
+                m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
             m_ArchiveButton.SetEnabled(m_Workspace.IsConnected && !m_Workspace.IsRunning);
         }
 

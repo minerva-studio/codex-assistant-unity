@@ -18,6 +18,11 @@ All notable changes to this package are documented here.
   `thread/queue/add`, Ctrl+Enter steers through `turn/steer`, and queued messages show above the composer.
 - Reasoning-effort changes use `thread/settings/update` and later turns omit the per-turn effort override.
 - The transcript follows the bottom by default and stops following when the reader scrolls up.
+- New conversations generate a short title after the first turn using an ephemeral title turn; the title
+  model is configurable in Settings.
+- **Fork** copies the selected conversation into a new independent thread.
+- Subagent activity and collaboration tool calls render as Subagent sections with Open buttons; subagent
+  threads are listed in the sidebar.
 - Codex executable discovery, including Windows `.cmd` shims and macOS locations that a GUI-launched
   Editor does not inherit from the shell.
 - `CodexClient` wrappers for `initialize`, `thread/list`, `thread/read`, `thread/resume`,

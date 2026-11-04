@@ -31,9 +31,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   true)` (Reconnect / home change) kills and restarts the listener to reload config. If the listener cannot
   start, `Connect` falls back to a direct stdio `codex app-server`; that path still loses a turn on reload.
   The listener is stopped on `EditorApplication.quitting`; a crashed editor can leave it for the next connect.
-- `initialize`, `thread/list`, `thread/search`, `thread/read`, `thread/resume`, `thread/archive`,
-  `thread/unsubscribe`, `thread/turns/list`, `turn/start`, `turn/interrupt`, `config/read`, `model/list`
-  wrappers exist in `CodexClient`.
+- `initialize`, `thread/list`, `thread/search`, `thread/read`, `thread/resume`, `thread/fork`,
+  `thread/archive`, `thread/unsubscribe`, `thread/name/set`, `thread/turns/list`, `thread/queue/*`,
+  `turn/start`, `turn/steer`, `turn/interrupt`, `config/read`, `model/list` wrappers exist in `CodexClient`.
 - Window lists non-archived threads Codex knows about (shared store), shows titles, history and `Copy resume`.
 - Sidebar search (`thread/search`), project/all scope filter (`cwd` on `thread/list`, client-side filtering on
   search results), archive for the selected thread, and a **New conversation** button that clears the
@@ -65,6 +65,18 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - The transcript follows the bottom while `m_FollowTranscript` is true. It is reset on a thread change or
   send, and cleared when the user scrolls away from the bottom; streaming updates then preserve their
   position instead of yanking them down.
+- Auto-title: `OnThreadStarted` marks a user-created thread. Once its first turn is hydrated and idle,
+  `MaybeStartAutoTitle` creates a read-only **ephemeral** thread with `AutoTitleModel` (or the conversation
+  model) and a title prompt, collects the final agent message, sanitizes it to <=64 chars, and calls
+  `thread/name/set`. The server then emits `thread/name/updated`. Failures only log; a 45 s timeout clears
+  the state. One title generation runs at a time.
+- **Fork** calls `thread/fork { threadId, excludeTurns: true }`, inserts the returned thread at the top of the
+  sidebar, selects it, and lets the normal resume/turns path hydrate history. A fork is not auto-titled.
+- Subagents: `thread/list` includes all `subAgent*` source kinds. `collabAgentToolCall` renders a
+  `Subagent · spawnAgent/sendInput/...` foldout with status, prompt, model/effort, agent states and receiver
+  IDs. `subAgentActivity` renders a compact started/completed row. Both expose **Open** buttons that call
+  `SelectThread` on the receiver/agent thread. The `multi_agent` feature is stable and enabled by default;
+  whether a model spawns helpers depends on the model/effort, not on this UI.
 - `Tools/Minerva/Codex/Send Smoke Test` exercises a lazy thread/start, a second turn, live text, and history
   reconciliation with real turns.
 - Markdown rendering through the UMarkdown fork: headings, lists, quotes, links, tables, code blocks with
@@ -110,8 +122,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - The sidebar never steals the open conversation on a search/scope refresh. `SelectedThread` falls back to a
   cached thread entry when the selected thread is filtered out, so the header keeps its title.
 - Settings live in `EditorPrefs` under `Minerva.Codex.*`: context indicator (default **off**), show reasoning
-  (default on), show tool calls (default on), and CODEX_HOME (empty = process default). CODEX_HOME is set as
-  an environment variable when the listener starts; changing it starts that home's listener and reconnects.
+  (default on), show tool calls (default on), auto title (default **on**), title model (empty = conversation
+  model), and CODEX_HOME (empty = process default). CODEX_HOME is set as an environment variable when the
+  listener starts; changing it starts that home's listener and reconnects.
 - `CodexPreferences.ReloadRequested` is the explicit backend reload path: it disposes/restarts the listener
   without changing the home, clearing models and reloading `config/read` + `model/list`. Settings exposes it
   as **Reconnect**; applying an unchanged CODEX_HOME also calls it so edits to `config.toml`/`models.json`

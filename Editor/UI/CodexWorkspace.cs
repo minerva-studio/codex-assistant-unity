@@ -68,7 +68,12 @@ namespace Minerva.Codex
         const string LocalUserItemId = "local-user";
         const double StreamIntervalSeconds = 0.05;
         const double SearchDebounceSeconds = 0.25;
-        static readonly string[] SourceKinds = { "cli", "vscode", "exec", "appServer", "unknown" };
+        static readonly string[] SourceKinds =
+        {
+            "cli", "vscode", "exec", "appServer",
+            "subAgent", "subAgentReview", "subAgentCompact", "subAgentThreadSpawn", "subAgentOther",
+            "unknown",
+        };
         static readonly string[] s_SandboxModes = { "read-only", "workspace-write", "danger-full-access" };
 
         readonly List<CodexThreadInfo> m_Threads = new List<CodexThreadInfo>();
@@ -112,6 +117,15 @@ namespace Minerva.Codex
 
         int m_QueueGeneration;
 
+        string m_AutoTitleThreadId;
+        bool m_TitleGenerating;
+        string m_TitleThreadId;
+        string m_TitleTargetThreadId;
+        string m_TitleModel;
+        readonly StringBuilder m_TitleText = new StringBuilder();
+        double m_TitleDeadline;
+        bool m_TitleTimeoutSubscribed;
+
         bool m_StreamSubscribed;
         bool m_StreamDirty;
         double m_NextStreamFlush;
@@ -133,6 +147,7 @@ namespace Minerva.Codex
         public bool IsConnected => m_Ready;
         public bool ThreadsLoaded { get; private set; }
         public bool IsRunning { get; private set; }
+        public bool IsForking { get; private set; }
         public bool CanStop =>
             IsRunning && !string.IsNullOrEmpty(m_ActiveThreadId) && !string.IsNullOrEmpty(m_ActiveTurnId);
 
@@ -461,6 +476,7 @@ namespace Minerva.Codex
             m_LiveThreadId = null;
             m_ActiveThreadId = null;
             m_ActiveTurnId = null;
+            m_AutoTitleThreadId = null;
             m_EffortSyncedThreadId = null;
             m_Queued.Clear();
             m_QueueGeneration++;
@@ -1105,12 +1121,330 @@ namespace Minerva.Codex
             m_SelectedThreadInfo = info;
             SelectedCwd = info.Cwd ?? m_ProjectRoot;
             m_Turns.Clear();
+            m_AutoTitleThreadId = CodexPreferences.AutoTitle ? threadId : null;
             m_EffortSyncedThreadId = null;
             m_Queued.Clear();
             m_QueueGeneration++;
             m_LiveThreadId = threadId;
             Changed?.Invoke();
             StartTurn(threadId, text);
+        }
+
+        /// <summary>
+        /// Forks the selected thread after its last completed turn and selects the
+        /// new conversation. The source is unchanged.
+        /// </summary>
+        public bool ForkSelectedThread()
+        {
+            if (!m_Ready || IsRunning || IsForking || string.IsNullOrEmpty(SelectedThreadId))
+            {
+                return false;
+            }
+
+            IsForking = true;
+            string source = SelectedThreadId;
+            Status = "Forking conversation...";
+            Changed?.Invoke();
+            m_Client.ForkThread(
+                source,
+                true,
+                result =>
+                {
+                    IsForking = false;
+                    JObject thread = result?["thread"] as JObject;
+                    string threadId = thread?["id"]?.Value<string>();
+                    if (string.IsNullOrEmpty(threadId))
+                    {
+                        OnFailed("thread/fork returned no thread id");
+                        return;
+                    }
+
+                    CodexThreadInfo info = Parse(thread);
+                    if (string.IsNullOrEmpty(info.Preview) && string.IsNullOrEmpty(info.Title))
+                    {
+                        info.Preview = "Forked conversation";
+                    }
+
+                    m_Threads.Insert(0, info);
+                    m_SelectedThreadInfo = info;
+                    SelectedThreadId = threadId;
+                    SelectedCwd = info.Cwd ?? m_ProjectRoot;
+                    m_Turns.Clear();
+                    m_LiveTurn = null;
+                    m_LiveThreadId = null;
+                    m_ActiveThreadId = null;
+                    m_ActiveTurnId = null;
+                    m_AutoTitleThreadId = null;
+                    m_EffortSyncedThreadId = null;
+                    m_Queued.Clear();
+                    m_QueueGeneration++;
+                    Changed?.Invoke();
+                    SelectThread(threadId);
+                },
+                message =>
+                {
+                    IsForking = false;
+                    OnFailed(message);
+                });
+            return true;
+        }
+
+        void MaybeStartAutoTitle(string threadId, JArray turns)
+        {
+            if (!CodexPreferences.AutoTitle || m_TitleGenerating ||
+                m_AutoTitleThreadId != threadId || IsRunning ||
+                turns == null || turns.Count == 0)
+            {
+                return;
+            }
+
+            m_AutoTitleThreadId = null;
+            BeginAutoTitle(threadId, turns);
+        }
+
+        void BeginAutoTitle(string threadId, JArray turns)
+        {
+            string userText = null;
+            string assistantText = null;
+            for (int index = turns.Count - 1; index >= 0; index--)
+            {
+                if (turns[index] is not JObject turn || turn["items"] is not JArray items)
+                {
+                    continue;
+                }
+
+                foreach (JToken token in items)
+                {
+                    if (token is not JObject item)
+                    {
+                        continue;
+                    }
+
+                    string type = item["type"]?.Value<string>();
+                    if (userText == null && type == "userMessage")
+                    {
+                        userText = ExtractTitleUserText(item);
+                    }
+                    else if (assistantText == null && type == "agentMessage")
+                    {
+                        assistantText = item["text"]?.Value<string>();
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(userText))
+            {
+                return;
+            }
+
+            string model = CodexPreferences.AutoTitleModel;
+            if (string.IsNullOrWhiteSpace(model))
+            {
+                model = SelectedModel;
+            }
+
+            string prompt =
+                "Name this conversation with a short title. Use at most 6 words and 60 characters. " +
+                "Use the user's language when natural. Reply with the title only: no quotes, markdown or " +
+                "ending punctuation.\n\n<user>\n" + TrimSource(userText, 1600) + "\n</user>\n";
+            if (!string.IsNullOrWhiteSpace(assistantText))
+            {
+                prompt += "\n<assistant>\n" + TrimSource(assistantText, 1600) + "\n</assistant>\n";
+            }
+
+            m_TitleGenerating = true;
+            m_TitleTargetThreadId = threadId;
+            m_TitleThreadId = null;
+            m_TitleModel = model;
+            m_TitleText.Clear();
+            m_TitleDeadline = EditorApplication.timeSinceStartup + 45;
+            if (!m_TitleTimeoutSubscribed)
+            {
+                m_TitleTimeoutSubscribed = true;
+                EditorApplication.update += CheckAutoTitleTimeout;
+            }
+
+            m_Client.StartThread(
+                m_ProjectRoot,
+                model,
+                "read-only",
+                new JValue("never"),
+                result => OnTitleThreadStarted(result, prompt),
+                FailAutoTitle,
+                true);
+        }
+
+        void OnTitleThreadStarted(JObject result, string prompt)
+        {
+            string threadId = result?["thread"]?["id"]?.Value<string>();
+            if (string.IsNullOrEmpty(threadId))
+            {
+                FailAutoTitle("ephemeral title thread returned no id");
+                return;
+            }
+
+            m_TitleThreadId = threadId;
+            m_Client.StartTurn(
+                threadId,
+                prompt,
+                m_ProjectRoot,
+                m_TitleModel,
+                null,
+                null,
+                null,
+                _ => { },
+                FailAutoTitle);
+        }
+
+        void CompleteAutoTitle(string raw)
+        {
+            string title = SanitizeTitle(raw);
+            if (string.IsNullOrEmpty(title))
+            {
+                FailAutoTitle("empty title");
+                return;
+            }
+
+            string target = m_TitleTargetThreadId;
+            m_Client.SetThreadName(
+                target,
+                title,
+                () =>
+                {
+                    CodexThreadInfo info = FindThread(target);
+                    if (info != null)
+                    {
+                        info.Title = title;
+                    }
+
+                    if (m_SelectedThreadInfo != null && m_SelectedThreadInfo.Id == target)
+                    {
+                        m_SelectedThreadInfo.Title = title;
+                    }
+
+                    ClearAutoTitle();
+                    Changed?.Invoke();
+                },
+                FailAutoTitle);
+        }
+
+        void FailAutoTitle(string message)
+        {
+            if (m_TitleGenerating)
+            {
+                Debug.LogWarning($"[Codex] auto title skipped: {message}");
+            }
+
+            ClearAutoTitle();
+        }
+
+        void ClearAutoTitle()
+        {
+            m_TitleGenerating = false;
+            m_TitleThreadId = null;
+            m_TitleTargetThreadId = null;
+            m_TitleModel = null;
+            m_TitleText.Clear();
+            if (m_TitleTimeoutSubscribed)
+            {
+                m_TitleTimeoutSubscribed = false;
+                EditorApplication.update -= CheckAutoTitleTimeout;
+            }
+        }
+
+        void CheckAutoTitleTimeout()
+        {
+            if (!m_TitleGenerating)
+            {
+                ClearAutoTitle();
+                return;
+            }
+
+            if (EditorApplication.timeSinceStartup >= m_TitleDeadline)
+            {
+                FailAutoTitle("timed out");
+            }
+        }
+
+        static string ExtractTitleUserText(JObject item)
+        {
+            if (item["content"] is not JArray content)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            foreach (JToken part in content)
+            {
+                if (part?["type"]?.Value<string>() == "text")
+                {
+                    string text = part["text"]?.Value<string>();
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        builder.AppendLine(text);
+                    }
+                }
+            }
+
+            return builder.ToString().Trim();
+        }
+
+        static string FindTitleAgentText(JObject turn)
+        {
+            if (turn?["items"] is not JArray items)
+            {
+                return string.Empty;
+            }
+
+            for (int index = items.Count - 1; index >= 0; index--)
+            {
+                if (items[index] is JObject item &&
+                    item["type"]?.Value<string>() == "agentMessage")
+                {
+                    return item["text"]?.Value<string>() ?? string.Empty;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        static string TrimSource(string text, int limit)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= limit)
+            {
+                return text ?? string.Empty;
+            }
+
+            return text.Substring(0, limit) + "…";
+        }
+
+        static string SanitizeTitle(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            string title = raw.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (title.StartsWith("Title:", StringComparison.OrdinalIgnoreCase))
+            {
+                title = title.Substring(6).Trim();
+            }
+
+            title = title.Trim('"', '\'', '`', '#', '*', ' ');
+            title = title.TrimEnd('.', '。', '!', '！', '?', '？', ':', '：');
+            while (title.Contains("  "))
+            {
+                title = title.Replace("  ", " ");
+            }
+
+            if (title.Length > 64)
+            {
+                int cut = title.LastIndexOf(' ', 63);
+                title = cut > 0 ? title.Substring(0, cut) : title.Substring(0, 64);
+            }
+
+            return title.Trim();
         }
 
         void StartTurn(string threadId, string text)
@@ -1168,6 +1502,36 @@ namespace Minerva.Codex
             if (message["params"] is not JObject parameters)
             {
                 return;
+            }
+
+            if (m_TitleGenerating &&
+                parameters["threadId"]?.Value<string>() == m_TitleThreadId)
+            {
+                if (method == "item/agentMessage/delta")
+                {
+                    m_TitleText.Append(parameters["delta"]?.Value<string>());
+                    return;
+                }
+
+                if (method == "turn/completed")
+                {
+                    string text = FindTitleAgentText(parameters["turn"] as JObject);
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        text = m_TitleText.ToString();
+                    }
+
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        FailAutoTitle("title turn produced no text");
+                    }
+                    else
+                    {
+                        CompleteAutoTitle(text);
+                    }
+
+                    return;
+                }
             }
 
             switch (method)
@@ -1851,17 +2215,20 @@ namespace Minerva.Codex
                 : m_Turns.Count == 1 ? "1 turn" : $"{m_Turns.Count} turns";
             Changed?.Invoke();
             LoadQueue(threadId);
+            MaybeStartAutoTitle(threadId, turns);
         }
 
         void OnDisconnected(string reason)
         {
             m_Ready = false;
             IsRunning = false;
+            IsForking = false;
             ThreadsLoaded = false;
             m_ActiveThreadId = null;
             m_ActiveTurnId = null;
             m_LiveTurn = null;
             m_LiveThreadId = null;
+            ClearAutoTitle();
             StopStreamingUpdates();
             CancelSearchDebounce();
             m_ContextUsage.Clear();
@@ -2021,6 +2388,7 @@ namespace Minerva.Codex
         void ClearSessionForHomeChange()
         {
             IsRunning = false;
+            IsForking = false;
             SelectedThreadId = null;
             m_SelectedThreadInfo = null;
             SelectedCwd = null;
@@ -2033,7 +2401,9 @@ namespace Minerva.Codex
             m_ContextUsage.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
+            m_AutoTitleThreadId = null;
             m_EffortSyncedThreadId = null;
+            ClearAutoTitle();
             ThreadsLoaded = false;
             m_InitialSelectionDone = false;
             StopStreamingUpdates();
@@ -2044,6 +2414,7 @@ namespace Minerva.Codex
             m_Ready = false;
             ThreadsLoaded = false;
             IsRunning = false;
+            IsForking = false;
             m_ActiveThreadId = null;
             m_ActiveTurnId = null;
             m_LiveTurn = null;
@@ -2056,7 +2427,9 @@ namespace Minerva.Codex
             m_ContextUsage.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
+            m_AutoTitleThreadId = null;
             m_EffortSyncedThreadId = null;
+            ClearAutoTitle();
             StopStreamingUpdates();
             CancelSearchDebounce();
             m_Connection?.Dispose();

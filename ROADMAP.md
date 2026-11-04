@@ -14,8 +14,11 @@
 - Model, reasoning effort and sandbox selectors, seeded from `config/read`, synced from `thread/resume`, and
   sent on `thread/start` / `turn/start`. Effort changes use `thread/settings/update` to keep the cache path
   stable; the transcript follows the bottom unless the reader scrolls up.
-- Thread navigation: content search, current-project/all-projects scope, titles, archive, and a new
-  conversation action.
+- Thread navigation: content search, current-project/all-projects scope, titles, archive, fork, and a new
+  conversation action. New conversations get a generated title after the first turn, using an optional
+  dedicated title model.
+- Subagent support: `subAgent*` threads appear in the sidebar; `collabAgentToolCall` and `subAgentActivity`
+  render as Subagent sections with Open buttons.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

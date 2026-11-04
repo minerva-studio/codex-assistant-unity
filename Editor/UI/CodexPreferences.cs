@@ -11,6 +11,8 @@ namespace Minerva.Codex
         const string ReasoningKey = Prefix + "ShowReasoning";
         const string ToolCallsKey = Prefix + "ShowToolCalls";
         const string CodexHomeKey = Prefix + "CodexHome";
+        const string AutoTitleKey = Prefix + "AutoTitle";
+        const string AutoTitleModelKey = Prefix + "AutoTitleModel";
 
         public static event Action Changed;
         public static event Action ReloadRequested;
@@ -40,6 +42,20 @@ namespace Minerva.Codex
             set => SetString(CodexHomeKey, value);
         }
 
+        /// <summary>Generate a short title after the first turn of a new conversation.</summary>
+        public static bool AutoTitle
+        {
+            get => EditorPrefs.GetBool(AutoTitleKey, true);
+            set => SetBool(AutoTitleKey, true, value);
+        }
+
+        /// <summary>Empty uses the conversation's model.</summary>
+        public static string AutoTitleModel
+        {
+            get => EditorPrefs.GetString(AutoTitleModelKey, string.Empty);
+            set => SetString(AutoTitleModelKey, value);
+        }
+
         /// <summary>Restart app-server when config files changed without a home change.</summary>
         public static void RequestReload()
         {
@@ -52,6 +68,8 @@ namespace Minerva.Codex
             EditorPrefs.SetBool(ReasoningKey, true);
             EditorPrefs.SetBool(ToolCallsKey, true);
             EditorPrefs.DeleteKey(CodexHomeKey);
+            EditorPrefs.SetBool(AutoTitleKey, true);
+            EditorPrefs.DeleteKey(AutoTitleModelKey);
             Changed?.Invoke();
         }
 

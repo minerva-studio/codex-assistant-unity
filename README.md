@@ -25,7 +25,12 @@ tools are next.
 - Lists non-archived threads Codex already knows about, including ones created by the CLI.
 - Sidebar search across thread content, a **This project / All projects** scope filter, thread titles, and
   an **Archive** action for the selected thread. Archived threads stay hidden.
-- **New conversation** starts a thread on the first message without creating a zero-turn thread.
+- **New conversation** starts a thread on the first message without creating a zero-turn thread. After the
+  first turn it generates a short title, using the conversation model or a separate title model from Settings.
+- **Fork** copies the selected conversation into a new thread and opens it. The source conversation is
+  unchanged.
+- Subagent tool calls and activity render as **Subagent** sections with **Open** buttons; subagent
+  conversations are also listed in the sidebar.
 - Composer at the bottom of the window: Enter sends while idle, Shift+Enter inserts a newline, and one button
   switches between Send and Stop. While a turn runs, Enter queues a follow-up and Ctrl+Enter steers the
   active turn. Queued messages appear above the composer and can be removed individually.
@@ -88,13 +93,15 @@ sandbox defaults to the effective Codex config rather than a hard-coded mode. **
 turn.
 
 The search field matches thread content. The scope dropdown defaults to **This project** and can show **All
-projects**. **Archive** hides the selected thread from future lists.
+projects**. **Archive** hides the selected thread from future lists. **Fork** creates a new conversation with
+the same persisted history and selects it.
 
 **Settings** (also **Window > Minerva > Codex Assistant Settings**) controls the context indicator, whether
-reasoning and tool records are shown, and the CODEX_HOME used by app-server. Changing CODEX_HOME restarts and
-reconnects the app-server; an empty value means the process default (`~/.codex`). **Reconnect** reloads
-`config.toml`, providers and models after editing the active home. Environment variables such as an API key
-are inherited when app-server starts, so restart Unity after changing one.
+reasoning and tool records are shown, automatic conversation titles and their optional model, and the
+CODEX_HOME used by app-server. Changing CODEX_HOME restarts and reconnects the app-server; an empty value
+means the process default (`~/.codex`). **Reconnect** reloads `config.toml`, providers and models after
+editing the active home. Environment variables such as an API key are inherited when app-server starts, so
+restart Unity after changing one.
 
 `Tools > Minerva > Codex > Diagnose App Server` runs the same connection path without any UI and prints the
 handshake, the thread list and one thread's turns to the Console. `Tools > Minerva > Codex > Send Smoke Test`
@@ -107,6 +114,12 @@ sends two real messages, one after creating a thread, and checks streaming and h
 - A thread with zero turns is not persisted by recent Codex versions, so it cannot be resumed from the CLI.
   The package creates threads on the first message rather than on window open.
 - One thread should be driven from one place at a time. Codex has no cross-process lock.
+- Automatic titles run one small extra **ephemeral** turn and send the first user/assistant exchange to the
+  configured title model. If that model is unavailable, the conversation keeps its preview title.
+- **Fork** copies persisted history into an independent thread; the source is unchanged. The fork is not
+  auto-titled.
+- Subagent threads appear in the sidebar and can be opened from their parent. The package does not add a
+  manual "spawn subagent" button; the model decides when to delegate using the enabled `multi_agent` tools.
 - Approval requests are not handled yet. A turn that asks to run a command or change files will wait for a
   decision the window cannot give.
 - A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving

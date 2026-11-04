@@ -12,6 +12,8 @@ namespace Minerva.Codex
         Toggle m_ContextToggle;
         Toggle m_ReasoningToggle;
         Toggle m_ToolsToggle;
+        Toggle m_AutoTitleToggle;
+        TextField m_AutoTitleModelField;
         TextField m_CodexHomeField;
         Label m_CodexHomeStatus;
 
@@ -20,10 +22,10 @@ namespace Minerva.Codex
         {
             var window = GetWindow<CodexAssistantSettingsWindow>();
             window.titleContent = new GUIContent("Codex Settings");
-            window.minSize = new Vector2(380, 520);
-            if (window.position.width < 380 || window.position.height < 520)
+            window.minSize = new Vector2(380, 580);
+            if (window.position.width < 380 || window.position.height < 580)
             {
-                window.position = new Rect(window.position.x, window.position.y, 460, 620);
+                window.position = new Rect(window.position.x, window.position.y, 480, 700);
             }
 
             window.Show();
@@ -103,6 +105,37 @@ namespace Minerva.Codex
                 "Show context usage next to the model. The indicator fills in after a turn reports token usage.",
                 CodexPreferences.ShowContextIndicator,
                 value => CodexPreferences.ShowContextIndicator = value);
+
+            var titles = SectionLabel("Conversation titles");
+            titles.style.marginTop = 14;
+            card.Add(titles);
+
+            m_AutoTitleToggle = AddToggle(
+                card,
+                "Generate titles automatically",
+                "After the first turn of a new conversation, run a small title turn and set the thread name.",
+                CodexPreferences.AutoTitle,
+                value => CodexPreferences.AutoTitle = value);
+
+            m_AutoTitleModelField = new TextField { name = "auto-title-model" };
+            m_AutoTitleModelField.style.alignSelf = Align.Stretch;
+            m_AutoTitleModelField.style.height = 24;
+            m_AutoTitleModelField.SetValueWithoutNotify(CodexPreferences.AutoTitleModel);
+            m_AutoTitleModelField.textEdition.placeholder = "Conversation model (optional)";
+            m_AutoTitleModelField.textEdition.hidePlaceholderOnFocus = false;
+            m_AutoTitleModelField.RegisterValueChangedCallback(
+                evt => CodexPreferences.AutoTitleModel = evt.newValue);
+            card.Add(m_AutoTitleModelField);
+
+            var titleHelp = new Label(
+                "Optional model id for the title turn. Leave empty to use the conversation's model. " +
+                "Title generation sends the first user/assistant exchange to that model.");
+            titleHelp.style.fontSize = 10;
+            titleHelp.style.color = CodexPalette.Muted;
+            titleHelp.style.whiteSpace = WhiteSpace.Normal;
+            titleHelp.style.marginTop = 4;
+            titleHelp.style.marginBottom = 8;
+            card.Add(titleHelp);
 
             var backend = SectionLabel("Backend");
             backend.style.marginTop = 14;
@@ -208,6 +241,8 @@ namespace Minerva.Codex
             m_ContextToggle.SetValueWithoutNotify(CodexPreferences.ShowContextIndicator);
             m_ReasoningToggle.SetValueWithoutNotify(CodexPreferences.ShowReasoning);
             m_ToolsToggle.SetValueWithoutNotify(CodexPreferences.ShowToolCalls);
+            m_AutoTitleToggle.SetValueWithoutNotify(CodexPreferences.AutoTitle);
+            m_AutoTitleModelField.SetValueWithoutNotify(CodexPreferences.AutoTitleModel);
             m_CodexHomeField.SetValueWithoutNotify(CodexPreferences.CodexHome);
             m_CodexHomeStatus.text = string.IsNullOrEmpty(CodexPreferences.CodexHome)
                 ? "Using the default Codex home."

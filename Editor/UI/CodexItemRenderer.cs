@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -10,7 +12,12 @@ namespace Minerva.Codex
     /// <summary>Turns app-server items into UI Toolkit elements.</summary>
     internal static class CodexItemRenderer
     {
-        public static void Render(VisualElement parent, JObject item, bool showReasoning, bool showTools)
+        public static void Render(
+            VisualElement parent,
+            JObject item,
+            bool showReasoning,
+            bool showTools,
+            Action<string> openThread = null)
         {
             string type = item["type"]?.Value<string>() ?? "unknown";
             switch (type)
@@ -67,6 +74,20 @@ namespace Minerva.Codex
                     if (showTools)
                     {
                         RenderImageView(parent, item);
+                    }
+
+                    break;
+                case "collabAgentToolCall":
+                    if (showTools)
+                    {
+                        RenderCollabAgent(parent, item, openThread);
+                    }
+
+                    break;
+                case "subAgentActivity":
+                    if (showTools)
+                    {
+                        RenderSubAgentActivity(parent, item, openThread);
                     }
 
                     break;
@@ -255,6 +276,149 @@ namespace Minerva.Codex
             image.style.marginTop = 6;
             image.style.marginBottom = 6;
             parent.Add(image);
+        }
+
+        static void RenderCollabAgent(VisualElement parent, JObject item, Action<string> openThread)
+        {
+            string tool = item["tool"]?.Value<string>() ?? "subagent";
+            Foldout foldout = Section(parent, $"Subagent · {tool}");
+            AddStatus(foldout, item);
+
+            string prompt = item["prompt"]?.Value<string>();
+            if (!string.IsNullOrWhiteSpace(prompt))
+            {
+                if (prompt.Length > 320)
+                {
+                    Foldout promptFoldout = Section(foldout, "Prompt");
+                    AddMuted(promptFoldout, prompt);
+                }
+                else
+                {
+                    AddMuted(foldout, prompt);
+                }
+            }
+
+            string model = item["model"]?.Value<string>();
+            string effort = item["reasoningEffort"]?.Value<string>();
+            string modelLine = string.Join(" · ", new[] { model, effort }.Where(value => !string.IsNullOrEmpty(value)));
+            if (!string.IsNullOrEmpty(modelLine))
+            {
+                AddMuted(foldout, modelLine);
+            }
+
+            var seen = new HashSet<string>();
+            if (item["agentsStates"] is JObject states)
+            {
+                foreach (JProperty state in states.Properties())
+                {
+                    seen.Add(state.Name);
+                    AddSubagentRow(
+                        foldout,
+                        state.Name,
+                        state.Value?["status"]?.Value<string>(),
+                        state.Value?["message"]?.Value<string>(),
+                        openThread);
+                }
+            }
+
+            if (item["receiverThreadIds"] is JArray receivers)
+            {
+                foreach (JToken receiver in receivers)
+                {
+                    string id = receiver.Value<string>();
+                    if (!string.IsNullOrEmpty(id) && seen.Add(id))
+                    {
+                        AddSubagentRow(foldout, id, null, null, openThread);
+                    }
+                }
+            }
+        }
+
+        static void RenderSubAgentActivity(VisualElement parent, JObject item, Action<string> openThread)
+        {
+            string kind = item["kind"]?.Value<string>() ?? "activity";
+            string threadId = item["agentThreadId"]?.Value<string>();
+            string path = item["agentPath"]?.Value<string>();
+            string model = item["model"]?.Value<string>();
+            string effort = item["reasoningEffort"]?.Value<string>();
+
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            row.style.marginLeft = 12;
+            row.style.marginRight = 12;
+            row.style.marginTop = 2;
+            row.style.marginBottom = 4;
+
+            var label = new Label(
+                $"Subagent {kind} · {(string.IsNullOrEmpty(path) ? ShortThreadId(threadId) : path)}");
+            label.style.flexGrow = 1;
+            label.style.fontSize = 10;
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.color = StatusColor(kind);
+            string details = string.Join(" · ", new[] { model, effort }.Where(value => !string.IsNullOrEmpty(value)));
+            if (!string.IsNullOrEmpty(details))
+            {
+                label.tooltip = details;
+            }
+
+            row.Add(label);
+            AddOpenButton(row, threadId, openThread);
+            parent.Add(row);
+        }
+
+        static void AddSubagentRow(
+            VisualElement parent,
+            string threadId,
+            string status,
+            string message,
+            Action<string> openThread)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            row.style.marginTop = 3;
+            row.style.marginLeft = 12;
+            row.style.marginRight = 8;
+
+            var label = new Label(
+                $"Subagent {ShortThreadId(threadId)}" +
+                (string.IsNullOrEmpty(status) ? string.Empty : $" · {status}"));
+            label.style.flexGrow = 1;
+            label.style.fontSize = 10;
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.color = string.IsNullOrEmpty(status) ? CodexPalette.Muted : StatusColor(status);
+            label.tooltip = string.IsNullOrEmpty(message) ? threadId : $"{threadId}\n{message}";
+            row.Add(label);
+            AddOpenButton(row, threadId, openThread);
+            parent.Add(row);
+        }
+
+        static void AddOpenButton(VisualElement row, string threadId, Action<string> openThread)
+        {
+            if (openThread == null || string.IsNullOrEmpty(threadId))
+            {
+                return;
+            }
+
+            var open = new Button(() => openThread(threadId)) { text = "Open" };
+            open.style.height = 18;
+            open.style.minWidth = 40;
+            open.style.marginLeft = 6;
+            open.style.paddingLeft = 6;
+            open.style.paddingRight = 6;
+            open.style.fontSize = 9;
+            row.Add(open);
+        }
+
+        static string ShortThreadId(string threadId)
+        {
+            if (string.IsNullOrEmpty(threadId))
+            {
+                return "unknown";
+            }
+
+            return threadId.Length <= 12 ? threadId : $"{threadId.Substring(0, 8)}…";
         }
 
         static void RenderPlan(VisualElement parent, JObject item)
@@ -463,7 +627,7 @@ namespace Minerva.Codex
             return status switch
             {
                 "completed" => CodexPalette.Success,
-                "failed" => CodexPalette.Error,
+                "failed" or "errored" => CodexPalette.Error,
                 "declined" or "interrupted" => CodexPalette.Warning,
                 _ => CodexPalette.Muted,
             };
