@@ -48,6 +48,13 @@ namespace Minerva.Codex
         VisualElement m_LiveContainer;
         VisualElement m_ComposerCard;
         VisualElement m_QueueStrip;
+        VisualElement m_AgentsPanel;
+        ScrollView m_AgentsList;
+        Label m_AgentsCountLabel;
+        Button m_AgentsButton;
+        CodexPulseDot m_WorkingDot;
+        bool m_AgentsPanelCollapsed;
+        string m_AgentsSignature;
         VisualElement m_Popup;
         VisualElement m_PopupScrim;
 
@@ -70,10 +77,10 @@ namespace Minerva.Codex
         {
             var window = GetWindow<CodexAssistantWindow>();
             window.titleContent = new GUIContent("Codex Assistant");
-            window.minSize = new Vector2(720, 420);
-            if (window.position.width < 720 || window.position.height < 420)
+            window.minSize = new Vector2(900, 480);
+            if (window.position.width < 900 || window.position.height < 480)
             {
-                window.position = new Rect(window.position.x, window.position.y, 1100, 720);
+                window.position = new Rect(window.position.x, window.position.y, 1200, 760);
             }
 
             window.Show();
@@ -136,6 +143,7 @@ namespace Minerva.Codex
 
             main.Add(BuildSidebar());
             main.Add(BuildContent());
+            main.Add(BuildAgentsPanel());
         }
 
         VisualElement BuildToolbar()
@@ -162,11 +170,24 @@ namespace Minerva.Codex
             m_SettingsButton.tooltip = "Display and composer preferences";
             toolbar.Add(m_SettingsButton);
 
+            m_WorkingDot = new CodexPulseDot(CodexPalette.Warning);
+            m_WorkingDot.style.marginLeft = 10;
+            m_WorkingDot.style.marginRight = 5;
+            m_WorkingDot.style.display = DisplayStyle.None;
+            toolbar.Add(m_WorkingDot);
+
             m_StatusLabel = new Label("Starting...");
-            m_StatusLabel.style.marginLeft = 10;
+            m_StatusLabel.style.marginLeft = 4;
             m_StatusLabel.style.color = CodexPalette.Muted;
             m_StatusLabel.style.flexGrow = 1;
             toolbar.Add(m_StatusLabel);
+
+            m_AgentsButton = new Button(ToggleAgentsPanel) { text = "Agents" };
+            m_AgentsButton.style.marginLeft = 8;
+            m_AgentsButton.style.flexShrink = 0;
+            m_AgentsButton.style.display = DisplayStyle.None;
+            m_AgentsButton.tooltip = "Show subagents for this conversation";
+            toolbar.Add(m_AgentsButton);
 
             return toolbar;
         }
@@ -316,6 +337,224 @@ namespace Minerva.Codex
             content.Add(m_ErrorLabel);
 
             return content;
+        }
+
+        VisualElement BuildAgentsPanel()
+        {
+            m_AgentsPanel = new VisualElement { name = "codex-agents" };
+            m_AgentsPanel.style.width = 236;
+            m_AgentsPanel.style.flexShrink = 0;
+            m_AgentsPanel.style.flexDirection = FlexDirection.Column;
+            m_AgentsPanel.style.backgroundColor = CodexPalette.Sidebar;
+            m_AgentsPanel.style.borderLeftWidth = 1;
+            m_AgentsPanel.style.borderLeftColor = CodexPalette.Border;
+            m_AgentsPanel.style.display = DisplayStyle.None;
+
+            var header = new VisualElement();
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+            header.style.paddingLeft = 10;
+            header.style.paddingRight = 6;
+            header.style.paddingTop = 9;
+            header.style.paddingBottom = 7;
+            header.style.borderBottomWidth = 1;
+            header.style.borderBottomColor = CodexPalette.Border;
+
+            var title = new Label("SUBAGENTS");
+            title.style.fontSize = 9;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = CodexPalette.Muted;
+            header.Add(title);
+
+            m_AgentsCountLabel = new Label(string.Empty);
+            m_AgentsCountLabel.style.fontSize = 9;
+            m_AgentsCountLabel.style.color = CodexPalette.Muted;
+            m_AgentsCountLabel.style.marginLeft = 6;
+            m_AgentsCountLabel.style.flexGrow = 1;
+            header.Add(m_AgentsCountLabel);
+
+            var collapse = new Button(() =>
+            {
+                m_AgentsPanelCollapsed = true;
+                m_AgentsSignature = null;
+                RefreshAgentsPanel();
+            })
+            {
+                text = "×",
+            };
+            collapse.tooltip = "Hide subagents";
+            collapse.style.width = 18;
+            collapse.style.height = 18;
+            collapse.style.minWidth = 18;
+            collapse.style.paddingLeft = 0;
+            collapse.style.paddingRight = 0;
+            collapse.style.borderTopWidth = 0;
+            collapse.style.borderBottomWidth = 0;
+            collapse.style.borderLeftWidth = 0;
+            collapse.style.borderRightWidth = 0;
+            collapse.style.backgroundColor = Color.clear;
+            collapse.style.color = CodexPalette.Muted;
+            header.Add(collapse);
+
+            m_AgentsList = new ScrollView(ScrollViewMode.Vertical);
+            m_AgentsList.style.flexGrow = 1;
+            m_AgentsList.style.paddingLeft = 6;
+            m_AgentsList.style.paddingRight = 6;
+            m_AgentsList.style.paddingTop = 4;
+
+            m_AgentsPanel.Add(header);
+            m_AgentsPanel.Add(m_AgentsList);
+            return m_AgentsPanel;
+        }
+
+        void ToggleAgentsPanel()
+        {
+            m_AgentsPanelCollapsed = !m_AgentsPanelCollapsed;
+            m_AgentsSignature = null;
+            RefreshAgentsPanel();
+        }
+
+        void RefreshAgentsPanel()
+        {
+            if (m_AgentsPanel == null || m_AgentsButton == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<CodexSubagentInfo> agents = m_Workspace?.Subagents;
+            int count = agents?.Count ?? 0;
+            int running = 0;
+            if (agents != null)
+            {
+                foreach (CodexSubagentInfo agent in agents)
+                {
+                    if (agent.IsRunning)
+                    {
+                        running++;
+                    }
+                }
+            }
+
+            m_AgentsButton.style.display = count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            if (count > 0)
+            {
+                m_AgentsButton.text = running > 0 ? $"Agents {count} · {running} running" : $"Agents {count}";
+                m_AgentsButton.tooltip = m_AgentsPanelCollapsed ? "Show subagents" : "Hide subagents";
+            }
+
+            bool visible = count > 0 && !m_AgentsPanelCollapsed;
+            m_AgentsPanel.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!visible)
+            {
+                return;
+            }
+
+            m_AgentsCountLabel.text = running > 0
+                ? $"{running} running · {count}"
+                : count.ToString();
+
+            var signature = new System.Text.StringBuilder();
+            foreach (CodexSubagentInfo agent in agents)
+            {
+                signature.Append(agent.ThreadId).Append('|')
+                    .Append(agent.Status).Append('|')
+                    .Append(agent.Activity).Append('|')
+                    .Append(agent.Path).Append('|')
+                    .Append(agent.Model).Append('|')
+                    .Append(agent.Effort).Append('\n');
+            }
+
+            string key = signature.ToString();
+            if (key == m_AgentsSignature)
+            {
+                return;
+            }
+
+            m_AgentsSignature = key;
+            m_AgentsList.Clear();
+            foreach (CodexSubagentInfo agent in agents)
+            {
+                AddAgentRow(agent);
+            }
+        }
+
+        void AddAgentRow(CodexSubagentInfo agent)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.FlexStart;
+            row.style.paddingLeft = 6;
+            row.style.paddingRight = 4;
+            row.style.paddingTop = 7;
+            row.style.paddingBottom = 7;
+            row.style.borderBottomWidth = 1;
+            row.style.borderBottomColor = CodexPalette.Border;
+            row.tooltip = "Open this subagent";
+
+            Color statusColor = agent.Status switch
+            {
+                "completed" => CodexPalette.Success,
+                "failed" => CodexPalette.Error,
+                "interrupted" => CodexPalette.Warning,
+                "running" => CodexPalette.Warning,
+                _ => CodexPalette.Muted,
+            };
+
+            var dot = new CodexPulseDot(statusColor, 7f, agent.IsRunning);
+            dot.style.marginTop = 4;
+            dot.style.marginRight = 7;
+            row.Add(dot);
+
+            var body = new VisualElement();
+            body.style.flexGrow = 1;
+            body.style.flexShrink = 1;
+            row.Add(body);
+
+            string name = string.IsNullOrEmpty(agent.Path)
+                ? ShortId(agent.ThreadId)
+                : agent.Path;
+            var nameLabel = new Label(name);
+            nameLabel.style.fontSize = 10;
+            nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            nameLabel.style.color = CodexPalette.Text;
+            nameLabel.style.whiteSpace = WhiteSpace.Normal;
+            body.Add(nameLabel);
+
+            string meta = agent.Status;
+            if (!string.IsNullOrEmpty(agent.Model))
+            {
+                meta += $"  ·  {agent.Model}";
+            }
+
+            var metaLabel = new Label(meta);
+            metaLabel.style.fontSize = 9;
+            metaLabel.style.color = statusColor;
+            metaLabel.style.whiteSpace = WhiteSpace.Normal;
+            body.Add(metaLabel);
+
+            if (!string.IsNullOrEmpty(agent.Activity) &&
+                !string.Equals(agent.Activity, agent.Status, StringComparison.OrdinalIgnoreCase))
+            {
+                var activity = new Label(agent.Activity);
+                activity.style.fontSize = 9;
+                activity.style.color = CodexPalette.Muted;
+                activity.style.whiteSpace = WhiteSpace.Normal;
+                activity.style.marginTop = 2;
+                body.Add(activity);
+            }
+
+            row.RegisterCallback<ClickEvent>(_ => m_Workspace?.SelectThread(agent.ThreadId));
+            m_AgentsList.Add(row);
+        }
+
+        static string ShortId(string id)
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                return "subagent";
+            }
+
+            return id.Length <= 14 ? id : $"{id.Substring(0, 8)}…";
         }
 
         VisualElement BuildComposer()
@@ -903,6 +1142,7 @@ namespace Minerva.Codex
             UpdateSettingsBar();
             UpdateComposer();
             RefreshQueueStrip();
+            RefreshAgentsPanel();
             UpdateContextIndicator();
 
             bool hasError = !string.IsNullOrEmpty(m_Workspace.Error);
@@ -1133,6 +1373,10 @@ namespace Minerva.Codex
                 ? CodexPalette.DisabledAction
                 : running ? CodexPalette.StopAction : CodexPalette.SendAction;
             m_ActionButton.tooltip = running ? "Interrupt the running turn" : "Send message";
+            if (m_WorkingDot != null)
+            {
+                m_WorkingDot.style.display = running ? DisplayStyle.Flex : DisplayStyle.None;
+            }
 
             string steerKey = Application.platform == RuntimePlatform.OSXEditor ? "Cmd+Enter" : "Ctrl+Enter";
             string hint = running
@@ -1415,12 +1659,27 @@ namespace Minerva.Codex
                 row.style.backgroundColor = CodexPalette.Selected;
             }
 
+            var titleRow = new VisualElement();
+            titleRow.style.flexDirection = FlexDirection.Row;
+            titleRow.style.alignItems = Align.FlexStart;
+
             var title = new Label(DisplayTitle(thread));
             title.style.whiteSpace = WhiteSpace.Normal;
             title.style.fontSize = 11;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
             title.style.color = CodexPalette.Text;
-            row.Add(title);
+            title.style.flexGrow = 1;
+            titleRow.Add(title);
+
+            if (selected && m_Workspace.IsRunning)
+            {
+                var dot = new CodexPulseDot(CodexPalette.Warning, 6f);
+                dot.style.marginTop = 4;
+                dot.style.marginLeft = 6;
+                titleRow.Add(dot);
+            }
+
+            row.Add(titleRow);
 
             string detail = !string.IsNullOrEmpty(thread.Snippet)
                 ? thread.Snippet
@@ -1529,6 +1788,7 @@ namespace Minerva.Codex
             if (liveTurn == null || m_LiveContainer == null)
             {
                 RebuildTranscript();
+                RefreshAgentsPanel();
                 return;
             }
 
@@ -1539,6 +1799,7 @@ namespace Minerva.Codex
             RenderTurn(m_LiveContainer, liveTurn, true);
 
             RestoreScroll(previousOffset, stickToBottom);
+            RefreshAgentsPanel();
         }
 
         void RenderTurn(VisualElement parent, JObject turn, bool isLive)

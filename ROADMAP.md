@@ -19,6 +19,7 @@
   dedicated title model.
 - Subagent support: `subAgent*` threads are opened from their parent (not listed in the sidebar);
   `collabAgentToolCall` and `subAgentActivity` render as Subagent sections with Open and Parent navigation.
+  A minimal right rail shows agent status/model/activity, with pulsing dots for running work.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

@@ -32,6 +32,10 @@ tools are next.
 - Subagent tool calls and activity render as **Subagent** sections with **Open** buttons. Subagent threads
   are opened from their parent item, not listed as separate sidebar conversations; the header shows
   **← Parent** while viewing one.
+- A minimal **Subagents** rail on the right lists the selected conversation's agents with status, model and
+  current activity. Click a row to open that agent; the toolbar **Agents N** button hides/shows the rail.
+- Running work has a pulsing hint: a dot in the toolbar, a dot on the active sidebar conversation, and
+  pulsing dots on running subagent rows. Static green/yellow/red dots mark completed/failed agents.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of

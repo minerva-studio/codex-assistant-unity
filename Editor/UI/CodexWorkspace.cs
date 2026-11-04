@@ -43,6 +43,18 @@ namespace Minerva.Codex
         public string Text;
     }
 
+    internal sealed class CodexSubagentInfo
+    {
+        public string ThreadId;
+        public string Path;
+        public string Status;
+        public string Activity;
+        public string Model;
+        public string Effort;
+
+        public bool IsRunning => Status == "running" || Status == "pending";
+    }
+
     internal sealed class CodexModelInfo
     {
         public string Id;
@@ -154,6 +166,9 @@ namespace Minerva.Codex
         public IReadOnlyList<CodexModelInfo> Models => m_Models;
         public IReadOnlyList<string> Efforts => m_Efforts;
         public IReadOnlyList<CodexQueuedMessage> QueuedMessages => m_Queued;
+
+        /// <summary>Subagents referenced by the selected conversation's turns.</summary>
+        public IReadOnlyList<CodexSubagentInfo> Subagents => BuildSubagents();
         public IReadOnlyList<string> SandboxModes => s_SandboxModes;
         public bool SettingsLoaded => m_ConfigLoaded;
         public string SettingsError => m_SettingsError;
@@ -2449,6 +2464,250 @@ namespace Minerva.Codex
             }
 
             return null;
+        }
+
+        List<CodexSubagentInfo> BuildSubagents()
+        {
+            var map = new Dictionary<string, CodexSubagentInfo>(StringComparer.Ordinal);
+            for (int index = m_Turns.Count - 1; index >= 0; index--)
+            {
+                CollectSubagents(m_Turns[index], map);
+            }
+
+            CollectSubagents(m_LiveTurn, map);
+
+            var result = new List<CodexSubagentInfo>(map.Values);
+            result.Sort((left, right) =>
+            {
+                int running = (left.IsRunning ? 0 : 1).CompareTo(right.IsRunning ? 0 : 1);
+                return running != 0
+                    ? running
+                    : string.Compare(
+                        string.IsNullOrEmpty(left.Path) ? left.ThreadId : left.Path,
+                        string.IsNullOrEmpty(right.Path) ? right.ThreadId : right.Path,
+                        StringComparison.OrdinalIgnoreCase);
+            });
+            return result;
+        }
+
+        static void CollectSubagents(
+            JObject turn,
+            Dictionary<string, CodexSubagentInfo> map)
+        {
+            if (turn?["items"] is not JArray items)
+            {
+                return;
+            }
+
+            foreach (JToken token in items)
+            {
+                if (token is not JObject item)
+                {
+                    continue;
+                }
+
+                string type = item["type"]?.Value<string>();
+                if (type == "collabAgentToolCall")
+                {
+                    CollectCollabAgents(item, map);
+                }
+                else if (type == "subAgentActivity")
+                {
+                    CollectSubagentActivity(item, map);
+                }
+            }
+        }
+
+        static void CollectCollabAgents(
+            JObject item,
+            Dictionary<string, CodexSubagentInfo> map)
+        {
+            string model = item["model"]?.Value<string>();
+            string effort = item["reasoningEffort"]?.Value<string>();
+            string prompt = SubagentActivityText(item["prompt"]?.Value<string>());
+
+            if (item["agentsStates"] is JObject states)
+            {
+                foreach (JProperty property in states.Properties())
+                {
+                    CodexSubagentInfo info = GetSubagent(map, property.Name);
+                    if (info == null)
+                    {
+                        continue;
+                    }
+
+                    string status = NormalizeSubagentStatus(
+                        property.Value?["status"]?.Value<string>());
+                    if (!string.IsNullOrEmpty(status))
+                    {
+                        info.Status = status;
+                    }
+
+                    string message = property.Value?["message"]?.Value<string>();
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        info.Activity = SubagentActivityText(message);
+                    }
+
+                    ApplySubagentConfig(info, model, effort);
+                }
+            }
+
+            if (item["receiverThreadIds"] is JArray receivers)
+            {
+                foreach (JToken receiver in receivers)
+                {
+                    CodexSubagentInfo info = GetSubagent(map, receiver.Value<string>());
+                    if (info == null)
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(info.Status))
+                    {
+                        info.Status = "pending";
+                    }
+
+                    if (string.IsNullOrEmpty(info.Activity) && prompt.Length > 0)
+                    {
+                        info.Activity = prompt;
+                    }
+
+                    ApplySubagentConfig(info, model, effort);
+                }
+            }
+        }
+
+        static void CollectSubagentActivity(
+            JObject item,
+            Dictionary<string, CodexSubagentInfo> map)
+        {
+            string threadId = item["agentThreadId"]?.Value<string>();
+            CodexSubagentInfo info = GetSubagent(map, threadId);
+            if (info == null)
+            {
+                return;
+            }
+
+            string path = item["agentPath"]?.Value<string>();
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                info.Path = path;
+            }
+
+            string kind = item["kind"]?.Value<string>();
+            string status = NormalizeSubagentStatus(kind);
+            if (!string.IsNullOrEmpty(status))
+            {
+                info.Status = status;
+            }
+
+            switch (kind)
+            {
+                case "started":
+                    info.Activity = "started";
+                    break;
+                case "interacted":
+                    info.Activity = "working";
+                    break;
+                case "completed":
+                    info.Activity = "completed";
+                    break;
+                case "interrupted":
+                    info.Activity = "interrupted";
+                    break;
+            }
+
+            ApplySubagentConfig(
+                info,
+                item["model"]?.Value<string>(),
+                item["reasoningEffort"]?.Value<string>());
+        }
+
+        static CodexSubagentInfo GetSubagent(
+            Dictionary<string, CodexSubagentInfo> map,
+            string threadId)
+        {
+            if (string.IsNullOrEmpty(threadId))
+            {
+                return null;
+            }
+
+            if (!map.TryGetValue(threadId, out CodexSubagentInfo info))
+            {
+                info = new CodexSubagentInfo
+                {
+                    ThreadId = threadId,
+                    Status = "pending",
+                };
+                map[threadId] = info;
+            }
+
+            return info;
+        }
+
+        static void ApplySubagentConfig(
+            CodexSubagentInfo info,
+            string model,
+            string effort)
+        {
+            if (!string.IsNullOrWhiteSpace(model))
+            {
+                info.Model = model;
+            }
+
+            if (!string.IsNullOrWhiteSpace(effort))
+            {
+                info.Effort = effort;
+            }
+        }
+
+        static string NormalizeSubagentStatus(string status)
+        {
+            switch (status?.ToLowerInvariant())
+            {
+                case "running":
+                case "inprogress":
+                case "started":
+                case "interacted":
+                    return "running";
+                case "pendinginit":
+                    return "pending";
+                case "completed":
+                    return "completed";
+                case "failed":
+                case "errored":
+                    return "failed";
+                case "interrupted":
+                case "shutdown":
+                    return "interrupted";
+                case "notfound":
+                    return "missing";
+                case null:
+                case "":
+                    return "pending";
+                default:
+                    return status;
+            }
+        }
+
+        static string SubagentActivityText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string oneLine = text
+                .Replace('\r', ' ')
+                .Replace('\n', ' ')
+                .Trim();
+            while (oneLine.Contains("  "))
+            {
+                oneLine = oneLine.Replace("  ", " ");
+            }
+
+            return oneLine.Length <= 140 ? oneLine : oneLine.Substring(0, 140) + "…";
         }
 
         static CodexThreadInfo Parse(JObject thread)

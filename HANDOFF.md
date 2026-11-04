@@ -93,6 +93,14 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   feature is stable and enabled by default; whether a model spawns helpers depends on the model/effort, not
   on this UI. `CodexThreadInfo.ParentThreadId` comes from the thread's `parentThreadId`; the header shows
   **← Parent** for those threads and calls `SelectThread(parent)`.
+- The minimal right rail is driven by `CodexWorkspace.Subagents`, computed from `collabAgentToolCall`
+  (`agentsStates`, receiver IDs, prompt, model/effort) and `subAgentActivity` (`agentPath`, kind) across the
+  loaded turns plus the live turn. `CodexAssistantWindow` renders it as 236 px `m_AgentsPanel`; the toolbar
+  **Agents N** button toggles it, and rows call `SelectThread` on the child. Completed/failed rows use static
+  colors; running rows use `CodexPulseDot`.
+- `CodexPulseDot` is the shared animation primitive: a scheduled opacity pulse. It is used by the toolbar
+  working dot, the selected running thread row, and running agent rows. The live composer/turn still shows
+  the normal status text.
 - `Tools/Minerva/Codex/Send Smoke Test` exercises a lazy thread/start, a second turn, live text, and history
   reconciliation with real turns.
 - Markdown rendering through the UMarkdown fork: headings, lists, quotes, links, tables, code blocks with
