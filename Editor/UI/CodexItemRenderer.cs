@@ -114,43 +114,107 @@ namespace Minerva.Codex
 
         static void RenderReasoning(VisualElement parent, JObject item)
         {
-            string summary = JoinText(item["summary"]);
-            string content = JoinText(item["content"]);
-            if (string.IsNullOrWhiteSpace(summary) && string.IsNullOrWhiteSpace(content))
+            string summary = JoinText(item["summary"]).Trim();
+            string content = JoinText(item["content"]).Trim();
+            if (string.IsNullOrEmpty(summary) && string.IsNullOrEmpty(content))
             {
                 return;
             }
 
-            // The surrounding Process group already owns collapsing. Keep the
-            // thinking text visible as soon as that group is expanded.
+            if (string.Equals(summary, content, StringComparison.Ordinal))
+            {
+                content = string.Empty;
+            }
+
+            string primary = !string.IsNullOrEmpty(summary) ? summary : content;
+            string details = !string.IsNullOrEmpty(summary) && !string.IsNullOrEmpty(content)
+                ? content
+                : string.Empty;
+
+            // A long chain of thought must not be sprayed into the transcript.
+            // Keep a short summary visible; fold the detail under the same block.
+            if (IsLongReasoning(primary))
+            {
+                details = string.IsNullOrEmpty(details) ? primary : $"{primary}\n\n{details}";
+                primary = null;
+            }
+
+            // The surrounding Process group already owns collapsing. This block
+            // gives the remaining thinking the same inset as the tool sections.
+            var block = new VisualElement();
+            block.style.marginLeft = 12;
+            block.style.marginRight = 12;
+            block.style.marginTop = 2;
+            block.style.marginBottom = 6;
+            block.style.paddingLeft = 10;
+            block.style.paddingRight = 8;
+            block.style.paddingTop = 4;
+            block.style.paddingBottom = 4;
+            block.style.borderLeftWidth = 2;
+            block.style.borderLeftColor = CodexPalette.Border;
+            parent.Add(block);
+
             var caption = new Label("Thinking");
             caption.style.fontSize = 9;
             caption.style.unityFontStyleAndWeight = FontStyle.Bold;
             caption.style.color = CodexPalette.Muted;
-            caption.style.marginTop = 4;
             caption.style.marginBottom = 2;
-            parent.Add(caption);
+            block.Add(caption);
 
-            if (!string.IsNullOrWhiteSpace(summary))
+            if (!string.IsNullOrEmpty(primary))
             {
-                parent.Add(CodexMarkdown.Render(summary));
+                block.Add(CodexMarkdown.Render(primary));
             }
 
-            if (!string.IsNullOrWhiteSpace(content) &&
-                !string.Equals(content.Trim(), summary.Trim(), StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(details))
             {
-                if (!string.IsNullOrWhiteSpace(summary))
+                return;
+            }
+
+            if (!IsLongReasoning(details))
+            {
+                var detailsLabel = new Label("Full reasoning");
+                detailsLabel.style.fontSize = 9;
+                detailsLabel.style.color = CodexPalette.Muted;
+                detailsLabel.style.marginTop = 4;
+                detailsLabel.style.marginBottom = 2;
+                block.Add(detailsLabel);
+                block.Add(CodexMarkdown.Render(details));
+                return;
+            }
+
+            var foldout = new Foldout
+            {
+                text = "Full reasoning",
+                value = false,
+            };
+
+            foldout.style.marginLeft = 0;
+            foldout.style.marginRight = 0;
+            foldout.style.marginTop = 2;
+            foldout.style.marginBottom = 0;
+            foldout.style.color = CodexPalette.Muted;
+            foldout.Add(CodexMarkdown.Render(details));
+            block.Add(foldout);
+        }
+
+        static bool IsLongReasoning(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            int lines = 1;
+            foreach (char character in text)
+            {
+                if (character == '\n')
                 {
-                    var details = new Label("Full reasoning");
-                    details.style.fontSize = 9;
-                    details.style.color = CodexPalette.Muted;
-                    details.style.marginTop = 4;
-                    details.style.marginBottom = 2;
-                    parent.Add(details);
+                    lines++;
                 }
-
-                parent.Add(CodexMarkdown.Render(content));
             }
+
+            return text.Length > 280 || lines > 4;
         }
 
         static void RenderImageView(VisualElement parent, JObject item)

@@ -17,7 +17,8 @@
 - Thread navigation: content search, current-project/all-projects scope, titles, archive, and a new
   conversation action.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
-  expanded, history collapses. Settings can hide reasoning or tools; tool screenshots render as images.
+  expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
+  settings can hide reasoning or tools, and tool screenshots render as images.
 - Optional context-window indicator derived from token-usage notifications.
 - Persistent localhost WebSocket app-server per CODEX_HOME; domain reload and play mode only reconnect the
   window, keep a running turn alive and restore the selected thread. Direct stdio remains the fallback.

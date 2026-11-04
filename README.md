@@ -42,7 +42,8 @@ tools are next.
 - Tool usage (commands, file edits, MCP calls, web searches), intermediate Codex replies and thinking are
   grouped into one **Process** row per stretch; only the turn's final answer stays as a normal message.
   While the turn is live the row is expanded so work is visible; completed history collapses it. Expanding
-  shows intermediate replies and thinking inline, with individual tool steps still collapsible.
+  shows intermediate replies and short thinking summaries inline; long reasoning chains fold under a
+  collapsed **Full reasoning** section. Individual tool steps stay collapsible.
 - Tool screenshots (`imageView`) render as images instead of a JSON block.
 - Optional context-window indicator next to the model. It is off by default and shows the last reported token
   usage as a colored dot and percentage.

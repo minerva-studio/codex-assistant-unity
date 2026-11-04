@@ -11,8 +11,8 @@ All notable changes to this package are documented here.
 - Persistent localhost WebSocket app-server per `CODEX_HOME`, with stdio fallback. Domain reloads and
   play-mode transitions reconnect the window without interrupting a running turn, and restore the
   selected thread.
-- Intermediate agent replies join the collapsible Process group, reasoning is shown inline, and
-  `imageView` tool results render as images.
+- Intermediate agent replies join the collapsible Process group, short reasoning summaries are inline,
+  long chains fold under **Full reasoning**, and `imageView` tool results render as images.
 - Steering and queuing while a turn runs: Enter persists a queued follow-up through
   `thread/queue/add`, Ctrl+Enter steers through `turn/steer`, and queued messages show above the composer.
 - Reasoning-effort changes use `thread/settings/update` and later turns omit the per-turn effort override.
