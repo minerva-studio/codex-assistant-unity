@@ -1388,13 +1388,92 @@ namespace Minerva.Codex
                 return;
             }
 
+            var process = new List<JObject>();
             foreach (JToken token in items)
             {
-                if (token is JObject item)
+                if (token is not JObject item)
                 {
+                    continue;
+                }
+
+                string type = item["type"]?.Value<string>();
+                if (type == "userMessage" || type == "agentMessage")
+                {
+                    FlushProcess(parent, process);
                     CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
                 }
+                else
+                {
+                    process.Add(item);
+                }
             }
+
+            FlushProcess(parent, process);
+        }
+
+        void FlushProcess(VisualElement parent, List<JObject> items)
+        {
+            if (items.Count == 0)
+            {
+                return;
+            }
+
+            int tools = 0;
+            int thoughts = 0;
+            foreach (JObject item in items)
+            {
+                if (item["type"]?.Value<string>() == "reasoning")
+                {
+                    if (m_ShowReasoning)
+                    {
+                        thoughts++;
+                    }
+                }
+                else if (m_ShowToolCalls)
+                {
+                    tools++;
+                }
+            }
+
+            if (tools > 0 || thoughts > 0)
+            {
+                var foldout = new Foldout
+                {
+                    text = ProcessSummary(tools, thoughts),
+                    value = false,
+                };
+
+                foldout.style.marginLeft = 12;
+                foldout.style.marginRight = 12;
+                foldout.style.marginTop = 2;
+                foldout.style.marginBottom = 6;
+                foldout.style.color = CodexPalette.Muted;
+
+                foreach (JObject item in items)
+                {
+                    CodexItemRenderer.Render(foldout, item, m_ShowReasoning, m_ShowToolCalls);
+                }
+
+                parent.Add(foldout);
+            }
+
+            items.Clear();
+        }
+
+        static string ProcessSummary(int tools, int thoughts)
+        {
+            string text = "Process";
+            if (tools > 0)
+            {
+                text += tools == 1 ? "  ·  1 tool" : $"  ·  {tools} tools";
+            }
+
+            if (thoughts > 0)
+            {
+                text += thoughts == 1 ? "  ·  1 thought" : $"  ·  {thoughts} thoughts";
+            }
+
+            return text;
         }
 
         bool IsTranscriptAtBottom()

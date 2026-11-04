@@ -14,7 +14,7 @@
   sent on `thread/start` / `turn/start`.
 - Thread navigation: content search, current-project/all-projects scope, titles, archive, and a new
   conversation action.
-- Collapsible reasoning and tool records, with settings to hide either.
+- Collapsible Process groups around reasoning and tool records, with settings to hide either.
 - Optional context-window indicator derived from token-usage notifications.
 - Settings panel and configurable CODEX_HOME; changing it restarts the app-server and refreshes the model
   catalog. **Reconnect** reloads config/providers/models without changing the home.

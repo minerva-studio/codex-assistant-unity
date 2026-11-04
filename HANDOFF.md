@@ -32,7 +32,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   search results), archive for the selected thread, and a **New conversation** button that clears the
   selection without creating a zero-turn thread.
 - History uses `thread/turns/list` with `itemsView: "full"`, so tool usage and reasoning items are present.
-  They render as collapsed `Foldout` sections; the settings panel can hide reasoning or tool records.
+  Each stretch of process items between user/agent messages is wrapped in one collapsed `Process · N tools ·
+  M thoughts` Foldout; expanding it renders the individual collapsible steps. The settings panel can hide
+  reasoning or tool records.
 - Composer sends messages: no selection starts a thread, otherwise starts a turn. Enter sends, Shift+Enter
   inserts a newline, one button switches Send/Stop, and the input is disabled while running.
 - `item/agentMessage/delta` streams into a live turn rendered below history. `item/started`,
@@ -69,7 +71,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   turn is kept until the history reload replaces it, and a turn generation prevents a stale reload from
   clearing a newer live turn.
 - The composer is a single rounded card with the pills inside it. One action button, not separate Send and
-  Stop buttons. Sandbox sits on the left; model, effort and the action sit on the right.
+  Stop buttons. Sandbox sits on the left; context, model, effort and the action sit on the right.
+- Process activity is grouped by message boundary, not shown as a flat list of tool rows. The group is
+  collapsed by default; counts subtract items hidden by the reasoning/tool settings.
 - The model/effort/sandbox popup is custom UI Toolkit (rounded panel, search for models, vertical-only
   scrolling) because `GenericDropdownMenu` opened a clipped list with a horizontal scrollbar near the window
   bottom.
