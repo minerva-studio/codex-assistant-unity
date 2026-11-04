@@ -35,7 +35,7 @@ namespace Minerva.Codex.Editor.Dev
             scroll.style.flexGrow = 1;
             rootVisualElement.Add(scroll);
 
-            string audio = Path.Combine(Application.dataPath, "Prototype/Samples/beep.wav").Replace('/', '\\');
+            string audio = @"C:\Users\wende\Documents\Minerva Game Studio\library-of-meialia\Assets\Contents\Audio\Soundtrack\Soundtrack_LibraryOfMeialia.ogg";
             string image = Path.Combine(Application.dataPath, "Prototype/Samples/dot.png").Replace('/', '\\');
 
             string userText =
@@ -49,6 +49,9 @@ namespace Minerva.Codex.Editor.Dev
                 $"`{audio}`\n\n" +
                 "文件检查通过，置信度 99%。";
             scroll.Add(Render(AgentMessage(agentText)));
+
+            string longWav = @"C:\Users\wende\Documents\Minerva Game Studio\library-of-meialia\Assets\Contents\Audio\Ambient\Ambient_Desert.wav";
+            scroll.Add(Render(UserMessage($"长 WAV 测试：{longWav}")));
         }
 
         static VisualElement Render(JObject item)
@@ -82,7 +85,7 @@ namespace Minerva.Codex.Editor.Dev
 
         public static void DebugSample()
         {
-            string audio = Path.Combine(Application.dataPath, "Prototype/Samples/beep.wav").Replace('/', '\\');
+            string audio = @"C:\Users\wende\Documents\Minerva Game Studio\library-of-meialia\Assets\Contents\Audio\Soundtrack\Soundtrack_LibraryOfMeialia.ogg";
             string image = Path.Combine(Application.dataPath, "Prototype/Samples/dot.png").Replace('/', '\\');
             string text = $"这是三段试听里的第一段：{audio}\n\n[Attached image \"image.png\" is saved at: {image}]";
 

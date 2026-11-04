@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -18,10 +19,11 @@ namespace Minerva.Codex
         const string PauseGlyph = "⏸";
 
         readonly string m_Path;
-        readonly AudioClip m_Clip;
+        AudioClip m_Clip;
         readonly Button m_PlayButton;
         readonly CodexAudioScrubber m_Progress;
         readonly Label m_Time;
+        readonly Slider m_Volume;
 
         bool m_Playing;
         bool m_Updating;
@@ -63,14 +65,46 @@ namespace Minerva.Codex
             var name = new Label(Path.GetFileName(path));
             name.style.fontSize = 10;
             name.style.color = CodexPalette.Muted;
-            name.style.maxWidth = 160;
+            name.style.maxWidth = 90;
             name.style.overflow = Overflow.Hidden;
             name.style.textOverflow = TextOverflow.Ellipsis;
+
+            m_Volume = new Slider(0f, 1f) { value = CodexAudio.Volume };
+            m_Volume.style.width = 70;
+            m_Volume.style.flexShrink = 0;
+            m_Volume.style.marginLeft = 6;
+            m_Volume.SetEnabled(CodexAudio.SupportsVolume(path));
+            m_Volume.tooltip = CodexAudio.SupportsVolume(path)
+                ? "Volume"
+                : "Volume applies to WAV previews";
+            m_Volume.RegisterValueChangedCallback(evt =>
+            {
+                CodexAudio.SetVolume(evt.newValue);
+            });
 
             Add(m_PlayButton);
             Add(m_Progress);
             Add(m_Time);
             Add(name);
+            Add(m_Volume);
+
+            if (m_Clip == null && File.Exists(path))
+            {
+                m_Time.text = "loading...";
+                CodexAttachments.LoadClipAsync(path, clip =>
+                {
+                    if (clip == null)
+                    {
+                        m_Time.text = "unreadable";
+                        return;
+                    }
+
+                    m_Clip = clip;
+                    m_PlayButton.SetEnabled(true);
+                    m_Progress.SetEnabled(true);
+                    m_Time.text = $"0:00 / {Format(clip.length)}";
+                });
+            }
 
             if (CodexAudio.Muted)
             {
@@ -300,8 +334,8 @@ namespace Minerva.Codex
         static bool s_Resolved;
         static bool s_UsingWin32;
 
-        /// <summary>Seeking is only available when Unity's preview system is playing.</summary>
-        public static bool CanSeek => !s_UsingWin32;
+        /// <summary>Seeking works on both backends: winmm restarts from a trimmed buffer.</summary>
+        public static bool CanSeek => true;
 
         public static bool Muted
         {
@@ -309,13 +343,52 @@ namespace Minerva.Codex
             set => EditorUtility.audioMasterMute = value;
         }
 
+        const string VolumeKey = "Minerva.Codex.AudioVolume";
+        static float s_Volume = -1f;
+
+        public static float Volume
+        {
+            get
+            {
+                if (s_Volume < 0f)
+                {
+                    s_Volume = EditorPrefs.GetFloat(VolumeKey, 0.8f);
+                }
+
+                return s_Volume;
+            }
+            set
+            {
+                s_Volume = Mathf.Clamp01(value);
+                EditorPrefs.SetFloat(VolumeKey, s_Volume);
+            }
+        }
+
+        public static bool SupportsVolume(string path)
+        {
+            return IsWav(path);
+        }
+
+        /// <summary>Applies volume to the running preview without restarting it.</summary>
+        public static void SetVolume(float value)
+        {
+            Volume = value;
+#if UNITY_EDITOR_WIN
+            if (s_MciOpen)
+            {
+                Mci($"setaudio {MciAlias} volume to {Mathf.RoundToInt(Volume * 1000f)}");
+            }
+#endif
+        }
+
         public static bool Play(string path, AudioClip clip, int startSample)
         {
+            float startSeconds = clip.frequency > 0 ? (float)startSample / clip.frequency : 0f;
 #if UNITY_EDITOR_WIN
-            if (startSample <= 0 && IsWav(path) && PlayWin32(path))
+            if (IsWav(path) && PlayWin32(path, startSeconds))
             {
                 s_UsingWin32 = true;
-                Debug.Log($"[CodexAudio] win32 play {Path.GetFileName(path)} length={clip.length:F2}s");
+                Debug.Log($"[CodexAudio] win32 play {Path.GetFileName(path)} at {startSeconds:F2}s");
                 return true;
             }
 #endif
@@ -347,7 +420,7 @@ namespace Minerva.Codex
 #if UNITY_EDITOR_WIN
             if (s_UsingWin32)
             {
-                PlaySound(null, IntPtr.Zero, 0);
+                MciClose();
                 s_UsingWin32 = false;
             }
 #endif
@@ -371,22 +444,182 @@ namespace Minerva.Codex
 #if UNITY_EDITOR_WIN
         const uint SND_ASYNC = 0x0001;
         const uint SND_NODEFAULT = 0x0002;
-        const uint SND_FILENAME = 0x00020000;
+        const uint SND_MEMORY = 0x0004;
+
+        static GCHandle s_PinnedWav;
 
         [DllImport("winmm.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        static extern bool PlaySound(string sound, IntPtr module, uint flags);
+        static extern bool PlaySound(IntPtr sound, IntPtr module, uint flags);
 
-        static bool PlayWin32(string path)
+        static bool s_MciOpen;
+        const string MciAlias = "codexaudio";
+
+        [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
+        static extern int mciSendString(string command, StringBuilder result, int length, IntPtr callback);
+
+        static int Mci(string command)
         {
             try
             {
-                return PlaySound(path, IntPtr.Zero, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
+                return mciSendString(command, null, 0, IntPtr.Zero);
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"[CodexAudio] winmm failed: {exception.Message}");
+                Debug.LogWarning($"[CodexAudio] mci failed: {exception.Message}");
+                return -1;
+            }
+        }
+
+        static void MciClose()
+        {
+            if (!s_MciOpen)
+            {
+                return;
+            }
+
+            Mci($"stop {MciAlias}");
+            Mci($"close {MciAlias}");
+            s_MciOpen = false;
+        }
+
+        static bool PlayWin32(string path, float startSeconds)
+        {
+            MciClose();
+
+            if (Mci($"open \"{path}\" type waveaudio alias {MciAlias}") != 0)
+            {
+                Debug.LogWarning($"[CodexAudio] mci cannot open {path}");
                 return false;
             }
+
+            s_MciOpen = true;
+            Mci($"set {MciAlias} time format milliseconds");
+            Mci($"setaudio {MciAlias} volume to {Mathf.RoundToInt(Volume * 1000f)}");
+
+            int from = Mathf.Max(0, Mathf.RoundToInt(startSeconds * 1000f));
+            if (Mci($"play {MciAlias} from {from}") != 0)
+            {
+                MciClose();
+                return false;
+            }
+
+            return true;
+        }
+
+        static void ReleasePin()
+        {
+            if (s_PinnedWav.IsAllocated)
+            {
+                s_PinnedWav.Free();
+            }
+        }
+
+        /// <summary>Scales 16-bit PCM in place; other bit depths keep their original volume.</summary>
+        static void ScaleWav16(byte[] wav, float volume)
+        {
+            if (wav.Length < 44 || BitConverter.ToInt16(wav, 34) != 16)
+            {
+                return;
+            }
+
+            int offset = 12;
+            while (offset + 8 <= wav.Length)
+            {
+                string id = Encoding.ASCII.GetString(wav, offset, 4);
+                int size = BitConverter.ToInt32(wav, offset + 4);
+                if (id == "data")
+                {
+                    int start = offset + 8;
+                    int end = Math.Min(start + size, wav.Length - 1);
+                    for (int i = start; i + 1 < end; i += 2)
+                    {
+                        short sample = BitConverter.ToInt16(wav, i);
+                        sample = (short)(sample * volume);
+                        wav[i] = (byte)(sample & 0xFF);
+                        wav[i + 1] = (byte)((sample >> 8) & 0xFF);
+                    }
+
+                    return;
+                }
+
+                offset += 8 + size + (size & 1);
+            }
+        }
+
+        /// <summary>Rebuilds a WAV that starts at the given offset so winmm can seek.</summary>
+        static byte[] TrimWav(byte[] source, float startSeconds)
+        {
+            if (source.Length < 44 ||
+                Encoding.ASCII.GetString(source, 0, 4) != "RIFF" ||
+                Encoding.ASCII.GetString(source, 8, 4) != "WAVE")
+            {
+                return null;
+            }
+
+            int format = 1;
+            int channels = 0;
+            int sampleRate = 0;
+            int bits = 0;
+            int dataOffset = -1;
+            int dataLength = 0;
+            byte[] formatChunk = null;
+
+            int offset = 12;
+            while (offset + 8 <= source.Length)
+            {
+                string id = Encoding.ASCII.GetString(source, offset, 4);
+                int size = BitConverter.ToInt32(source, offset + 4);
+                int body = offset + 8;
+
+                if (id == "fmt " && body + 16 <= source.Length)
+                {
+                    format = BitConverter.ToInt16(source, body);
+                    channels = BitConverter.ToInt16(source, body + 2);
+                    sampleRate = BitConverter.ToInt32(source, body + 4);
+                    bits = BitConverter.ToInt16(source, body + 14);
+                    formatChunk = new byte[16];
+                    Buffer.BlockCopy(source, body, formatChunk, 0, 16);
+                }
+                else if (id == "data")
+                {
+                    dataOffset = body;
+                    dataLength = Math.Min(size, source.Length - body);
+                    break;
+                }
+
+                offset = body + size + (size & 1);
+            }
+
+            int blockAlign = channels * bits / 8;
+            if (dataOffset < 0 || sampleRate <= 0 || blockAlign <= 0 || formatChunk == null)
+            {
+                return null;
+            }
+
+            int frames = (int)(startSeconds * sampleRate);
+            int skip = frames * blockAlign;
+            if (skip >= dataLength)
+            {
+                skip = 0;
+            }
+
+            int length = dataLength - skip;
+            length -= length % blockAlign;
+            if (length <= 0)
+            {
+                return null;
+            }
+
+            var output = new byte[44 + length];
+            Encoding.ASCII.GetBytes("RIFF").CopyTo(output, 0);
+            BitConverter.GetBytes(36 + length).CopyTo(output, 4);
+            Encoding.ASCII.GetBytes("WAVEfmt ").CopyTo(output, 8);
+            BitConverter.GetBytes(16).CopyTo(output, 16);
+            formatChunk.CopyTo(output, 20);
+            Encoding.ASCII.GetBytes("data").CopyTo(output, 36);
+            BitConverter.GetBytes(length).CopyTo(output, 40);
+            Buffer.BlockCopy(source, dataOffset + skip, output, 44, length);
+            return output;
         }
 #endif
 

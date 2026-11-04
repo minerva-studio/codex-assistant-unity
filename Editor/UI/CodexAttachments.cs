@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.UIElements;
 
 namespace Minerva.Codex
@@ -25,8 +26,12 @@ namespace Minerva.Codex
             "data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+",
             RegexOptions.Compiled);
 
-        static readonly Regex AudioPath = new Regex(
-            "([A-Za-z]:[\\\\/][^\\s\"'<>)\\]]+\\.(?:wav|mp3|ogg|aiff|flac))",
+        static readonly Regex AudioInCode = new Regex(
+            "`([^`]+\\.(?:wav|mp3|ogg|aiff|flac))`",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        static readonly Regex AudioBare = new Regex(
+            "([A-Za-z]:\\\\[^\\r\\n`\"<>|]+\\.(?:wav|mp3|ogg|aiff|flac))",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         static readonly Dictionary<string, Texture2D> s_Textures = new Dictionary<string, Texture2D>();
@@ -67,16 +72,22 @@ namespace Minerva.Codex
                 cleaned = cleaned.Replace(match.Value, string.Empty);
             }
 
-            foreach (Match match in AudioPath.Matches(text))
+            CollectAudio(text, AudioInCode, audioPaths);
+            CollectAudio(text, AudioBare, audioPaths);
+
+            return cleaned.Trim();
+        }
+
+        static void CollectAudio(string text, Regex pattern, List<string> audioPaths)
+        {
+            foreach (Match match in pattern.Matches(text))
             {
-                string path = match.Groups[1].Value;
+                string path = match.Groups[1].Value.Trim().TrimEnd('.', ',', ';', ':');
                 if (!audioPaths.Contains(path) && File.Exists(path))
                 {
                     audioPaths.Add(path);
                 }
             }
-
-            return cleaned.Trim();
         }
 
         public static void Render(VisualElement parent, IReadOnlyList<Texture2D> images, IReadOnlyList<string> audioPaths)
@@ -203,6 +214,78 @@ namespace Minerva.Codex
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Loads WAV synchronously and other formats through Unity's audio importer,
+        /// which runs asynchronously on the editor update loop.
+        /// </summary>
+        public static void LoadClipAsync(string path, Action<AudioClip> onLoaded)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                onLoaded?.Invoke(null);
+                return;
+            }
+
+            if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                onLoaded?.Invoke(LoadClip(path));
+                return;
+            }
+
+            if (s_Clips.TryGetValue(path, out AudioClip cached))
+            {
+                onLoaded?.Invoke(cached);
+                return;
+            }
+
+            AudioType type = AudioType.UNKNOWN;
+            if (path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase))
+            {
+                type = AudioType.OGGVORBIS;
+            }
+            else if (path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                type = AudioType.MPEG;
+            }
+            else if (path.EndsWith(".aiff", StringComparison.OrdinalIgnoreCase))
+            {
+                type = AudioType.AIFF;
+            }
+
+            var request = UnityWebRequestMultimedia.GetAudioClip(new Uri(path).AbsoluteUri, type);
+            request.SendWebRequest();
+
+            void Tick()
+            {
+                if (!request.isDone)
+                {
+                    return;
+                }
+
+                EditorApplication.update -= Tick;
+
+                AudioClip clip = null;
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    clip = DownloadHandlerAudioClip.GetContent(request);
+                    if (clip != null)
+                    {
+                        clip.hideFlags = HideFlags.DontSave;
+                        s_Clips[path] = clip;
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[CodexAudio] load failed: {request.error} ({path})");
+                }
+
+                request.Dispose();
+                onLoaded?.Invoke(clip);
+            }
+
+            EditorApplication.update += Tick;
         }
 
         /// <summary>Minimal RIFF/WAVE decoder for PCM16 and float32, which covers generated clips.</summary>
