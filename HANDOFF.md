@@ -31,10 +31,13 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - Sidebar search (`thread/search`), project/all scope filter (`cwd` on `thread/list`, client-side filtering on
   search results), archive for the selected thread, and a **New conversation** button that clears the
   selection without creating a zero-turn thread.
-- History uses `thread/turns/list` with `itemsView: "full"`, so tool usage and reasoning items are present.
-  Each stretch of process items between user/agent messages is wrapped in one collapsed `Process · N tools ·
-  M thoughts` Foldout; expanding it renders the individual collapsible steps. The settings panel can hide
-  reasoning or tool records.
+- History uses `thread/turns/list` with `itemsView: "full"`, so tool usage, reasoning and `imageView` items
+  are present. Each stretch of process items is wrapped in one collapsed `Process · N tools · M thoughts ·
+  K replies` Foldout. Intermediate agent messages are detected by `phase` (`commentary` is always process;
+  `final_answer` is always visible; missing/`partial_answer` is visible only when it is the last agent
+  message in the turn). Final answers stay as normal bubbles. Expanding Process shows reasoning inline (no
+  nested Thinking foldout) and renders `imageView` paths through `CodexMedia.RenderImage`. The settings panel
+  can hide reasoning or tool records.
 - Composer sends messages: no selection starts a thread, otherwise starts a turn. Enter sends, Shift+Enter
   inserts a newline, one button switches Send/Stop, and the input is disabled while running.
 - `item/agentMessage/delta` streams into a live turn rendered below history. `item/started`,

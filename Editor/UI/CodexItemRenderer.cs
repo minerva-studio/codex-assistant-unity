@@ -63,6 +63,13 @@ namespace Minerva.Codex
                     }
 
                     break;
+                case "imageView":
+                    if (showTools)
+                    {
+                        RenderImageView(parent, item);
+                    }
+
+                    break;
                 case "enteredReviewMode":
                 case "exitedReviewMode":
                     if (showTools)
@@ -114,10 +121,19 @@ namespace Minerva.Codex
                 return;
             }
 
-            Foldout foldout = Section(parent, "Thinking");
+            // The surrounding Process group already owns collapsing. Keep the
+            // thinking text visible as soon as that group is expanded.
+            var caption = new Label("Thinking");
+            caption.style.fontSize = 9;
+            caption.style.unityFontStyleAndWeight = FontStyle.Bold;
+            caption.style.color = CodexPalette.Muted;
+            caption.style.marginTop = 4;
+            caption.style.marginBottom = 2;
+            parent.Add(caption);
+
             if (!string.IsNullOrWhiteSpace(summary))
             {
-                AddMuted(foldout, summary);
+                parent.Add(CodexMarkdown.Render(summary));
             }
 
             if (!string.IsNullOrWhiteSpace(content) &&
@@ -125,14 +141,38 @@ namespace Minerva.Codex
             {
                 if (!string.IsNullOrWhiteSpace(summary))
                 {
-                    Foldout details = Section(foldout, "Full reasoning");
-                    AddMuted(details, content);
+                    var details = new Label("Full reasoning");
+                    details.style.fontSize = 9;
+                    details.style.color = CodexPalette.Muted;
+                    details.style.marginTop = 4;
+                    details.style.marginBottom = 2;
+                    parent.Add(details);
                 }
-                else
-                {
-                    AddMuted(foldout, content);
-                }
+
+                parent.Add(CodexMarkdown.Render(content));
             }
+        }
+
+        static void RenderImageView(VisualElement parent, JObject item)
+        {
+            string path = item["path"]?.Value<string>();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            VisualElement image = CodexMedia.RenderImage(path);
+            if (image == null)
+            {
+                return;
+            }
+
+            image.tooltip = path;
+            image.style.marginLeft = 4;
+            image.style.marginRight = 4;
+            image.style.marginTop = 6;
+            image.style.marginBottom = 6;
+            parent.Add(image);
         }
 
         static void RenderPlan(VisualElement parent, JObject item)

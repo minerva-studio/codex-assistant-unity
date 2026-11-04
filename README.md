@@ -32,9 +32,11 @@ tools are next.
   history so the transcript matches the stored conversation.
 - Model, reasoning effort and sandbox selectors. Their initial values come from the effective Codex config,
   and selecting a conversation syncs the values that thread actually uses.
-- Tool usage (commands, file edits, MCP calls, web searches) and thinking summaries/reasoning are grouped
-  into one collapsed **Process** row per stretch between messages. Expanding it reveals the individual
-  steps, each collapsible in turn.
+- Tool usage (commands, file edits, MCP calls, web searches), intermediate Codex replies and thinking are
+  grouped into one collapsed **Process** row per stretch; only the turn's final answer stays as a normal
+  message. Expanding the row shows the intermediate replies and thinking inline, with individual tool
+  steps still collapsible.
+- Tool screenshots (`imageView`) render as images instead of a JSON block.
 - Optional context-window indicator next to the model. It is off by default and shows the last reported token
   usage as a colored dot and percentage.
 - Changing CODEX_HOME restarts app-server and reloads its provider model catalog. **Reconnect** in Settings

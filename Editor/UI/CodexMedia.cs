@@ -94,6 +94,17 @@ namespace Minerva.Codex
             }
         }
 
+        /// <summary>Renders a standalone path, used by imageView tool items.</summary>
+        public static VisualElement RenderImage(string path)
+        {
+            return BuildImage(new CodexMediaItem
+            {
+                Kind = CodexMediaKind.Image,
+                Path = path,
+                Name = string.IsNullOrEmpty(path) ? "image" : Path.GetFileName(path),
+            });
+        }
+
         static string TokenizeSegment(string text)
         {
             text = AttachedImage.Replace(text, match =>
@@ -157,7 +168,8 @@ namespace Minerva.Codex
             Texture2D texture = LoadTexture(item);
             if (texture == null)
             {
-                var fallback = new Label(item.Name ?? "image");
+                var fallback = new Label(!string.IsNullOrEmpty(item.Path) ? item.Path : item.Name ?? "image");
+                fallback.style.whiteSpace = WhiteSpace.Normal;
                 fallback.style.fontSize = 11;
                 fallback.style.color = CodexPalette.Muted;
                 return fallback;

@@ -1388,27 +1388,58 @@ namespace Minerva.Codex
                 return;
             }
 
-            var process = new List<JObject>();
-            foreach (JToken token in items)
+            int lastAgentIndex = -1;
+            for (int index = 0; index < items.Count; index++)
             {
-                if (token is not JObject item)
+                if (items[index] is JObject item && item["type"]?.Value<string>() == "agentMessage")
+                {
+                    lastAgentIndex = index;
+                }
+            }
+
+            var process = new List<JObject>();
+            for (int index = 0; index < items.Count; index++)
+            {
+                if (items[index] is not JObject item)
                 {
                     continue;
                 }
 
                 string type = item["type"]?.Value<string>();
-                if (type == "userMessage" || type == "agentMessage")
+                if (type == "userMessage")
+                {
+                    FlushProcess(parent, process);
+                    CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
+                }
+                else if (type == "agentMessage" && IsFinalAgentMessage(item, index, lastAgentIndex))
                 {
                     FlushProcess(parent, process);
                     CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
                 }
                 else
                 {
+                    // Intermediate agent text is part of the work, not the answer.
                     process.Add(item);
                 }
             }
 
             FlushProcess(parent, process);
+        }
+
+        static bool IsFinalAgentMessage(JObject item, int index, int lastAgentIndex)
+        {
+            string phase = item["phase"]?.Value<string>();
+            if (phase == "commentary")
+            {
+                return false;
+            }
+
+            if (phase == "final_answer")
+            {
+                return true;
+            }
+
+            return index == lastAgentIndex;
         }
 
         void FlushProcess(VisualElement parent, List<JObject> items)
@@ -1420,14 +1451,20 @@ namespace Minerva.Codex
 
             int tools = 0;
             int thoughts = 0;
+            int replies = 0;
             foreach (JObject item in items)
             {
-                if (item["type"]?.Value<string>() == "reasoning")
+                string type = item["type"]?.Value<string>();
+                if (type == "reasoning")
                 {
                     if (m_ShowReasoning)
                     {
                         thoughts++;
                     }
+                }
+                else if (type == "agentMessage")
+                {
+                    replies++;
                 }
                 else if (m_ShowToolCalls)
                 {
@@ -1435,11 +1472,11 @@ namespace Minerva.Codex
                 }
             }
 
-            if (tools > 0 || thoughts > 0)
+            if (tools > 0 || thoughts > 0 || replies > 0)
             {
                 var foldout = new Foldout
                 {
-                    text = ProcessSummary(tools, thoughts),
+                    text = ProcessSummary(tools, thoughts, replies),
                     value = false,
                 };
 
@@ -1460,7 +1497,7 @@ namespace Minerva.Codex
             items.Clear();
         }
 
-        static string ProcessSummary(int tools, int thoughts)
+        static string ProcessSummary(int tools, int thoughts, int replies)
         {
             string text = "Process";
             if (tools > 0)
@@ -1471,6 +1508,11 @@ namespace Minerva.Codex
             if (thoughts > 0)
             {
                 text += thoughts == 1 ? "  ·  1 thought" : $"  ·  {thoughts} thoughts";
+            }
+
+            if (replies > 0)
+            {
+                text += replies == 1 ? "  ·  1 reply" : $"  ·  {replies} replies";
             }
 
             return text;
