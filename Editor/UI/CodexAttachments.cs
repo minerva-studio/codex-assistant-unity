@@ -217,20 +217,14 @@ namespace Minerva.Codex
         }
 
         /// <summary>
-        /// Loads WAV synchronously and other formats through Unity's audio importer,
-        /// which runs asynchronously on the editor update loop.
+        /// Loads any supported format through Unity's audio importer, which runs
+        /// asynchronously on the editor update loop and works on every editor platform.
         /// </summary>
         public static void LoadClipAsync(string path, Action<AudioClip> onLoaded)
         {
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
             {
                 onLoaded?.Invoke(null);
-                return;
-            }
-
-            if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
-            {
-                onLoaded?.Invoke(LoadClip(path));
                 return;
             }
 
@@ -241,7 +235,11 @@ namespace Minerva.Codex
             }
 
             AudioType type = AudioType.UNKNOWN;
-            if (path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase))
+            if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                type = AudioType.WAV;
+            }
+            else if (path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase))
             {
                 type = AudioType.OGGVORBIS;
             }
@@ -286,6 +284,11 @@ namespace Minerva.Codex
             }
 
             EditorApplication.update += Tick;
+        }
+
+        public static AudioClip GetCachedClip(string path)
+        {
+            return !string.IsNullOrEmpty(path) && s_Clips.TryGetValue(path, out AudioClip clip) ? clip : null;
         }
 
         /// <summary>Minimal RIFF/WAVE decoder for PCM16 and float32, which covers generated clips.</summary>
