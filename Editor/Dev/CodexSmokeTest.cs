@@ -34,7 +34,7 @@ namespace Minerva.Codex.Editor.Dev
                 Debug.Log($"{Tag} launching: {spec}");
 
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
-                Process process = CodexAppServerProcess.Start(spec, projectRoot, stderr);
+                Process process = CodexAppServerProcess.Start(spec, projectRoot, CodexPreferences.CodexHome, stderr);
                 connection = new CodexConnection(process);
                 var client = new CodexClient(connection);
 
@@ -56,8 +56,11 @@ namespace Minerva.Codex.Editor.Dev
                 JArray threads = null;
                 failure = null;
                 client.ListThreads(
-                    10,
-                    new[] { "cli", "vscode", "exec", "appServer", "unknown" },
+                    new CodexThreadQuery
+                    {
+                        Limit = 10,
+                        SourceKinds = new[] { "cli", "vscode", "exec", "appServer", "unknown" },
+                    },
                     result => threads = result,
                     error => failure = error);
                 WaitUntil(() => threads != null || failure != null, "thread/list");

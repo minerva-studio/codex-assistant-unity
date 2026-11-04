@@ -11,9 +11,28 @@ namespace Minerva.Codex
     internal sealed class CodexThreadInfo
     {
         public string Id;
+        public string Title;
         public string Preview;
+        public string Snippet;
         public string Cwd;
         public long UpdatedAt;
+    }
+
+    internal readonly struct CodexContextUsage
+    {
+        public readonly long UsedTokens;
+        public readonly long WindowTokens;
+
+        public CodexContextUsage(long usedTokens, long windowTokens)
+        {
+            UsedTokens = usedTokens;
+            WindowTokens = windowTokens;
+        }
+
+        public bool HasWindow => WindowTokens > 0;
+
+        public double Fraction =>
+            WindowTokens > 0 ? Math.Min(1.0, (double)UsedTokens / WindowTokens) : 0.0;
     }
 
     internal sealed class CodexModelInfo
@@ -41,6 +60,7 @@ namespace Minerva.Codex
     {
         const string LocalUserItemId = "local-user";
         const double StreamIntervalSeconds = 0.05;
+        const double SearchDebounceSeconds = 0.25;
         static readonly string[] SourceKinds = { "cli", "vscode", "exec", "appServer", "unknown" };
         static readonly string[] s_SandboxModes = { "read-only", "workspace-write", "danger-full-access" };
 
@@ -48,6 +68,8 @@ namespace Minerva.Codex
         readonly List<JObject> m_Turns = new List<JObject>();
         readonly List<CodexModelInfo> m_Models = new List<CodexModelInfo>();
         readonly List<string> m_Efforts = new List<string>();
+        readonly Dictionary<string, CodexContextUsage> m_ContextUsage =
+            new Dictionary<string, CodexContextUsage>();
         readonly StringBuilder m_Stderr = new StringBuilder();
 
         CodexConnection m_Connection;
@@ -56,11 +78,22 @@ namespace Minerva.Codex
         bool m_Ready;
 
         string m_ProjectRoot;
+        string m_CodexHome;
         string m_ActiveThreadId;
         string m_ActiveTurnId;
         JObject m_LiveTurn;
         string m_LiveThreadId;
         int m_TurnGeneration;
+
+        string m_SearchTerm = string.Empty;
+        CodexThreadInfo m_SelectedThreadInfo;
+        bool m_ShowAllProjects;
+        bool m_InitialSelectionDone;
+        int m_ThreadListGeneration;
+        bool m_SearchDebounceSubscribed;
+        bool m_SearchPending;
+        double m_SearchDeadline;
+        long m_ConfigContextWindow;
 
         bool m_ConfigLoaded;
         bool m_SettingsFromThread;
@@ -75,11 +108,15 @@ namespace Minerva.Codex
         public event Action Changed;
         public event Action TranscriptChanged;
         public event Action SettingsChanged;
+        public event Action ContextChanged;
 
         public string Status { get; private set; } = "Not connected";
         public string Error { get; private set; }
         public IReadOnlyList<CodexThreadInfo> Threads => m_Threads;
         public IReadOnlyList<JObject> Turns => m_Turns;
+        public string SearchTerm => m_SearchTerm;
+        public bool ShowAllProjects => m_ShowAllProjects;
+        public bool IsSearching => !string.IsNullOrWhiteSpace(m_SearchTerm);
         public string SelectedThreadId { get; private set; }
         public string SelectedCwd { get; private set; }
         public bool IsConnected => m_Ready;
@@ -106,12 +143,43 @@ namespace Minerva.Codex
         /// <summary>Thread to select after the first listing, usually restored from prefs.</summary>
         public string InitialThreadId { get; set; }
 
-        public CodexThreadInfo SelectedThread =>
-            string.IsNullOrEmpty(SelectedThreadId) ? null : FindThread(SelectedThreadId);
-
-        public void Connect(string projectRoot)
+        public CodexThreadInfo SelectedThread
         {
-            if (m_Connection != null && m_Ready)
+            get
+            {
+                if (string.IsNullOrEmpty(SelectedThreadId))
+                {
+                    return null;
+                }
+
+                return FindThread(SelectedThreadId) ??
+                       (m_SelectedThreadInfo != null && m_SelectedThreadInfo.Id == SelectedThreadId
+                           ? m_SelectedThreadInfo
+                           : null);
+            }
+        }
+
+        public CodexContextUsage? ContextUsage
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(SelectedThreadId))
+                {
+                    return null;
+                }
+
+                return m_ContextUsage.TryGetValue(SelectedThreadId, out CodexContextUsage usage)
+                    ? usage
+                    : (CodexContextUsage?)null;
+            }
+        }
+
+        public void Connect(string projectRoot, string codexHome = null)
+        {
+            string requestedHome = string.IsNullOrWhiteSpace(codexHome) ? null : codexHome.Trim();
+            bool homeChanged = !string.Equals(m_CodexHome, requestedHome, StringComparison.OrdinalIgnoreCase);
+
+            if (m_Connection != null && m_Ready && !homeChanged)
             {
                 return;
             }
@@ -121,10 +189,23 @@ namespace Minerva.Codex
                 Dispose();
             }
 
+            if (homeChanged)
+            {
+                ClearSessionForHomeChange();
+            }
+
+            m_CodexHome = requestedHome;
             m_ProjectRoot = projectRoot;
             Status = "Starting codex app-server...";
             Error = null;
             ThreadsLoaded = false;
+            m_SearchTerm = string.Empty;
+            m_ShowAllProjects = false;
+            m_InitialSelectionDone = false;
+            m_ThreadListGeneration++;
+            CancelSearchDebounce();
+            m_ContextUsage.Clear();
+            m_ConfigContextWindow = 0;
             m_ConfigLoaded = false;
             m_SettingsFromThread = false;
             m_SettingsError = null;
@@ -141,7 +222,7 @@ namespace Minerva.Codex
             try
             {
                 CodexLaunchSpec spec = CodexPaths.Resolve();
-                m_Process = CodexAppServerProcess.Start(spec, projectRoot, m_Stderr);
+                m_Process = CodexAppServerProcess.Start(spec, projectRoot, m_CodexHome, m_Stderr);
                 m_Connection = new CodexConnection(m_Process);
                 m_Connection.Disconnected += OnDisconnected;
                 m_Connection.Notification += OnNotification;
@@ -156,15 +237,146 @@ namespace Minerva.Codex
 
         public void RefreshThreads()
         {
+            CancelSearchDebounce();
+            RequestThreads();
+        }
+
+        public void SetSearchTerm(string term)
+        {
+            term ??= string.Empty;
+            if (term == m_SearchTerm)
+            {
+                return;
+            }
+
+            m_SearchTerm = term;
+            m_ThreadListGeneration++;
+            m_SearchPending = true;
+            m_SearchDeadline = EditorApplication.timeSinceStartup + SearchDebounceSeconds;
+            if (!m_SearchDebounceSubscribed)
+            {
+                m_SearchDebounceSubscribed = true;
+                EditorApplication.update += FlushSearch;
+            }
+        }
+
+        public void SetShowAllProjects(bool showAll)
+        {
+            if (m_ShowAllProjects == showAll)
+            {
+                return;
+            }
+
+            m_ShowAllProjects = showAll;
+            m_ThreadListGeneration++;
+            CancelSearchDebounce();
+            RequestThreads();
+        }
+
+        public bool ArchiveSelectedThread()
+        {
+            if (!m_Ready || IsRunning || string.IsNullOrEmpty(SelectedThreadId))
+            {
+                return false;
+            }
+
+            string threadId = SelectedThreadId;
+            Status = "Archiving conversation...";
+            Changed?.Invoke();
+
+            // A loaded thread cannot be archived persistently; unload it first.
+            m_Client.UnsubscribeThread(
+                threadId,
+                () => ArchiveThread(threadId),
+                _ => ArchiveThread(threadId));
+            return true;
+        }
+
+        void ArchiveThread(string threadId)
+        {
+            m_Client.ArchiveThread(
+                threadId,
+                () => OnThreadRemoved(threadId, "Conversation archived"),
+                OnFailed);
+        }
+
+        void RequestThreads()
+        {
             if (!m_Ready)
             {
                 return;
             }
 
-            Status = "Loading conversations...";
+            int generation = ++m_ThreadListGeneration;
+            bool searching = IsSearching;
+            Status = searching ? "Searching conversations..." : "Loading conversations...";
             Error = null;
             Changed?.Invoke();
-            m_Client.ListThreads(50, SourceKinds, OnThreadsLoaded, OnFailed);
+
+            var query = new CodexThreadQuery
+            {
+                Limit = searching ? 100 : 50,
+                SourceKinds = SourceKinds,
+                Cwd = m_ShowAllProjects ? null : m_ProjectRoot,
+                SearchTerm = m_SearchTerm.Trim(),
+                IncludeArchived = false,
+            };
+
+            if (searching)
+            {
+                m_Client.SearchThreads(
+                    query,
+                    results => OnThreadsLoaded(results, generation, true),
+                    message =>
+                    {
+                        if (generation == m_ThreadListGeneration)
+                        {
+                            OnFailed(message);
+                        }
+                    });
+            }
+            else
+            {
+                m_Client.ListThreads(
+                    query,
+                    results => OnThreadsLoaded(results, generation, false),
+                    message =>
+                    {
+                        if (generation == m_ThreadListGeneration)
+                        {
+                            OnFailed(message);
+                        }
+                    });
+            }
+        }
+
+        void FlushSearch()
+        {
+            if (!m_SearchPending)
+            {
+                CancelSearchDebounce();
+                return;
+            }
+
+            if (EditorApplication.timeSinceStartup < m_SearchDeadline)
+            {
+                return;
+            }
+
+            m_SearchPending = false;
+            CancelSearchDebounce();
+            RequestThreads();
+        }
+
+        void CancelSearchDebounce()
+        {
+            if (m_SearchDebounceSubscribed)
+            {
+                EditorApplication.update -= FlushSearch;
+                m_SearchDebounceSubscribed = false;
+            }
+
+            m_SearchPending = false;
         }
 
         public void SelectThread(string threadId)
@@ -175,10 +387,12 @@ namespace Minerva.Codex
             }
 
             SelectedThreadId = threadId;
-            SelectedCwd = FindThread(threadId)?.Cwd;
+            m_SelectedThreadInfo = FindThread(threadId);
+            SelectedCwd = m_SelectedThreadInfo?.Cwd;
             m_Turns.Clear();
             Status = "Loading conversation...";
             Changed?.Invoke();
+            ContextChanged?.Invoke();
 
             string requested = threadId;
             m_Client.ResumeThread(
@@ -194,6 +408,39 @@ namespace Minerva.Codex
             {
                 SelectThread(SelectedThreadId);
             }
+        }
+
+        /// <summary>
+        /// Clears the selection so the composer starts a fresh thread on the next send.
+        /// No thread is created until the first message.
+        /// </summary>
+        public void StartNewConversation()
+        {
+            if (!m_Ready || IsRunning)
+            {
+                return;
+            }
+
+            SelectedThreadId = null;
+            m_SelectedThreadInfo = null;
+            SelectedCwd = null;
+            m_Turns.Clear();
+            m_LiveTurn = null;
+            m_LiveThreadId = null;
+            m_ActiveThreadId = null;
+            m_ActiveTurnId = null;
+            m_InitialSelectionDone = true;
+            Error = null;
+            Status = "New conversation";
+
+            if (m_SettingsFromThread)
+            {
+                m_SettingsFromThread = false;
+                m_SettingsSource = "custom";
+            }
+
+            Changed?.Invoke();
+            ContextChanged?.Invoke();
         }
 
         /// <summary>
@@ -302,6 +549,7 @@ namespace Minerva.Codex
         {
             m_ConfigLoaded = true;
             m_SettingsError = null;
+            m_ConfigContextWindow = ReadLong(config?["model_context_window"]);
 
             if (!m_SettingsFromThread)
             {
@@ -334,6 +582,7 @@ namespace Minerva.Codex
 
             NormalizeSettings();
             SettingsChanged?.Invoke();
+            ContextChanged?.Invoke();
             Changed?.Invoke();
         }
 
@@ -466,6 +715,11 @@ namespace Minerva.Codex
                 return;
             }
 
+            if (result?["thread"] is JObject thread)
+            {
+                m_SelectedThreadInfo = Parse(thread);
+            }
+
             ApplyThreadSettings(result);
             LoadTurns(threadId);
         }
@@ -564,6 +818,7 @@ namespace Minerva.Codex
             // replaces it with the stored version.
             m_Threads.Insert(0, info);
             SelectedThreadId = threadId;
+            m_SelectedThreadInfo = info;
             SelectedCwd = info.Cwd ?? m_ProjectRoot;
             m_Turns.Clear();
             m_LiveThreadId = threadId;
@@ -635,7 +890,120 @@ namespace Minerva.Codex
                 case "turn/completed":
                     OnTurnCompleted(parameters);
                     break;
+                case "thread/archived":
+                    OnThreadRemoved(
+                        parameters["threadId"]?.Value<string>(),
+                        "Conversation archived");
+                    break;
+                case "thread/deleted":
+                    OnThreadRemoved(
+                        parameters["threadId"]?.Value<string>(),
+                        "Conversation removed");
+                    break;
+                case "thread/unarchived":
+                    RefreshThreads();
+                    break;
+                case "thread/name/updated":
+                    OnThreadNameUpdated(parameters);
+                    break;
+                case "thread/tokenUsage/updated":
+                    OnTokenUsageUpdated(parameters);
+                    break;
             }
+        }
+
+        void OnThreadNameUpdated(JObject parameters)
+        {
+            string threadId = parameters["threadId"]?.Value<string>();
+            CodexThreadInfo thread = FindThread(threadId);
+            if (thread == null)
+            {
+                return;
+            }
+
+            thread.Title = parameters["threadName"]?.Value<string>();
+            if (m_SelectedThreadInfo != null && m_SelectedThreadInfo.Id == threadId)
+            {
+                m_SelectedThreadInfo.Title = thread.Title;
+            }
+
+            Changed?.Invoke();
+        }
+
+        void OnTokenUsageUpdated(JObject parameters)
+        {
+            string threadId = parameters["threadId"]?.Value<string>();
+            if (string.IsNullOrEmpty(threadId) || parameters["tokenUsage"] is not JObject tokenUsage)
+            {
+                return;
+            }
+
+            long used = ReadLong(tokenUsage["last"]?["totalTokens"]);
+            if (used <= 0)
+            {
+                used = ReadLong(tokenUsage["total"]?["totalTokens"]);
+            }
+
+            long window = ReadLong(tokenUsage["modelContextWindow"]);
+            if (window <= 0)
+            {
+                window = m_ConfigContextWindow;
+            }
+
+            m_ContextUsage[threadId] = new CodexContextUsage(used, window);
+            if (threadId == SelectedThreadId)
+            {
+                ContextChanged?.Invoke();
+            }
+        }
+
+        void OnThreadRemoved(string threadId, string status)
+        {
+            if (string.IsNullOrEmpty(threadId))
+            {
+                return;
+            }
+
+            int index = m_Threads.FindIndex(thread => thread.Id == threadId);
+            bool selected = threadId == SelectedThreadId;
+            if (index >= 0)
+            {
+                m_Threads.RemoveAt(index);
+            }
+
+            m_ContextUsage.Remove(threadId);
+
+            if (!selected)
+            {
+                Changed?.Invoke();
+                return;
+            }
+
+            if (IsRunning)
+            {
+                IsRunning = false;
+                m_ActiveThreadId = null;
+                m_ActiveTurnId = null;
+                StopStreamingUpdates();
+            }
+
+            SelectedThreadId = null;
+            m_SelectedThreadInfo = null;
+            SelectedCwd = null;
+            m_Turns.Clear();
+            m_LiveTurn = null;
+            m_LiveThreadId = null;
+
+            if (m_Threads.Count > 0)
+            {
+                int nextIndex = Math.Min(Math.Max(index, 0), m_Threads.Count - 1);
+                SelectThread(m_Threads[nextIndex].Id);
+                return;
+            }
+
+            Status = status;
+            Changed?.Invoke();
+            ContextChanged?.Invoke();
         }
 
         void OnTurnStarted(JObject parameters)
@@ -978,19 +1346,62 @@ namespace Minerva.Codex
             LoadSettings();
         }
 
-        void OnThreadsLoaded(JArray threads)
+        void OnThreadsLoaded(JArray threads, int generation, bool isSearch)
         {
+            if (generation != m_ThreadListGeneration)
+            {
+                return;
+            }
+
             m_Threads.Clear();
             foreach (JToken token in threads)
             {
-                if (token is JObject thread)
+                if (token is not JObject result)
                 {
-                    m_Threads.Add(Parse(thread));
+                    continue;
+                }
+
+                if (isSearch)
+                {
+                    if (result["thread"] is not JObject searchThread)
+                    {
+                        continue;
+                    }
+
+                    CodexThreadInfo info = Parse(searchThread);
+                    if (!m_ShowAllProjects && !IsInCurrentProject(info.Cwd))
+                    {
+                        continue;
+                    }
+
+                    info.Snippet = result["snippet"]?.Value<string>();
+                    m_Threads.Add(info);
+                }
+                else
+                {
+                    m_Threads.Add(Parse(result));
                 }
             }
 
             ThreadsLoaded = true;
-            Status = m_Threads.Count == 1 ? "1 conversation" : $"{m_Threads.Count} conversations";
+            if (isSearch)
+            {
+                Status = m_Threads.Count switch
+                {
+                    0 => "No matches",
+                    1 => "1 match",
+                    _ => $"{m_Threads.Count} matches",
+                };
+            }
+            else if (!m_ShowAllProjects && m_Threads.Count == 0)
+            {
+                Status = "No conversations in this project";
+            }
+            else
+            {
+                Status = m_Threads.Count == 1 ? "1 conversation" : $"{m_Threads.Count} conversations";
+            }
+
             Changed?.Invoke();
 
             if (IsRunning)
@@ -1001,8 +1412,19 @@ namespace Minerva.Codex
             bool selectionStillExists =
                 !string.IsNullOrEmpty(SelectedThreadId) && FindThread(SelectedThreadId) != null;
 
+            if (m_InitialSelectionDone)
+            {
+                // Filtering and searching must not steal the open conversation.
+                return;
+            }
+
+            m_InitialSelectionDone = true;
+
             if (selectionStillExists)
             {
+                // Reconnects keep the selection while the new app-server has not
+                // loaded the thread yet; resume it before the first turn.
+                SelectThread(SelectedThreadId);
                 return;
             }
 
@@ -1022,6 +1444,20 @@ namespace Minerva.Codex
             SelectedCwd = null;
             m_Turns.Clear();
             Changed?.Invoke();
+            ContextChanged?.Invoke();
+        }
+
+        bool IsInCurrentProject(string cwd)
+        {
+            if (string.IsNullOrEmpty(cwd) || string.IsNullOrEmpty(m_ProjectRoot))
+            {
+                return false;
+            }
+
+            return string.Equals(
+                cwd.TrimEnd('\\', '/'),
+                m_ProjectRoot.TrimEnd('\\', '/'),
+                StringComparison.OrdinalIgnoreCase);
         }
 
         void OnTurnsLoaded(string threadId, JArray turns, int generation)
@@ -1063,9 +1499,12 @@ namespace Minerva.Codex
             m_LiveTurn = null;
             m_LiveThreadId = null;
             StopStreamingUpdates();
+            CancelSearchDebounce();
+            m_ContextUsage.Clear();
             Status = "Disconnected";
             Error = reason;
             Changed?.Invoke();
+            ContextChanged?.Invoke();
         }
 
         void OnSendFailed(string message)
@@ -1114,13 +1553,20 @@ namespace Minerva.Codex
             return new CodexThreadInfo
             {
                 Id = thread["id"]?.Value<string>(),
+                Title = thread["name"]?.Value<string>(),
                 Preview = thread["preview"]?.Value<string>()
-                          ?? thread["name"]?.Value<string>()
                           ?? thread["title"]?.Value<string>()
                           ?? "(untitled)",
                 Cwd = thread["cwd"]?.Value<string>(),
                 UpdatedAt = thread["updatedAt"]?.Value<long>() ?? 0,
             };
+        }
+
+        static long ReadLong(JToken token, long fallback = 0)
+        {
+            return token != null && token.Type == JTokenType.Integer
+                ? token.Value<long>()
+                : fallback;
         }
 
         static JObject NewLiveTurn(string text)
@@ -1208,6 +1654,24 @@ namespace Minerva.Codex
             return approval["granular"] != null ? "granular" : approval.ToString();
         }
 
+        void ClearSessionForHomeChange()
+        {
+            IsRunning = false;
+            SelectedThreadId = null;
+            m_SelectedThreadInfo = null;
+            SelectedCwd = null;
+            m_ActiveThreadId = null;
+            m_ActiveTurnId = null;
+            m_LiveTurn = null;
+            m_LiveThreadId = null;
+            m_Turns.Clear();
+            m_Threads.Clear();
+            m_ContextUsage.Clear();
+            ThreadsLoaded = false;
+            m_InitialSelectionDone = false;
+            StopStreamingUpdates();
+        }
+
         public void Dispose()
         {
             m_Ready = false;
@@ -1217,11 +1681,14 @@ namespace Minerva.Codex
             m_ActiveTurnId = null;
             m_LiveTurn = null;
             m_LiveThreadId = null;
+            m_SelectedThreadInfo = null;
             m_ConfigLoaded = false;
             m_SettingsFromThread = false;
             m_Models.Clear();
             m_Efforts.Clear();
+            m_ContextUsage.Clear();
             StopStreamingUpdates();
+            CancelSearchDebounce();
             m_Connection?.Dispose();
             m_Connection = null;
             m_Client = null;

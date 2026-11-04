@@ -25,6 +25,7 @@ namespace Minerva.Codex
         public static Color SendAction => Dark ? new Color(0.33f, 0.52f, 0.75f) : new Color(0.23f, 0.47f, 0.75f);
         public static Color StopAction => Dark ? new Color(0.62f, 0.25f, 0.25f) : new Color(0.72f, 0.20f, 0.20f);
         public static Color DisabledAction => Dark ? new Color(0.30f, 0.30f, 0.30f) : new Color(0.78f, 0.78f, 0.78f);
+        public static Color Warning => Dark ? new Color(0.92f, 0.72f, 0.30f) : new Color(0.62f, 0.42f, 0.05f);
         public static Color Error => Dark ? new Color(0.95f, 0.45f, 0.45f) : new Color(0.65f, 0.10f, 0.10f);
         public static Color Success => Dark ? new Color(0.45f, 0.80f, 0.50f) : new Color(0.10f, 0.45f, 0.15f);
         public static Color Border => Dark ? new Color(0.115f, 0.115f, 0.115f) : new Color(0.55f, 0.55f, 0.55f);

@@ -30,7 +30,7 @@ namespace Minerva.Codex.Editor.Dev
 
             try
             {
-                workspace.Connect(ProjectRoot);
+                workspace.Connect(ProjectRoot, CodexPreferences.CodexHome);
                 WaitUntil(() => workspace.Threads.Count > 0 || workspace.Error != null, "thread list");
 
                 if (workspace.Threads.Count == 0)
@@ -59,7 +59,7 @@ namespace Minerva.Codex.Editor.Dev
                     {
                         if (token is JObject item)
                         {
-                            CodexItemRenderer.Render(root, item);
+                            CodexItemRenderer.Render(root, item, true, true);
                             itemCount++;
                         }
                     }

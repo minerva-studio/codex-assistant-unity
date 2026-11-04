@@ -12,18 +12,23 @@
   and Shift+Enter for a newline.
 - Model, reasoning effort and sandbox selectors, seeded from `config/read`, synced from `thread/resume`, and
   sent on `thread/start` / `turn/start`.
+- Thread navigation: content search, current-project/all-projects scope, titles, archive, and a new
+  conversation action.
+- Collapsible reasoning and tool records, with settings to hide either.
+- Optional context-window indicator derived from token-usage notifications.
+- Settings panel and configurable CODEX_HOME; changing it restarts the app-server.
 
 ## Next
 
 - Approvals: command execution and file change requests, with accept/decline and session scope.
-- Thread management: new thread, rename, search, paginated history.
+- Thread management: rename, paginated history, unarchive.
 - Domain reload: reconnect to the existing thread and restore the last selection.
 
 ## Later
 
 - Unity context attachments: selection, scene snapshot, console, compile errors.
 - Unity tools: scene and asset operations with Undo, menu items, play mode control.
-- Token usage display.
+- Detailed token usage and cost display.
 
 ## Explicitly out of scope for now
 

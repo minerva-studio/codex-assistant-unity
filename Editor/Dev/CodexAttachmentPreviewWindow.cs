@@ -60,7 +60,7 @@ namespace Minerva.Codex.Editor.Dev
         static VisualElement Render(JObject item)
         {
             var root = new VisualElement();
-            CodexItemRenderer.Render(root, item);
+            CodexItemRenderer.Render(root, item, true, true);
             return root;
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -9,7 +10,7 @@ namespace Minerva.Codex
     /// <summary>Turns app-server items into UI Toolkit elements.</summary>
     internal static class CodexItemRenderer
     {
-        public static void Render(VisualElement parent, JObject item)
+        public static void Render(VisualElement parent, JObject item, bool showReasoning, bool showTools)
         {
             string type = item["type"]?.Value<string>() ?? "unknown";
             switch (type)
@@ -21,32 +22,64 @@ namespace Minerva.Codex
                     RenderAgentMessage(parent, item);
                     break;
                 case "reasoning":
-                    RenderReasoning(parent, item);
+                    if (showReasoning)
+                    {
+                        RenderReasoning(parent, item);
+                    }
+
                     break;
                 case "plan":
-                    RenderPlan(parent, item);
+                    if (showTools)
+                    {
+                        RenderPlan(parent, item);
+                    }
+
                     break;
                 case "commandExecution":
-                    RenderCommand(parent, item);
+                    if (showTools)
+                    {
+                        RenderCommand(parent, item);
+                    }
+
                     break;
                 case "fileChange":
-                    RenderFileChange(parent, item);
+                    if (showTools)
+                    {
+                        RenderFileChange(parent, item);
+                    }
+
                     break;
                 case "mcpToolCall":
-                    RenderMcpTool(parent, item);
+                    if (showTools)
+                    {
+                        RenderMcpTool(parent, item);
+                    }
+
                     break;
                 case "webSearch":
-                    RenderWebSearch(parent, item);
+                    if (showTools)
+                    {
+                        RenderWebSearch(parent, item);
+                    }
+
                     break;
                 case "enteredReviewMode":
                 case "exitedReviewMode":
-                    RenderReview(parent, item, type);
+                    if (showTools)
+                    {
+                        RenderReview(parent, item, type);
+                    }
+
                     break;
                 case "contextCompaction":
                     RenderMutedLine(parent, "Context compacted");
                     break;
                 default:
-                    RenderUnknown(parent, item, type);
+                    if (showTools)
+                    {
+                        RenderUnknown(parent, item, type);
+                    }
+
                     break;
             }
         }
@@ -74,118 +107,157 @@ namespace Minerva.Codex
 
         static void RenderReasoning(VisualElement parent, JObject item)
         {
-            string text = JoinText(item["summary"]);
-            if (string.IsNullOrWhiteSpace(text))
+            string summary = JoinText(item["summary"]);
+            string content = JoinText(item["content"]);
+            if (string.IsNullOrWhiteSpace(summary) && string.IsNullOrWhiteSpace(content))
             {
-                text = JoinText(item["content"]);
+                return;
             }
 
+            Foldout foldout = Section(parent, "Thinking");
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                AddMuted(foldout, summary);
+            }
+
+            if (!string.IsNullOrWhiteSpace(content) &&
+                !string.Equals(content.Trim(), summary.Trim(), StringComparison.Ordinal))
+            {
+                if (!string.IsNullOrWhiteSpace(summary))
+                {
+                    Foldout details = Section(foldout, "Full reasoning");
+                    AddMuted(details, content);
+                }
+                else
+                {
+                    AddMuted(foldout, content);
+                }
+            }
+        }
+
+        static void RenderPlan(VisualElement parent, JObject item)
+        {
+            string text = item["text"]?.Value<string>();
             if (string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
-            var foldout = new Foldout { text = "Reasoning", value = false };
-            foldout.style.marginLeft = 12;
-            foldout.style.marginRight = 12;
-            foldout.style.marginBottom = 6;
-
-            var label = new Label(text);
-            label.style.whiteSpace = WhiteSpace.Normal;
-            label.style.fontSize = 11;
-            label.style.color = CodexPalette.Muted;
-            foldout.Add(label);
-            parent.Add(foldout);
-        }
-
-        static void RenderPlan(VisualElement parent, JObject item)
-        {
-            VisualElement bubble = Bubble("PLAN", CodexPalette.ToolBubble);
-            AddText(bubble, item["text"]?.Value<string>());
-            parent.Add(bubble);
+            Foldout foldout = Section(parent, "Plan");
+            AddText(foldout, text);
         }
 
         static void RenderCommand(VisualElement parent, JObject item)
         {
-            string status = item["status"]?.Value<string>() ?? "";
-            VisualElement bubble = Bubble($"COMMAND  {status}".Trim(), CodexPalette.ToolBubble);
+            string command = item["command"]?.Value<string>() ?? string.Empty;
+            string title = string.IsNullOrEmpty(command) ? "Command" : $"$ {OneLine(command, 80)}";
+            Foldout foldout = Section(parent, title);
+            AddStatus(foldout, item);
 
-            string command = item["command"]?.Value<string>() ?? "";
-            var commandLabel = new Label(command);
-            commandLabel.style.whiteSpace = WhiteSpace.Normal;
-            commandLabel.style.color = CodexPalette.Text;
-            bubble.Add(commandLabel);
-
-            string output = item["aggregatedOutput"]?.Value<string>();
-            if (!string.IsNullOrEmpty(output))
+            if (!string.IsNullOrWhiteSpace(command))
             {
-                var foldout = new Foldout { text = "Output", value = false };
-                foldout.style.marginTop = 4;
-                var outputLabel = new Label(output.TrimEnd());
-                outputLabel.style.whiteSpace = WhiteSpace.Normal;
-                outputLabel.style.fontSize = 11;
-                outputLabel.style.color = CodexPalette.Muted;
-                foldout.Add(outputLabel);
-                bubble.Add(foldout);
+                AddCode(foldout, command);
             }
 
-            parent.Add(bubble);
+            string output = item["aggregatedOutput"]?.Value<string>();
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                Foldout outputSection = Section(foldout, "Output");
+                AddMuted(outputSection, output.TrimEnd());
+            }
         }
 
         static void RenderFileChange(VisualElement parent, JObject item)
         {
-            VisualElement bubble = Bubble("EDITED", CodexPalette.ToolBubble);
-            if (item["changes"] is JArray changes)
+            JArray changes = item["changes"] as JArray;
+            int count = changes?.Count ?? 0;
+            string title = count switch
             {
-                foreach (JToken change in changes)
-                {
-                    string path = change["path"]?.Value<string>() ?? "(unknown file)";
-                    string diff = change["diff"]?.Value<string>();
+                0 => "File changes",
+                1 => "Edited 1 file",
+                _ => $"Edited {count} files",
+            };
 
-                    var pathLabel = new Label(path);
-                    pathLabel.style.whiteSpace = WhiteSpace.Normal;
-                    pathLabel.style.color = CodexPalette.Text;
-                    pathLabel.style.marginTop = 2;
-                    bubble.Add(pathLabel);
-
-                    if (!string.IsNullOrEmpty(diff))
-                    {
-                        var foldout = new Foldout { text = "Diff", value = false };
-                        var diffLabel = new Label(diff);
-                        diffLabel.style.whiteSpace = WhiteSpace.Normal;
-                        diffLabel.style.fontSize = 11;
-                        diffLabel.style.color = CodexPalette.Muted;
-                        foldout.Add(diffLabel);
-                        bubble.Add(foldout);
-                    }
-                }
+            Foldout foldout = Section(parent, title);
+            AddStatus(foldout, item);
+            if (changes == null)
+            {
+                return;
             }
 
-            parent.Add(bubble);
+            foreach (JToken change in changes)
+            {
+                string path = change["path"]?.Value<string>() ?? "(unknown file)";
+                var pathLabel = new Label(path);
+                pathLabel.style.whiteSpace = WhiteSpace.Normal;
+                pathLabel.style.color = CodexPalette.Text;
+                pathLabel.style.fontSize = 10;
+                pathLabel.style.marginTop = 2;
+                foldout.Add(pathLabel);
+
+                string diff = change["diff"]?.Value<string>();
+                if (!string.IsNullOrWhiteSpace(diff))
+                {
+                    Foldout diffSection = Section(foldout, "Diff");
+                    AddCode(diffSection, diff);
+                }
+            }
         }
 
         static void RenderMcpTool(VisualElement parent, JObject item)
         {
             string server = item["server"]?.Value<string>() ?? "mcp";
             string tool = item["tool"]?.Value<string>() ?? "tool";
-            string status = item["status"]?.Value<string>() ?? "";
-            VisualElement bubble = Bubble($"MCP  {server}/{tool}  {status}".Trim(), CodexPalette.ToolBubble);
+            Foldout foldout = Section(parent, $"MCP · {server}/{tool}");
+            AddStatus(foldout, item);
 
-            string error = item["error"]?.Value<string>();
-            if (!string.IsNullOrEmpty(error))
+            JToken arguments = item["arguments"];
+            if (arguments != null && arguments.Type != JTokenType.Null)
             {
-                AddText(bubble, error);
+                Foldout argumentsSection = Section(foldout, "Arguments");
+                AddCode(argumentsSection, arguments.ToString(Formatting.Indented));
             }
 
-            parent.Add(bubble);
+            string error = item["error"] is JObject errorObject
+                ? errorObject["message"]?.Value<string>()
+                : item["error"]?.Value<string>();
+            if (!string.IsNullOrEmpty(error))
+            {
+                var errorLabel = AddMuted(foldout, error);
+                errorLabel.style.color = CodexPalette.Error;
+            }
+
+            JToken result = item["result"];
+            if (result != null && result.Type != JTokenType.Null)
+            {
+                Foldout resultSection = Section(foldout, "Result");
+                AddCode(resultSection, result.ToString(Formatting.Indented));
+            }
         }
 
         static void RenderWebSearch(VisualElement parent, JObject item)
         {
-            string query = item["query"]?.Value<string>() ?? "";
-            VisualElement bubble = Bubble("WEB SEARCH", CodexPalette.ToolBubble);
-            AddText(bubble, query);
-            parent.Add(bubble);
+            string query = item["query"]?.Value<string>() ?? string.Empty;
+            string title = string.IsNullOrEmpty(query) ? "Web search" : $"Web search · {OneLine(query, 60)}";
+            Foldout foldout = Section(parent, title);
+
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                AddMuted(foldout, query);
+            }
+
+            JToken action = item["action"];
+            if (action != null && action.Type != JTokenType.Null)
+            {
+                Foldout actionSection = Section(foldout, "Action");
+                AddCode(actionSection, action.ToString(Formatting.Indented));
+            }
+
+            if (item["results"] is JArray results && results.Count > 0)
+            {
+                Foldout resultsSection = Section(foldout, "Results");
+                AddCode(resultsSection, results.ToString(Formatting.Indented));
+            }
         }
 
         static void RenderReview(VisualElement parent, JObject item, string type)
@@ -196,24 +268,14 @@ namespace Minerva.Codex
                 return;
             }
 
-            VisualElement bubble = Bubble(type == "exitedReviewMode" ? "REVIEW" : "REVIEWING", CodexPalette.ToolBubble);
-            AddText(bubble, review);
-            parent.Add(bubble);
+            Foldout foldout = Section(parent, type == "exitedReviewMode" ? "Review" : "Reviewing");
+            AddText(foldout, review);
         }
 
         static void RenderUnknown(VisualElement parent, JObject item, string type)
         {
-            var foldout = new Foldout { text = type, value = false };
-            foldout.style.marginLeft = 12;
-            foldout.style.marginRight = 12;
-            foldout.style.marginBottom = 4;
-
-            var raw = new Label(item.ToString());
-            raw.style.whiteSpace = WhiteSpace.Normal;
-            raw.style.fontSize = 10;
-            raw.style.color = CodexPalette.Muted;
-            foldout.Add(raw);
-            parent.Add(foldout);
+            Foldout foldout = Section(parent, type);
+            AddCode(foldout, item.ToString(Formatting.Indented));
         }
 
         static void RenderMutedLine(VisualElement parent, string text)
@@ -224,6 +286,109 @@ namespace Minerva.Codex
             label.style.marginLeft = 12;
             label.style.marginBottom = 6;
             parent.Add(label);
+        }
+
+        static Foldout Section(VisualElement parent, string title)
+        {
+            var foldout = new Foldout
+            {
+                text = string.IsNullOrEmpty(title) ? "Details" : title,
+                value = false,
+            };
+
+            foldout.style.marginLeft = 12;
+            foldout.style.marginRight = 12;
+            foldout.style.marginTop = 2;
+            foldout.style.marginBottom = 6;
+            foldout.style.color = CodexPalette.Text;
+            parent.Add(foldout);
+            return foldout;
+        }
+
+        static void AddStatus(VisualElement parent, JObject item)
+        {
+            string status = item["status"]?.Value<string>();
+            string text = status;
+            if (item["exitCode"] is JValue exitCode && exitCode.Type == JTokenType.Integer)
+            {
+                text = AppendPart(text, $"exit {exitCode.Value<int>()}");
+            }
+
+            if (item["durationMs"] is JValue duration && duration.Type == JTokenType.Integer)
+            {
+                text = AppendPart(text, $"{duration.Value<long>()} ms");
+            }
+
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            var label = new Label(text);
+            label.style.fontSize = 9;
+            label.style.color = StatusColor(status);
+            label.style.marginBottom = 4;
+            parent.Add(label);
+        }
+
+        static string AppendPart(string text, string part)
+        {
+            return string.IsNullOrEmpty(text) ? part : $"{text} · {part}";
+        }
+
+        static Color StatusColor(string status)
+        {
+            return status switch
+            {
+                "completed" => CodexPalette.Success,
+                "failed" => CodexPalette.Error,
+                "declined" or "interrupted" => CodexPalette.Warning,
+                _ => CodexPalette.Muted,
+            };
+        }
+
+        static Label AddMuted(VisualElement parent, string text)
+        {
+            var label = new Label(text.TrimEnd());
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.fontSize = 11;
+            label.style.color = CodexPalette.Muted;
+            label.style.marginTop = 2;
+            label.style.marginBottom = 2;
+            parent.Add(label);
+            return label;
+        }
+
+        static void AddCode(VisualElement parent, string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            var label = new Label(text.TrimEnd());
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.backgroundColor = CodexPalette.CodeBackground;
+            label.style.color = CodexPalette.Text;
+            label.style.fontSize = 10;
+            label.style.paddingLeft = 8;
+            label.style.paddingRight = 8;
+            label.style.paddingTop = 6;
+            label.style.paddingBottom = 6;
+            label.style.marginTop = 4;
+            label.style.marginBottom = 4;
+            parent.Add(label);
+        }
+
+        static string OneLine(string text, int length)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            string singleLine = text.Replace('\n', ' ').Replace('\r', ' ');
+            return singleLine.Length <= length ? singleLine : singleLine.Substring(0, length) + "...";
         }
 
         static VisualElement Bubble(string role, Color background)

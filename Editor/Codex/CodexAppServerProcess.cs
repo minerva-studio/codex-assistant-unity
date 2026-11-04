@@ -7,7 +7,11 @@ namespace Minerva.Codex
     /// <summary>Starts <c>codex app-server</c> and keeps its stderr drained.</summary>
     internal static class CodexAppServerProcess
     {
-        public static Process Start(CodexLaunchSpec spec, string workingDirectory, StringBuilder stderr)
+        public static Process Start(
+            CodexLaunchSpec spec,
+            string workingDirectory,
+            string codexHome,
+            StringBuilder stderr)
         {
             var startInfo = new ProcessStartInfo
             {
@@ -22,6 +26,12 @@ namespace Minerva.Codex
                 StandardOutputEncoding = new UTF8Encoding(false),
                 StandardErrorEncoding = new UTF8Encoding(false),
             };
+
+            if (!string.IsNullOrWhiteSpace(codexHome))
+            {
+                // app-server reads its config, auth and threads from this directory.
+                startInfo.Environment["CODEX_HOME"] = codexHome;
+            }
 
             var process = new Process { StartInfo = startInfo };
             process.ErrorDataReceived += (_, args) =>

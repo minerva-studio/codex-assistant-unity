@@ -12,7 +12,7 @@ no conversation state of its own.
 
 | Repo | Local path | Notes |
 | --- | --- | --- |
-| https://github.com/minerva-studio/codex-assistant-unity | `C:\Users\wende\Documents\minerva-game-studio\codex-assistant-unity` | The package, `main` (composer, streaming, model settings) |
+| https://github.com/minerva-studio/codex-assistant-unity | `C:\Users\wende\Documents\minerva-game-studio\codex-assistant-unity` | The package, `main` (composer, navigation, settings, streaming) |
 | https://github.com/minerva-studio/umarkdown | `C:\Users\wende\Documents\minerva-game-studio\umarkdown` | MIT fork of helightdev/UMarkdown, `main` `de286d8` |
 
 Package name `com.minervagamestudio.codex.assistant`, Unity `6000.3`.
@@ -24,9 +24,15 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 ## What works
 
 - Transport: JSONL JSON-RPC over stdio, background reader, callbacks marshalled to the main thread.
-- `initialize`, `thread/list`, `thread/read`, `thread/resume`, `thread/turns/list`, `turn/start`,
-  `turn/interrupt`, `config/read`, `model/list` wrappers exist in `CodexClient`.
-- Window lists the threads Codex knows about (shared store), shows history, `Copy resume`.
+- `initialize`, `thread/list`, `thread/search`, `thread/read`, `thread/resume`, `thread/archive`,
+  `thread/unsubscribe`, `thread/turns/list`, `turn/start`, `turn/interrupt`, `config/read`, `model/list`
+  wrappers exist in `CodexClient`.
+- Window lists non-archived threads Codex knows about (shared store), shows titles, history and `Copy resume`.
+- Sidebar search (`thread/search`), project/all scope filter (`cwd` on `thread/list`, client-side filtering on
+  search results), archive for the selected thread, and a **New conversation** button that clears the
+  selection without creating a zero-turn thread.
+- History uses `thread/turns/list` with `itemsView: "full"`, so tool usage and reasoning items are present.
+  They render as collapsed `Foldout` sections; the settings panel can hide reasoning or tool records.
 - Composer sends messages: no selection starts a thread, otherwise starts a turn. Enter sends, Shift+Enter
   inserts a newline, one button switches Send/Stop, and the input is disabled while running.
 - `item/agentMessage/delta` streams into a live turn rendered below history. `item/started`,
@@ -70,12 +76,25 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - Settings are effective values, not hard-coded defaults. `SelectedSandbox` may be null, which means "let
   the server choose"; the selector shows **Server default** and `turn/start` omits `sandboxPolicy`.
   `workspace-write` maps to `{ type: "workspaceWrite", writableRoots: [projectRoot] }`.
+- `thread/search` is gated behind the experimental API; `initialize` declares
+  `capabilities.experimentalApi = true`. Search results are full-text with snippets, filtered to the project
+  cwd client-side when the scope is **This project**.
+- Archived threads are never listed (`archived: false`). Archiving the selected thread first calls
+  `thread/unsubscribe`, because a loaded thread's archive does not persist.
+- The sidebar never steals the open conversation on a search/scope refresh. `SelectedThread` falls back to a
+  cached thread entry when the selected thread is filtered out, so the header keeps its title.
+- Settings live in `EditorPrefs` under `Minerva.Codex.*`: context indicator (default **off**), show reasoning
+  (default on), show tool calls (default on), and CODEX_HOME (empty = process default). CODEX_HOME is set as
+  an environment variable on the app-server process; changing it disposes and reconnects the workspace.
+- Context usage comes from `thread/tokenUsage/updated` notifications. The indicator uses
+  `last.totalTokens` / `modelContextWindow` (config `model_context_window` as fallback) and stays hidden until
+  the setting is enabled.
 
 ## Next task: approvals, thread management, reconnect
 
 1. Approvals: app-server sends `ServerRequest` for command execution / file change; render accept/decline
    with session scope. `CodexConnection.ServerRequest` already exists but nothing subscribes.
-2. Thread management: new thread (clear selection without reflection), rename, search, paginated history.
+2. Thread management: rename, paginated history, unarchive view.
 3. Domain reload: reconnect to the app-server, restore the selected thread, and resume the turn view.
 4. Optional: refresh the sidebar thread entry automatically after the first turn so its preview/updatedAt
    match the store, without triggering the auto-select path in `OnThreadsLoaded`.
@@ -113,6 +132,18 @@ unity command --project-path <proj> package resolve
   `turn/start` takes `model`, `effort`, `sandboxPolicy` (object) and `approvalPolicy`.
 - The blocking smoke test cannot run `EditorApplication.update`, so throttled `TranscriptChanged` events do
   not fire there. Observe `LiveTurn` from `Changed` (which fires at completion before the reload) instead.
+- `thread/turns/list` with `itemsView: "summary"` returns only user/agent messages. Use `"full"` for tool and
+  reasoning records.
+- `thread/search` fails with code -32600 unless initialize declared `capabilities.experimentalApi = true`.
+- Archiving a loaded thread with `thread/archive` returns success but the thread reappears in `thread/list`.
+  Call `thread/unsubscribe` first, then archive. The same lock makes `codex archive <id>` fail for a thread
+  loaded by another app-server.
+- Codex 0.166 rejects `wire_api = "chat"` ("no longer supported"); only `responses` is accepted. DeepSeek's
+  native API is Chat Completions, so a Responses-to-Chat bridge is required unless the DeepSeek route exposes
+  `/responses`. A dedicated `~/.codex-ds` home with a `deepseek` provider and `deepseek.config.toml` profile
+  was created on this machine; the API key is intentionally left to the user as `DEEPSEEK_API_KEY`.
+- CODEX_HOME is inherited by app-server when the process starts. Setting an API key with `setx` after Unity is
+  already running requires a Unity restart before a newly started app-server sees it.
 - Codex Desktop groups threads by project by default; switch to chronological order to see CLI/Unity threads.
 - GitHub pushes occasionally return HTTP 500; retry. The sandbox also blocks the Windows credential helper,
   so pushing needs a wider sandbox mode.

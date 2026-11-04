@@ -16,6 +16,9 @@ namespace Minerva.Codex
     {
         const string LastThreadKey = "Minerva.Codex.LastThread";
 
+        const string ScopeProject = "This project";
+        const string ScopeAll = "All projects";
+
         CodexWorkspace m_Workspace;
         ScrollView m_ThreadList;
         ScrollView m_Transcript;
@@ -25,16 +28,29 @@ namespace Minerva.Codex
         Label m_ErrorLabel;
         Button m_RefreshButton;
         Button m_CopyButton;
+        Button m_ArchiveButton;
+        Button m_SettingsButton;
+        Button m_NewButton;
+        TextField m_SearchField;
+        DropdownField m_ScopeField;
         TextField m_Composer;
         Button m_ActionButton;
         Button m_ModelButton;
         Button m_EffortButton;
         Button m_SandboxButton;
+        VisualElement m_ContextIndicator;
+        VisualElement m_ContextDot;
+        Label m_ContextLabel;
         Label m_SettingsSourceLabel;
         VisualElement m_LiveContainer;
         VisualElement m_ComposerCard;
         VisualElement m_Popup;
         VisualElement m_PopupScrim;
+
+        bool m_ShowContextIndicator;
+        bool m_ShowReasoning = true;
+        bool m_ShowToolCalls = true;
+        string m_CodexHome;
 
         sealed class PopupItem
         {
@@ -59,28 +75,37 @@ namespace Minerva.Codex
 
         void OnEnable()
         {
+            m_ShowContextIndicator = CodexPreferences.ShowContextIndicator;
+            m_ShowReasoning = CodexPreferences.ShowReasoning;
+            m_ShowToolCalls = CodexPreferences.ShowToolCalls;
+            m_CodexHome = CodexPreferences.CodexHome;
+            CodexPreferences.Changed += OnPreferencesChanged;
+
             if (m_Workspace == null)
             {
                 m_Workspace = new CodexWorkspace();
                 m_Workspace.Changed += OnWorkspaceChanged;
                 m_Workspace.TranscriptChanged += OnTranscriptChanged;
                 m_Workspace.SettingsChanged += OnSettingsChanged;
+                m_Workspace.ContextChanged += OnContextChanged;
                 m_Workspace.InitialThreadId = EditorPrefs.GetString(LastThreadKey, string.Empty);
             }
 
             BuildUi();
-            m_Workspace.Connect(ProjectRoot);
+            m_Workspace.Connect(ProjectRoot, m_CodexHome);
         }
 
         void OnDisable()
         {
             ClosePopup();
+            CodexPreferences.Changed -= OnPreferencesChanged;
 
             if (m_Workspace != null)
             {
                 m_Workspace.Changed -= OnWorkspaceChanged;
                 m_Workspace.TranscriptChanged -= OnTranscriptChanged;
                 m_Workspace.SettingsChanged -= OnSettingsChanged;
+                m_Workspace.ContextChanged -= OnContextChanged;
                 m_Workspace.Dispose();
                 m_Workspace = null;
             }
@@ -124,6 +149,11 @@ namespace Minerva.Codex
             m_RefreshButton.style.marginLeft = 12;
             toolbar.Add(m_RefreshButton);
 
+            m_SettingsButton = new Button(CodexAssistantSettingsWindow.Open) { text = "Settings" };
+            m_SettingsButton.style.marginLeft = 6;
+            m_SettingsButton.tooltip = "Display and composer preferences";
+            toolbar.Add(m_SettingsButton);
+
             m_StatusLabel = new Label("Starting...");
             m_StatusLabel.style.marginLeft = 10;
             m_StatusLabel.style.color = CodexPalette.Muted;
@@ -141,6 +171,55 @@ namespace Minerva.Codex
             sidebar.style.borderRightWidth = 1;
             sidebar.style.borderRightColor = CodexPalette.Border;
             sidebar.style.backgroundColor = CodexPalette.Sidebar;
+
+            var filters = new VisualElement();
+            filters.style.paddingLeft = 8;
+            filters.style.paddingRight = 8;
+            filters.style.paddingTop = 8;
+            filters.style.paddingBottom = 6;
+            filters.style.borderBottomWidth = 1;
+            filters.style.borderBottomColor = CodexPalette.Border;
+
+            m_NewButton = new Button(NewConversation) { text = "+  New conversation", name = "codex-new" };
+            m_NewButton.style.height = 26;
+            m_NewButton.style.marginBottom = 6;
+            m_NewButton.style.paddingLeft = 10;
+            m_NewButton.style.paddingRight = 10;
+            m_NewButton.style.borderTopLeftRadius = 8;
+            m_NewButton.style.borderTopRightRadius = 8;
+            m_NewButton.style.borderBottomLeftRadius = 8;
+            m_NewButton.style.borderBottomRightRadius = 8;
+            m_NewButton.style.borderTopWidth = 1;
+            m_NewButton.style.borderBottomWidth = 1;
+            m_NewButton.style.borderLeftWidth = 1;
+            m_NewButton.style.borderRightWidth = 1;
+            m_NewButton.style.borderTopColor = CodexPalette.PillBorder;
+            m_NewButton.style.borderBottomColor = CodexPalette.PillBorder;
+            m_NewButton.style.borderLeftColor = CodexPalette.PillBorder;
+            m_NewButton.style.borderRightColor = CodexPalette.PillBorder;
+            m_NewButton.style.backgroundColor = CodexPalette.Pill;
+            m_NewButton.style.color = CodexPalette.Text;
+            m_NewButton.style.unityTextAlign = TextAnchor.MiddleLeft;
+            m_NewButton.tooltip = "Start a new conversation on the next message";
+            filters.Add(m_NewButton);
+
+            m_SearchField = new TextField { name = "codex-thread-search" };
+            m_SearchField.style.height = 24;
+            m_SearchField.textEdition.placeholder = "Search conversations...";
+            m_SearchField.textEdition.hidePlaceholderOnFocus = false;
+            m_SearchField.RegisterValueChangedCallback(evt => m_Workspace?.SetSearchTerm(evt.newValue));
+            filters.Add(m_SearchField);
+
+            m_ScopeField = new DropdownField { name = "codex-thread-scope" };
+            m_ScopeField.choices = new List<string> { ScopeProject, ScopeAll };
+            m_ScopeField.SetValueWithoutNotify(ScopeProject);
+            m_ScopeField.style.height = 22;
+            m_ScopeField.style.marginTop = 6;
+            m_ScopeField.tooltip = "Show conversations from this project or from every folder";
+            m_ScopeField.RegisterValueChangedCallback(evt =>
+                m_Workspace?.SetShowAllProjects(evt.newValue == ScopeAll));
+            filters.Add(m_ScopeField);
+            sidebar.Add(filters);
 
             m_ThreadList = new ScrollView(ScrollViewMode.Vertical);
             m_ThreadList.style.flexGrow = 1;
@@ -181,6 +260,12 @@ namespace Minerva.Codex
             m_HeaderMeta.style.color = CodexPalette.Muted;
             m_HeaderMeta.style.whiteSpace = WhiteSpace.Normal;
             headerText.Add(m_HeaderMeta);
+
+            m_ArchiveButton = new Button(ArchiveSelectedThread) { text = "Archive" };
+            m_ArchiveButton.style.marginLeft = 8;
+            m_ArchiveButton.SetEnabled(false);
+            m_ArchiveButton.tooltip = "Archive the selected conversation";
+            header.Add(m_ArchiveButton);
 
             m_CopyButton = new Button(CopyResumeCommand) { text = "Copy resume" };
             m_CopyButton.style.marginLeft = 8;
@@ -300,8 +385,49 @@ namespace Minerva.Codex
             spacer.style.flexGrow = 1;
             actions.Add(spacer);
 
+            m_ContextIndicator = new VisualElement { name = "codex-context" };
+            m_ContextIndicator.style.flexDirection = FlexDirection.Row;
+            m_ContextIndicator.style.alignItems = Align.Center;
+            m_ContextIndicator.style.height = 24;
+            m_ContextIndicator.style.paddingLeft = 7;
+            m_ContextIndicator.style.paddingRight = 8;
+            m_ContextIndicator.style.marginRight = 6;
+            m_ContextIndicator.style.borderTopWidth = 1;
+            m_ContextIndicator.style.borderBottomWidth = 1;
+            m_ContextIndicator.style.borderLeftWidth = 1;
+            m_ContextIndicator.style.borderRightWidth = 1;
+            m_ContextIndicator.style.borderTopColor = CodexPalette.PillBorder;
+            m_ContextIndicator.style.borderBottomColor = CodexPalette.PillBorder;
+            m_ContextIndicator.style.borderLeftColor = CodexPalette.PillBorder;
+            m_ContextIndicator.style.borderRightColor = CodexPalette.PillBorder;
+            m_ContextIndicator.style.borderTopLeftRadius = 12;
+            m_ContextIndicator.style.borderTopRightRadius = 12;
+            m_ContextIndicator.style.borderBottomLeftRadius = 12;
+            m_ContextIndicator.style.borderBottomRightRadius = 12;
+            m_ContextIndicator.style.backgroundColor = CodexPalette.Pill;
+            m_ContextIndicator.style.display = DisplayStyle.None;
+            m_ContextIndicator.tooltip = "Context window usage for the selected conversation";
+
+            m_ContextDot = new VisualElement();
+            m_ContextDot.style.width = 7;
+            m_ContextDot.style.height = 7;
+            m_ContextDot.style.marginRight = 5;
+            m_ContextDot.style.borderTopLeftRadius = 4;
+            m_ContextDot.style.borderTopRightRadius = 4;
+            m_ContextDot.style.borderBottomLeftRadius = 4;
+            m_ContextDot.style.borderBottomRightRadius = 4;
+            m_ContextDot.style.backgroundColor = CodexPalette.Muted;
+            m_ContextIndicator.Add(m_ContextDot);
+
+            m_ContextLabel = new Label("ctx —");
+            m_ContextLabel.style.fontSize = 9;
+            m_ContextLabel.style.color = CodexPalette.Muted;
+            m_ContextIndicator.Add(m_ContextLabel);
+            actions.Add(m_ContextIndicator);
+
             m_ModelButton = AddPill(actions, "codex-model", "Model");
             m_ModelButton.clicked += ShowModelMenu;
+
             m_EffortButton = AddPill(actions, "codex-effort", "Reasoning effort");
             m_EffortButton.clicked += ShowEffortMenu;
 
@@ -326,6 +452,7 @@ namespace Minerva.Codex
 
             UpdateSettingsBar();
             UpdateComposer();
+            UpdateContextIndicator();
 
             return composer;
         }
@@ -715,7 +842,7 @@ namespace Minerva.Codex
             }
             else
             {
-                m_Workspace.Connect(ProjectRoot);
+                m_Workspace.Connect(ProjectRoot, m_CodexHome);
             }
         }
 
@@ -731,11 +858,13 @@ namespace Minerva.Codex
             m_StatusLabel.style.color = string.IsNullOrEmpty(m_Workspace.Error) ? CodexPalette.Muted : CodexPalette.Error;
             m_RefreshButton.text = m_Workspace.IsConnected ? "Refresh" : "Reconnect";
 
+            UpdateSidebarFilters();
             RebuildThreadList();
             RebuildTranscript();
             UpdateHeader();
             UpdateSettingsBar();
             UpdateComposer();
+            UpdateContextIndicator();
 
             bool hasError = !string.IsNullOrEmpty(m_Workspace.Error);
             m_ErrorLabel.style.display = hasError ? DisplayStyle.Flex : DisplayStyle.None;
@@ -751,6 +880,59 @@ namespace Minerva.Codex
         {
             UpdateSettingsBar();
             UpdateComposer();
+            UpdateContextIndicator();
+        }
+
+        void OnContextChanged()
+        {
+            UpdateContextIndicator();
+        }
+
+        void OnPreferencesChanged()
+        {
+            m_ShowContextIndicator = CodexPreferences.ShowContextIndicator;
+            m_ShowReasoning = CodexPreferences.ShowReasoning;
+            m_ShowToolCalls = CodexPreferences.ShowToolCalls;
+
+            string home = CodexPreferences.CodexHome;
+            if (!string.Equals(home, m_CodexHome, StringComparison.OrdinalIgnoreCase))
+            {
+                m_CodexHome = home;
+                if (m_Workspace != null)
+                {
+                    m_Workspace.Dispose();
+                    m_Workspace.Connect(ProjectRoot, m_CodexHome);
+                }
+
+                return;
+            }
+
+            UpdateContextIndicator();
+            RebuildTranscript();
+        }
+
+        void UpdateSidebarFilters()
+        {
+            if (m_Workspace == null || m_SearchField == null)
+            {
+                return;
+            }
+
+            if (m_SearchField.value != m_Workspace.SearchTerm)
+            {
+                m_SearchField.SetValueWithoutNotify(m_Workspace.SearchTerm);
+            }
+
+            string scope = m_Workspace.ShowAllProjects ? ScopeAll : ScopeProject;
+            if (m_ScopeField.value != scope)
+            {
+                m_ScopeField.SetValueWithoutNotify(scope);
+            }
+
+            if (m_NewButton != null)
+            {
+                m_NewButton.SetEnabled(m_Workspace.IsConnected && !m_Workspace.IsRunning);
+            }
         }
 
         void UpdateSettingsBar()
@@ -811,6 +993,68 @@ namespace Minerva.Codex
             }
 
             return id;
+        }
+
+        void UpdateContextIndicator()
+        {
+            if (m_ContextIndicator == null)
+            {
+                return;
+            }
+
+            if (!m_ShowContextIndicator)
+            {
+                m_ContextIndicator.style.display = DisplayStyle.None;
+                return;
+            }
+
+            m_ContextIndicator.style.display = DisplayStyle.Flex;
+            m_ContextLabel.style.color = CodexPalette.Text;
+
+            CodexContextUsage? usage = m_Workspace?.ContextUsage;
+            if (usage == null)
+            {
+                m_ContextLabel.text = "ctx —";
+                m_ContextLabel.style.color = CodexPalette.Muted;
+                m_ContextDot.style.backgroundColor = CodexPalette.Muted;
+                m_ContextIndicator.tooltip = "Context usage appears after the next turn.";
+                return;
+            }
+
+            CodexContextUsage value = usage.Value;
+            if (!value.HasWindow)
+            {
+                m_ContextLabel.text = $"ctx {FormatTokens(value.UsedTokens)}";
+                m_ContextDot.style.backgroundColor = CodexPalette.Warning;
+                m_ContextIndicator.tooltip =
+                    $"About {value.UsedTokens:N0} context tokens; the window size is unknown.";
+                return;
+            }
+
+            int percent = (int)Math.Round(value.Fraction * 100);
+            m_ContextLabel.text = $"ctx {percent}%";
+            m_ContextDot.style.backgroundColor = value.Fraction >= 0.9
+                ? CodexPalette.Error
+                : value.Fraction >= 0.7
+                    ? CodexPalette.Warning
+                    : CodexPalette.Success;
+            m_ContextIndicator.tooltip =
+                $"Context window: {value.UsedTokens:N0} / {value.WindowTokens:N0} tokens ({percent}%).";
+        }
+
+        static string FormatTokens(long tokens)
+        {
+            if (tokens >= 1_000_000)
+            {
+                return $"{tokens / 1_000_000.0:0.#}M";
+            }
+
+            if (tokens >= 1_000)
+            {
+                return $"{tokens / 1_000.0:0.#}k";
+            }
+
+            return tokens.ToString();
         }
 
         void UpdateComposer()
@@ -890,13 +1134,73 @@ namespace Minerva.Codex
             UpdateComposer();
         }
 
+        void NewConversation()
+        {
+            if (m_Workspace == null)
+            {
+                return;
+            }
+
+            if (m_SearchField != null && !string.IsNullOrEmpty(m_SearchField.value))
+            {
+                m_SearchField.SetValueWithoutNotify(string.Empty);
+                m_Workspace.SetSearchTerm(string.Empty);
+            }
+
+            m_Workspace.StartNewConversation();
+            m_Composer?.Focus();
+        }
+
+        void ArchiveSelectedThread()
+        {
+            if (m_Workspace == null || !m_Workspace.IsConnected || m_Workspace.IsRunning)
+            {
+                return;
+            }
+
+            string threadId = m_Workspace.SelectedThreadId;
+            if (string.IsNullOrEmpty(threadId))
+            {
+                return;
+            }
+
+            string title = DisplayTitle(m_Workspace.SelectedThread);
+            if (!Application.isBatchMode &&
+                !EditorUtility.DisplayDialog(
+                    "Archive conversation",
+                    $"Archive \"{title}\"?\n\nIt will be hidden from the conversation list.",
+                    "Archive",
+                    "Cancel"))
+            {
+                return;
+            }
+
+            m_Workspace.ArchiveSelectedThread();
+        }
+
         void RebuildThreadList()
         {
             m_ThreadList.Clear();
 
             if (m_Workspace.Threads.Count == 0)
             {
-                var empty = new Label("No conversations yet.\nType a message below to start one, or start one in Codex CLI.");
+                string message;
+                if (m_Workspace.IsSearching)
+                {
+                    message = m_Workspace.ShowAllProjects
+                        ? "No conversations match your search."
+                        : "No conversations in this project match your search.\nSwitch to All projects to search everywhere.";
+                }
+                else if (!m_Workspace.ShowAllProjects)
+                {
+                    message = "No conversations in this project.\nType a message below to start one, or switch to All projects.";
+                }
+                else
+                {
+                    message = "No conversations yet.\nType a message below to start one.";
+                }
+
+                var empty = new Label(message);
                 empty.style.whiteSpace = WhiteSpace.Normal;
                 empty.style.color = CodexPalette.Muted;
                 empty.style.fontSize = 11;
@@ -934,13 +1238,36 @@ namespace Minerva.Codex
                 row.style.backgroundColor = CodexPalette.Selected;
             }
 
-            var preview = new Label(Truncate(thread.Preview, 110));
-            preview.style.whiteSpace = WhiteSpace.Normal;
-            preview.style.fontSize = 11;
-            preview.style.color = CodexPalette.Text;
-            row.Add(preview);
+            var title = new Label(DisplayTitle(thread));
+            title.style.whiteSpace = WhiteSpace.Normal;
+            title.style.fontSize = 11;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = CodexPalette.Text;
+            row.Add(title);
 
-            var meta = new Label($"{FolderName(thread.Cwd)}  ·  {Ago(thread.UpdatedAt)}");
+            string detail = !string.IsNullOrEmpty(thread.Snippet)
+                ? thread.Snippet
+                : !string.IsNullOrEmpty(thread.Title) && !string.IsNullOrEmpty(thread.Preview)
+                    ? thread.Preview
+                    : null;
+            if (!string.IsNullOrEmpty(detail))
+            {
+                string previewText = Truncate(detail, 110);
+                if (!string.Equals(previewText, DisplayTitle(thread), StringComparison.Ordinal))
+                {
+                    var preview = new Label(previewText);
+                    preview.style.whiteSpace = WhiteSpace.Normal;
+                    preview.style.fontSize = 10;
+                    preview.style.color = CodexPalette.Muted;
+                    preview.style.marginTop = 2;
+                    row.Add(preview);
+                }
+            }
+
+            string metaText = m_Workspace.ShowAllProjects
+                ? $"{FolderName(thread.Cwd)}  ·  {Ago(thread.UpdatedAt)}"
+                : Ago(thread.UpdatedAt);
+            var meta = new Label(metaText);
             meta.style.fontSize = 9;
             meta.style.color = CodexPalette.Muted;
             meta.style.marginTop = 3;
@@ -975,7 +1302,7 @@ namespace Minerva.Codex
 
             if (string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
             {
-                AddPlaceholder("Select a conversation on the left, or type a message below to start a new one.");
+                AddPlaceholder("Type a message below to start a new conversation, or select one on the left.");
                 RestoreScroll(previousOffset, stickToBottom);
                 return;
             }
@@ -1030,7 +1357,7 @@ namespace Minerva.Codex
             RestoreScroll(previousOffset, stickToBottom);
         }
 
-        static void RenderTurn(VisualElement parent, JObject turn)
+        void RenderTurn(VisualElement parent, JObject turn)
         {
             if (turn["items"] is not JArray items)
             {
@@ -1041,7 +1368,7 @@ namespace Minerva.Codex
             {
                 if (token is JObject item)
                 {
-                    CodexItemRenderer.Render(parent, item);
+                    CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
                 }
             }
         }
@@ -1079,15 +1406,21 @@ namespace Minerva.Codex
             if (selected == null)
             {
                 bool hasThread = !string.IsNullOrEmpty(m_Workspace.SelectedThreadId);
-                m_HeaderTitle.text = hasThread ? "New conversation" : "No conversation selected";
-                m_HeaderMeta.text = hasThread ? m_Workspace.SelectedThreadId : string.Empty;
+                m_HeaderTitle.text = hasThread
+                    ? "Loading conversation..."
+                    : m_Workspace.IsConnected ? "New conversation" : "No conversation selected";
+                m_HeaderMeta.text = hasThread
+                    ? m_Workspace.SelectedThreadId
+                    : m_Workspace.IsConnected ? "Send a message below to start" : string.Empty;
                 m_CopyButton.SetEnabled(hasThread);
+                m_ArchiveButton.SetEnabled(hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning);
                 return;
             }
 
-            m_HeaderTitle.text = Truncate(selected.Preview, 120);
+            m_HeaderTitle.text = DisplayTitle(selected);
             m_HeaderMeta.text = $"{selected.Cwd}  ·  {selected.Id}";
             m_CopyButton.SetEnabled(true);
+            m_ArchiveButton.SetEnabled(m_Workspace.IsConnected && !m_Workspace.IsRunning);
         }
 
         void CopyResumeCommand()
@@ -1099,6 +1432,26 @@ namespace Minerva.Codex
             }
 
             EditorGUIUtility.systemCopyBuffer = $"codex resume {threadId}";
+        }
+
+        static string DisplayTitle(CodexThreadInfo thread)
+        {
+            if (thread == null)
+            {
+                return "Conversation";
+            }
+
+            if (!string.IsNullOrWhiteSpace(thread.Title))
+            {
+                return Truncate(thread.Title.Trim(), 110);
+            }
+
+            if (!string.IsNullOrWhiteSpace(thread.Preview))
+            {
+                return Truncate(thread.Preview, 110);
+            }
+
+            return "(untitled)";
         }
 
         static string Truncate(string text, int length)

@@ -3,6 +3,16 @@ using Newtonsoft.Json.Linq;
 
 namespace Minerva.Codex
 {
+    /// <summary>Filters shared by thread listing and thread search.</summary>
+    internal sealed class CodexThreadQuery
+    {
+        public int Limit = 50;
+        public string[] SourceKinds;
+        public string Cwd;
+        public string SearchTerm;
+        public bool IncludeArchived;
+    }
+
     /// <summary>
     /// The app-server calls the assistant needs. Parameters stay as JObject so a
     /// protocol addition never breaks deserialization.
@@ -32,6 +42,11 @@ namespace Minerva.Codex
                     ["title"] = ClientTitle,
                     ["version"] = ClientVersion,
                 },
+                ["capabilities"] = new JObject
+                {
+                    // thread/search is gated behind the experimental API.
+                    ["experimentalApi"] = true,
+                },
             };
 
             m_Connection.Call("initialize", parameters, (result, error) =>
@@ -47,19 +62,60 @@ namespace Minerva.Codex
             });
         }
 
-        public void ListThreads(int limit, string[] sourceKinds, Action<JArray> onResult, Action<string> onError)
+        public void ListThreads(CodexThreadQuery query, Action<JArray> onResult, Action<string> onError)
+        {
+            var parameters = BuildThreadParameters(query);
+            if (!string.IsNullOrEmpty(query.Cwd))
+            {
+                parameters["cwd"] = query.Cwd;
+            }
+
+            Request(
+                "thread/list",
+                parameters,
+                result => onResult?.Invoke(result as JArray ?? result?["data"] as JArray),
+                onError);
+        }
+
+        public void SearchThreads(CodexThreadQuery query, Action<JArray> onResult, Action<string> onError)
+        {
+            if (string.IsNullOrWhiteSpace(query.SearchTerm))
+            {
+                onError?.Invoke("searchTerm is required for thread/search");
+                return;
+            }
+
+            var parameters = BuildThreadParameters(query);
+            parameters["searchTerm"] = query.SearchTerm;
+            Request("thread/search", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);
+        }
+
+        public void ArchiveThread(string threadId, Action onResult, Action<string> onError)
+        {
+            var parameters = new JObject { ["threadId"] = threadId };
+            Request("thread/archive", parameters, _ => onResult?.Invoke(), onError);
+        }
+
+        public void UnsubscribeThread(string threadId, Action onResult, Action<string> onError)
+        {
+            var parameters = new JObject { ["threadId"] = threadId };
+            Request("thread/unsubscribe", parameters, _ => onResult?.Invoke(), onError);
+        }
+
+        static JObject BuildThreadParameters(CodexThreadQuery query)
         {
             var parameters = new JObject
             {
-                ["limit"] = limit,
+                ["limit"] = query.Limit,
+                ["archived"] = query.IncludeArchived,
                 ["sortKey"] = "updated_at",
                 ["sortDirection"] = "desc",
             };
 
-            if (sourceKinds != null && sourceKinds.Length > 0)
+            if (query.SourceKinds != null && query.SourceKinds.Length > 0)
             {
                 var kinds = new JArray();
-                foreach (string kind in sourceKinds)
+                foreach (string kind in query.SourceKinds)
                 {
                     kinds.Add(kind);
                 }
@@ -67,7 +123,7 @@ namespace Minerva.Codex
                 parameters["sourceKinds"] = kinds;
             }
 
-            Request("thread/list", parameters, result => onResult?.Invoke(result as JArray ?? result?["data"] as JArray), onError);
+            return parameters;
         }
 
         public void ReadThread(string threadId, bool includeTurns, Action<JObject> onResult, Action<string> onError)
@@ -153,7 +209,8 @@ namespace Minerva.Codex
             {
                 ["threadId"] = threadId,
                 ["limit"] = limit,
-                ["itemsView"] = "summary",
+                // Tool and reasoning records are omitted by the summary view.
+                ["itemsView"] = "full",
             };
 
             Request("thread/turns/list", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);

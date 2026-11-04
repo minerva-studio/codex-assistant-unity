@@ -38,7 +38,7 @@ namespace Minerva.Codex.Editor.Dev
                         observedLive = text;
                     }
                 };
-                workspace.Connect(Path.GetDirectoryName(Application.dataPath));
+                workspace.Connect(Path.GetDirectoryName(Application.dataPath), CodexPreferences.CodexHome);
                 WaitUntil(() => workspace.IsConnected && workspace.ThreadsLoaded && workspace.SettingsLoaded, "thread listing and settings");
                 Debug.Log(
                     $"{Tag} connected with {workspace.Threads.Count} thread(s); " +

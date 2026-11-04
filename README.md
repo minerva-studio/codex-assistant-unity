@@ -16,20 +16,26 @@ and the same one Codex Desktop lists in its sidebar (switch it to chronological 
 
 ## Status
 
-Conversation client with a composer. The transport, shared-history reads, sending, streamed replies, stop,
-model settings and media rendering are in place and verified against Codex CLI 0.166.0 on Unity 6000.3.
-Approvals and Unity-side tools are next.
+Conversation client with a composer, searchable/archivable thread navigation, collapsible reasoning and tool
+records, and a settings panel. Verified against Codex CLI 0.166.0 on Unity 6000.3. Approvals and Unity-side
+tools are next.
 
 ## Features
 
-- Lists the threads Codex already knows about, including ones created by the CLI.
+- Lists non-archived threads Codex already knows about, including ones created by the CLI.
+- Sidebar search across thread content, a **This project / All projects** scope filter, thread titles, and
+  an **Archive** action for the selected thread. Archived threads stay hidden.
+- **New conversation** starts a thread on the first message without creating a zero-turn thread.
 - Composer at the bottom of the window: Enter sends, Shift+Enter inserts a newline, and one button switches
   between Send and Stop. Input is disabled while a turn runs.
-- Sending with no conversation selected starts a new thread on the first message.
 - Assistant replies stream into the transcript as Codex writes them; the completed turn is reloaded from
   history so the transcript matches the stored conversation.
 - Model, reasoning effort and sandbox selectors. Their initial values come from the effective Codex config,
   and selecting a conversation syncs the values that thread actually uses.
+- Tool usage (commands, file edits, MCP calls, web searches) and thinking summaries/reasoning render as
+  collapsed sections that expand in place, like the Codex app.
+- Optional context-window indicator next to the model. It is off by default and shows the last reported token
+  usage as a colored dot and percentage.
 - Renders assistant messages with markdown: headings, lists, quotes, links, tables and code blocks with
   syntax highlighting.
 - Images, audio and video appear inline, at the position the message references them:
@@ -42,8 +48,10 @@ Approvals and Unity-side tools are next.
 ## Requirements
 
 - Unity 6000.3 or newer.
-- Codex CLI installed and logged in (`codex login`). The package reuses your existing `~/.codex` state; it
-  does not implement its own login.
+- Codex CLI installed and logged in (`codex login`). By default the package reuses `~/.codex`; the CODEX_HOME
+  setting can point it at a separate home. It does not implement its own login.
+- Codex 0.166 accepts only `wire_api = "responses"` for custom providers. A provider that only exposes OpenAI
+  Chat Completions needs a Responses-to-Chat bridge in front of it.
 
 ## Install
 
@@ -61,9 +69,18 @@ https://github.com/minerva-studio/umarkdown.git?path=src/UMarkdown/Assets/Plugin
 
 ## Use
 
-Open **Window > Minerva > Codex Assistant**, pick a conversation on the left, and type in the composer at the
-bottom. The model, effort and sandbox pills apply to the next message; the sandbox defaults to the effective
-Codex config rather than a hard-coded mode. **Stop** interrupts the running turn.
+Open **Window > Minerva > Codex Assistant**. Pick a conversation on the left, or press **+ New conversation**,
+then type in the composer at the bottom. The model, effort and sandbox pills apply to the next message; the
+sandbox defaults to the effective Codex config rather than a hard-coded mode. **Stop** interrupts the running
+turn.
+
+The search field matches thread content. The scope dropdown defaults to **This project** and can show **All
+projects**. **Archive** hides the selected thread from future lists.
+
+**Settings** (also **Window > Minerva > Codex Assistant Settings**) controls the context indicator, whether
+reasoning and tool records are shown, and the CODEX_HOME used by app-server. Changing CODEX_HOME restarts and
+reconnects the app-server; an empty value means the process default (`~/.codex`). Environment variables such as
+an API key are inherited when app-server starts, so restart Unity after changing one.
 
 `Tools > Minerva > Codex > Diagnose App Server` runs the same connection path without any UI and prints the
 handshake, the thread list and one thread's turns to the Console. `Tools > Minerva > Codex > Send Smoke Test`
@@ -78,6 +95,10 @@ sends two real messages, one after creating a thread, and checks streaming and h
 - One thread should be driven from one place at a time. Codex has no cross-process lock.
 - Approval requests are not handled yet. A turn that asks to run a command or change files will wait for a
   decision the window cannot give.
+- A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving
+  between homes does not migrate conversations.
+- The context indicator needs a token-usage notification. It shows `ctx —` until the conversation has run a
+  turn with the indicator enabled.
 - Editing C# from the agent triggers a domain reload. The conversation survives (it lives in Codex), but the
   in-flight turn is interrupted and the window has to reconnect.
 - Media nodes are block level: a media reference inside a sentence splits that paragraph into
