@@ -29,12 +29,33 @@ namespace Minerva.Codex.Editor.Dev
             try
             {
                 workspace = new CodexWorkspace();
+                string observedLive = null;
+                workspace.Changed += () =>
+                {
+                    string text = AgentText(workspace.LiveTurn);
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        observedLive = text;
+                    }
+                };
                 workspace.Connect(Path.GetDirectoryName(Application.dataPath));
-                WaitUntil(() => workspace.IsConnected && workspace.ThreadsLoaded, "thread listing");
-                Debug.Log($"{Tag} connected with {workspace.Threads.Count} thread(s)");
+                WaitUntil(() => workspace.IsConnected && workspace.ThreadsLoaded && workspace.SettingsLoaded, "thread listing and settings");
+                Debug.Log(
+                    $"{Tag} connected with {workspace.Threads.Count} thread(s); " +
+                    $"model={workspace.SelectedModel} effort={workspace.SelectedEffort} " +
+                    $"sandbox={workspace.SelectedSandbox} approval={workspace.ApprovalDisplay} " +
+                    $"source={workspace.SettingsSource}");
+
+                if (string.IsNullOrEmpty(workspace.SelectedModel) ||
+                    string.IsNullOrEmpty(workspace.SelectedEffort) ||
+                    string.IsNullOrEmpty(workspace.SelectedSandbox))
+                {
+                    throw new InvalidOperationException("the effective config did not provide model/effort/sandbox");
+                }
 
                 // Clear the selection so the send exercises the lazy thread/start path.
                 ForceNoSelection(workspace);
+                observedLive = null;
                 Debug.Log($"{Tag} sending first message without a thread");
                 if (!workspace.SendMessage(Prompt))
                 {
@@ -47,7 +68,15 @@ namespace Minerva.Codex.Editor.Dev
                     throw new InvalidOperationException($"first turn failed: {workspace.Error}");
                 }
 
-                WaitUntil(() => workspace.Turns.Count >= 1, "first history reload");
+                // The blocking wait cannot run the throttled transcript updates, so
+                // Changed is where the live turn is observed before the reload.
+                Debug.Log($"{Tag} first stream: live={Trim(observedLive, 80)}");
+                if (string.IsNullOrEmpty(observedLive))
+                {
+                    throw new InvalidOperationException("the live turn has no streamed agent text");
+                }
+
+                WaitUntil(() => workspace.Turns.Count >= 1 && workspace.LiveTurn == null, "first history reload");
                 string threadId = workspace.SelectedThreadId;
                 if (string.IsNullOrEmpty(threadId))
                 {
@@ -61,6 +90,7 @@ namespace Minerva.Codex.Editor.Dev
                     throw new InvalidOperationException("the first turn has no agent message");
                 }
 
+                observedLive = null;
                 Debug.Log($"{Tag} sending second message to the same thread");
                 if (!workspace.SendMessage(Prompt))
                 {
@@ -73,7 +103,13 @@ namespace Minerva.Codex.Editor.Dev
                     throw new InvalidOperationException($"second turn failed: {workspace.Error}");
                 }
 
-                WaitUntil(() => workspace.Turns.Count >= 2, "second history reload");
+                Debug.Log($"{Tag} second stream: live={Trim(observedLive, 80)}");
+                if (string.IsNullOrEmpty(observedLive))
+                {
+                    throw new InvalidOperationException("the second live turn has no streamed agent text");
+                }
+
+                WaitUntil(() => workspace.Turns.Count >= 2 && workspace.LiveTurn == null, "second history reload");
                 string secondReply = LastAgentText(workspace);
                 Debug.Log($"{Tag} second reply: {Trim(secondReply, 80)}");
                 if (string.IsNullOrEmpty(secondReply))
@@ -114,7 +150,11 @@ namespace Minerva.Codex.Editor.Dev
 
         static string LastAgentText(CodexWorkspace workspace)
         {
-            JObject turn = workspace.Turns.Count > 0 ? workspace.Turns[0] : null;
+            return AgentText(workspace.Turns.Count > 0 ? workspace.Turns[0] : null);
+        }
+
+        static string AgentText(JObject turn)
+        {
             JObject message = (turn?["items"] as JArray)?
                 .OfType<JObject>()
                 .LastOrDefault(item => item["type"]?.Value<string>() == "agentMessage");

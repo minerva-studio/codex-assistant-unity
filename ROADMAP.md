@@ -8,10 +8,13 @@
 - Inline media nodes: images (thumbnails), audio (play/pause, seek, elapsed), video (play/pause,
   seek, audio) placed where the message references them.
 - `Copy resume` for the selected thread.
+- Composer: send, start a thread on first send, stream assistant deltas, stop a running turn, Enter to send
+  and Shift+Enter for a newline.
+- Model, reasoning effort and sandbox selectors, seeded from `config/read`, synced from `thread/resume`, and
+  sent on `thread/start` / `turn/start`.
 
 ## Next
 
-- Composer: send a message, stream assistant deltas, stop a run.
 - Approvals: command execution and file change requests, with accept/decline and session scope.
 - Thread management: new thread, rename, search, paginated history.
 - Domain reload: reconnect to the existing thread and restore the last selection.
@@ -20,7 +23,7 @@
 
 - Unity context attachments: selection, scene snapshot, console, compile errors.
 - Unity tools: scene and asset operations with Undo, menu items, play mode control.
-- Model and mode selectors, token usage display.
+- Token usage display.
 
 ## Explicitly out of scope for now
 

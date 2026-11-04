@@ -12,7 +12,7 @@ no conversation state of its own.
 
 | Repo | Local path | Notes |
 | --- | --- | --- |
-| https://github.com/minerva-studio/codex-assistant-unity | `C:\Users\wende\Documents\minerva-game-studio\codex-assistant-unity` | The package, `main`, latest `0b90d66` |
+| https://github.com/minerva-studio/codex-assistant-unity | `C:\Users\wende\Documents\minerva-game-studio\codex-assistant-unity` | The package, `main` (composer, streaming, model settings) |
 | https://github.com/minerva-studio/umarkdown | `C:\Users\wende\Documents\minerva-game-studio\umarkdown` | MIT fork of helightdev/UMarkdown, `main` `de286d8` |
 
 Package name `com.minervagamestudio.codex.assistant`, Unity `6000.3`.
@@ -25,8 +25,19 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 
 - Transport: JSONL JSON-RPC over stdio, background reader, callbacks marshalled to the main thread.
 - `initialize`, `thread/list`, `thread/read`, `thread/resume`, `thread/turns/list`, `turn/start`,
-  `turn/interrupt` wrappers exist in `CodexClient`.
+  `turn/interrupt`, `config/read`, `model/list` wrappers exist in `CodexClient`.
 - Window lists the threads Codex knows about (shared store), shows history, `Copy resume`.
+- Composer sends messages: no selection starts a thread, otherwise starts a turn. Enter sends, Shift+Enter
+  inserts a newline, one button switches Send/Stop, and the input is disabled while running.
+- `item/agentMessage/delta` streams into a live turn rendered below history. `item/started`,
+  `item/completed` and `turn/started` keep the live turn current; `turn/completed` reloads
+  `thread/turns/list` and clears the live turn, so history wins.
+- Model, reasoning effort and sandbox pills below the input. Values start from effective `config/read`, then
+  `thread/resume { excludeTurns: true }` syncs the selected thread's `model`, `reasoningEffort`, `sandbox`
+  and `approvalPolicy`. `thread/start` gets model/sandbox/approval; `turn/start` gets model/effort/
+  `sandboxPolicy`/approval.
+- `Tools/Minerva/Codex/Send Smoke Test` exercises a lazy thread/start, a second turn, live text, and history
+  reconciliation with real turns.
 - Markdown rendering through the UMarkdown fork: headings, lists, quotes, links, tables, code blocks with
   syntax highlighting.
 - Inline media nodes at the position the text references them:
@@ -46,21 +57,28 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `EditorUtility.audioMasterMute` while playing.
 - Non-WAV audio is loaded through `UnityWebRequestMultimedia` and played through `AudioUtil.PlayPreviewClip`;
   this is the cross-platform path (Windows and macOS).
+- Streaming keeps the live turn separate from `m_Turns`; `LiveTurn` is only exposed when its thread is
+  selected. Deltas mutate the live item and fire a throttled `TranscriptChanged` (50 ms) that re-renders only
+  the live container; structural changes still rebuild the whole transcript. On `turn/completed` the live
+  turn is kept until the history reload replaces it, and a turn generation prevents a stale reload from
+  clearing a newer live turn.
+- The composer is a single rounded card with the pills inside it. One action button, not separate Send and
+  Stop buttons. Sandbox sits on the left; model, effort and the action sit on the right.
+- The model/effort/sandbox popup is custom UI Toolkit (rounded panel, search for models, vertical-only
+  scrolling) because `GenericDropdownMenu` opened a clipped list with a horizontal scrollbar near the window
+  bottom.
+- Settings are effective values, not hard-coded defaults. `SelectedSandbox` may be null, which means "let
+  the server choose"; the selector shows **Server default** and `turn/start` omits `sandboxPolicy`.
+  `workspace-write` maps to `{ type: "workspaceWrite", writableRoots: [projectRoot] }`.
 
-## Next task: composer, send, streaming
+## Next task: approvals, thread management, reconnect
 
-1. `CodexWorkspace.SendMessage(string text)`
-   - No thread selected: `thread/start` first. Create lazily on first send; zero-turn threads are not persisted.
-   - Otherwise `turn/start` with `{ threadId, input: [{ type: "text", text }] }`.
-2. Subscribe to notifications: `turn/started`, `item/started`, `item/agentMessage/delta`, `item/completed`,
-   `turn/completed`. Assemble the live assistant item from deltas.
-3. On `turn/completed`, reload `thread/turns/list`; history is the source of truth.
-4. UI: composer at the bottom (Enter sends, Shift+Enter newline), Send/Stop, disable input while running,
-   `turn/interrupt` on Stop.
-5. Ship in two steps: first "send + wait + reload history" (proves the protocol), then add delta streaming.
-
-After that: approvals (command / file change), thread management (new, rename, search, paging), domain reload
-reconnect and resume.
+1. Approvals: app-server sends `ServerRequest` for command execution / file change; render accept/decline
+   with session scope. `CodexConnection.ServerRequest` already exists but nothing subscribes.
+2. Thread management: new thread (clear selection without reflection), rename, search, paginated history.
+3. Domain reload: reconnect to the app-server, restore the selected thread, and resume the turn view.
+4. Optional: refresh the sidebar thread entry automatically after the first turn so its preview/updatedAt
+   match the store, without triggering the auto-select path in `OnThreadsLoaded`.
 
 ## Workflow that works on this machine
 
@@ -86,8 +104,18 @@ unity command --project-path <proj> package resolve
   Use `typeof(UnityEditor.Editor)`.
 - Package classes are `internal`; `script eval` can only touch public types directly.
 - `thread/list` defaults to interactive sources; pass `sourceKinds` explicitly when listing.
+- `config/read` returns the effective config only with `cwd` set; use the project root. `model/list` needs
+  `includeHidden: true` or the effective model can be missing from the catalog.
+- `thread/resume` with `excludeTurns: true` is the cheap way to sync a thread's effective settings and make
+  `turn/start` safe on threads this process did not create. It returns `model`, `reasoningEffort`, `sandbox`
+  (a policy object, not the mode string) and `approvalPolicy` at the top level.
+- `thread/start` takes `model`, `sandbox` (mode string) and `approvalPolicy`; it has no effort parameter.
+  `turn/start` takes `model`, `effort`, `sandboxPolicy` (object) and `approvalPolicy`.
+- The blocking smoke test cannot run `EditorApplication.update`, so throttled `TranscriptChanged` events do
+  not fire there. Observe `LiveTurn` from `Changed` (which fires at completion before the reload) instead.
 - Codex Desktop groups threads by project by default; switch to chronological order to see CLI/Unity threads.
-- GitHub pushes occasionally return HTTP 500; retry.
+- GitHub pushes occasionally return HTTP 500; retry. The sandbox also blocks the Windows credential helper,
+  so pushing needs a wider sandbox mode.
 
 ## Commit convention
 

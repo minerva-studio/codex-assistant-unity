@@ -16,12 +16,20 @@ and the same one Codex Desktop lists in its sidebar (switch it to chronological 
 
 ## Status
 
-Read-only conversation browser. The transport, shared-history reads and media rendering are in place and
-verified against Codex CLI 0.166.0 on Unity 6000.3. Sending messages, approvals and Unity-side tools are next.
+Conversation client with a composer. The transport, shared-history reads, sending, streamed replies, stop,
+model settings and media rendering are in place and verified against Codex CLI 0.166.0 on Unity 6000.3.
+Approvals and Unity-side tools are next.
 
 ## Features
 
 - Lists the threads Codex already knows about, including ones created by the CLI.
+- Composer at the bottom of the window: Enter sends, Shift+Enter inserts a newline, and one button switches
+  between Send and Stop. Input is disabled while a turn runs.
+- Sending with no conversation selected starts a new thread on the first message.
+- Assistant replies stream into the transcript as Codex writes them; the completed turn is reloaded from
+  history so the transcript matches the stored conversation.
+- Model, reasoning effort and sandbox selectors. Their initial values come from the effective Codex config,
+  and selecting a conversation syncs the values that thread actually uses.
 - Renders assistant messages with markdown: headings, lists, quotes, links, tables and code blocks with
   syntax highlighting.
 - Images, audio and video appear inline, at the position the message references them:
@@ -53,10 +61,13 @@ https://github.com/minerva-studio/umarkdown.git?path=src/UMarkdown/Assets/Plugin
 
 ## Use
 
-Open **Window > Minerva > Codex Assistant**, pick a conversation on the left, read it on the right.
+Open **Window > Minerva > Codex Assistant**, pick a conversation on the left, and type in the composer at the
+bottom. The model, effort and sandbox pills apply to the next message; the sandbox defaults to the effective
+Codex config rather than a hard-coded mode. **Stop** interrupts the running turn.
 
 `Tools > Minerva > Codex > Diagnose App Server` runs the same connection path without any UI and prints the
-handshake, the thread list and one thread's turns to the Console.
+handshake, the thread list and one thread's turns to the Console. `Tools > Minerva > Codex > Send Smoke Test`
+sends two real messages, one after creating a thread, and checks streaming and history reload.
 
 ## Known limits
 
@@ -65,8 +76,10 @@ handshake, the thread list and one thread's turns to the Console.
 - A thread with zero turns is not persisted by recent Codex versions, so it cannot be resumed from the CLI.
   The package creates threads on the first message rather than on window open.
 - One thread should be driven from one place at a time. Codex has no cross-process lock.
+- Approval requests are not handled yet. A turn that asks to run a command or change files will wait for a
+  decision the window cannot give.
 - Editing C# from the agent triggers a domain reload. The conversation survives (it lives in Codex), but the
-  in-flight turn is interrupted.
+  in-flight turn is interrupted and the window has to reconnect.
 - Media nodes are block level: a media reference inside a sentence splits that paragraph into
   text / media / text. Character-level embedding is not supported by the text renderer.
 - Volume is not adjustable. The editor preview API exposes no volume control, and direct video audio is

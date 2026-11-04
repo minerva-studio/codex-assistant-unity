@@ -81,13 +81,28 @@ namespace Minerva.Codex
             Request("thread/read", parameters, result => onResult?.Invoke(result as JObject), onError);
         }
 
-        public void ResumeThread(string threadId, Action<JObject> onResult, Action<string> onError)
+        public void ResumeThread(
+            string threadId,
+            bool excludeTurns,
+            Action<JObject> onResult,
+            Action<string> onError)
         {
             var parameters = new JObject { ["threadId"] = threadId };
+            if (excludeTurns)
+            {
+                parameters["excludeTurns"] = true;
+            }
+
             Request("thread/resume", parameters, result => onResult?.Invoke(result as JObject), onError);
         }
 
-        public void StartThread(string cwd, Action<JObject> onResult, Action<string> onError)
+        public void StartThread(
+            string cwd,
+            string model,
+            string sandbox,
+            JToken approvalPolicy,
+            Action<JObject> onResult,
+            Action<string> onError)
         {
             var parameters = new JObject();
             if (!string.IsNullOrEmpty(cwd))
@@ -95,7 +110,41 @@ namespace Minerva.Codex
                 parameters["cwd"] = cwd;
             }
 
+            if (!string.IsNullOrEmpty(model))
+            {
+                parameters["model"] = model;
+            }
+
+            if (!string.IsNullOrEmpty(sandbox))
+            {
+                parameters["sandbox"] = sandbox;
+            }
+
+            AddIfPresent(parameters, "approvalPolicy", approvalPolicy);
+
             Request("thread/start", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        public void ReadConfig(string cwd, Action<JObject> onResult, Action<string> onError)
+        {
+            var parameters = new JObject { ["includeLayers"] = false };
+            if (!string.IsNullOrEmpty(cwd))
+            {
+                parameters["cwd"] = cwd;
+            }
+
+            Request("config/read", parameters, result => onResult?.Invoke(result?["config"] as JObject), onError);
+        }
+
+        public void ListModels(int limit, Action<JArray> onResult, Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["limit"] = limit,
+                ["includeHidden"] = true,
+            };
+
+            Request("model/list", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);
         }
 
         public void ListTurns(string threadId, int limit, Action<JArray> onResult, Action<string> onError)
@@ -110,7 +159,16 @@ namespace Minerva.Codex
             Request("thread/turns/list", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);
         }
 
-        public void StartTurn(string threadId, string text, string cwd, Action<JObject> onResult, Action<string> onError)
+        public void StartTurn(
+            string threadId,
+            string text,
+            string cwd,
+            string model,
+            string effort,
+            JObject sandboxPolicy,
+            JToken approvalPolicy,
+            Action<JObject> onResult,
+            Action<string> onError)
         {
             var parameters = new JObject
             {
@@ -127,7 +185,32 @@ namespace Minerva.Codex
                 parameters["cwd"] = cwd;
             }
 
+            if (!string.IsNullOrEmpty(model))
+            {
+                parameters["model"] = model;
+            }
+
+            if (!string.IsNullOrEmpty(effort))
+            {
+                parameters["effort"] = effort;
+            }
+
+            if (sandboxPolicy != null)
+            {
+                parameters["sandboxPolicy"] = sandboxPolicy;
+            }
+
+            AddIfPresent(parameters, "approvalPolicy", approvalPolicy);
+
             Request("turn/start", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        static void AddIfPresent(JObject target, string name, JToken value)
+        {
+            if (value != null && value.Type != JTokenType.Null)
+            {
+                target[name] = value.DeepClone();
+            }
         }
 
         public void InterruptTurn(string threadId, string turnId, Action onResult, Action<string> onError)
