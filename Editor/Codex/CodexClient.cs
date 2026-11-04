@@ -87,6 +87,17 @@ namespace Minerva.Codex
             Request("thread/resume", parameters, result => onResult?.Invoke(result as JObject), onError);
         }
 
+        public void StartThread(string cwd, Action<JObject> onResult, Action<string> onError)
+        {
+            var parameters = new JObject();
+            if (!string.IsNullOrEmpty(cwd))
+            {
+                parameters["cwd"] = cwd;
+            }
+
+            Request("thread/start", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
         public void ListTurns(string threadId, int limit, Action<JArray> onResult, Action<string> onError)
         {
             var parameters = new JObject

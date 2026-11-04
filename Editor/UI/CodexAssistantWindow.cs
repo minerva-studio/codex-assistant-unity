@@ -8,7 +8,7 @@ using UnityEngine.UIElements;
 namespace Minerva.Codex
 {
     /// <summary>
-    /// Read-only view of the Codex thread store. The window renders what
+    /// Conversation view for the Codex thread store. The window renders what
     /// <see cref="CodexWorkspace"/> exposes and never talks to the protocol itself.
     /// </summary>
     internal sealed class CodexAssistantWindow : EditorWindow
@@ -24,6 +24,9 @@ namespace Minerva.Codex
         Label m_ErrorLabel;
         Button m_RefreshButton;
         Button m_CopyButton;
+        TextField m_Composer;
+        Button m_SendButton;
+        Button m_StopButton;
 
         [MenuItem("Window/Minerva/Codex Assistant", priority = 1)]
         public static void Open()
@@ -169,6 +172,8 @@ namespace Minerva.Codex
             m_Transcript.verticalScrollerVisibility = ScrollerVisibility.Auto;
             content.Add(m_Transcript);
 
+            content.Add(BuildComposer());
+
             m_ErrorLabel = new Label(string.Empty);
             m_ErrorLabel.style.display = DisplayStyle.None;
             m_ErrorLabel.style.whiteSpace = WhiteSpace.Normal;
@@ -183,6 +188,52 @@ namespace Minerva.Codex
             content.Add(m_ErrorLabel);
 
             return content;
+        }
+
+        VisualElement BuildComposer()
+        {
+            var composer = new VisualElement();
+            composer.style.flexShrink = 0;
+            composer.style.backgroundColor = CodexPalette.Sidebar;
+            composer.style.borderTopWidth = 1;
+            composer.style.borderTopColor = CodexPalette.Border;
+            composer.style.paddingLeft = 12;
+            composer.style.paddingRight = 12;
+            composer.style.paddingTop = 8;
+            composer.style.paddingBottom = 8;
+
+            m_Composer = new TextField { multiline = true };
+            m_Composer.style.flexGrow = 1;
+            m_Composer.style.minHeight = 54;
+            m_Composer.style.maxHeight = 160;
+            m_Composer.textEdition.placeholder = "Message Codex...";
+            m_Composer.textEdition.hidePlaceholderOnFocus = true;
+            m_Composer.RegisterCallback<KeyDownEvent>(OnComposerKeyDown, TrickleDown.TrickleDown);
+            m_Composer.RegisterValueChangedCallback(_ => UpdateComposer());
+            composer.Add(m_Composer);
+
+            var actions = new VisualElement();
+            actions.style.flexDirection = FlexDirection.Row;
+            actions.style.alignItems = Align.Center;
+            actions.style.marginTop = 6;
+            composer.Add(actions);
+
+            var hint = new Label("Enter to send  ·  Shift+Enter for a new line");
+            hint.style.fontSize = 9;
+            hint.style.color = CodexPalette.Muted;
+            hint.style.flexGrow = 1;
+            actions.Add(hint);
+
+            m_StopButton = new Button(StopTurn) { text = "Stop" };
+            m_StopButton.style.marginRight = 6;
+            actions.Add(m_StopButton);
+
+            m_SendButton = new Button(SendComposer) { text = "Send" };
+            actions.Add(m_SendButton);
+
+            UpdateComposer();
+
+            return composer;
         }
 
         void RefreshOrReconnect()
@@ -217,6 +268,7 @@ namespace Minerva.Codex
             RebuildThreadList();
             RebuildTranscript();
             UpdateHeader();
+            UpdateComposer();
 
             bool hasError = !string.IsNullOrEmpty(m_Workspace.Error);
             m_ErrorLabel.style.display = hasError ? DisplayStyle.Flex : DisplayStyle.None;
@@ -228,13 +280,68 @@ namespace Minerva.Codex
             }
         }
 
+        void UpdateComposer()
+        {
+            if (m_Composer == null)
+            {
+                return;
+            }
+
+            bool ready = m_Workspace != null && m_Workspace.IsConnected && m_Workspace.ThreadsLoaded;
+            bool running = m_Workspace != null && m_Workspace.IsRunning;
+            bool hasText = !string.IsNullOrWhiteSpace(m_Composer.value);
+
+            m_Composer.SetEnabled(ready && !running);
+            m_SendButton.SetEnabled(ready && !running && hasText);
+            m_StopButton.SetEnabled(m_Workspace != null && m_Workspace.CanStop);
+        }
+
+        void OnComposerKeyDown(KeyDownEvent keyEvent)
+        {
+            if (keyEvent.keyCode != KeyCode.Return && keyEvent.keyCode != KeyCode.KeypadEnter)
+            {
+                return;
+            }
+
+            if (keyEvent.shiftKey || keyEvent.ctrlKey || keyEvent.commandKey || keyEvent.altKey)
+            {
+                return;
+            }
+
+            keyEvent.StopPropagation();
+            SendComposer();
+        }
+
+        void SendComposer()
+        {
+            if (m_Workspace == null)
+            {
+                return;
+            }
+
+            string text = m_Composer.value?.Trim();
+            if (string.IsNullOrEmpty(text) || !m_Workspace.SendMessage(text))
+            {
+                return;
+            }
+
+            m_Composer.SetValueWithoutNotify(string.Empty);
+            UpdateComposer();
+        }
+
+        void StopTurn()
+        {
+            m_Workspace?.Stop();
+            UpdateComposer();
+        }
+
         void RebuildThreadList()
         {
             m_ThreadList.Clear();
 
             if (m_Workspace.Threads.Count == 0)
             {
-                var empty = new Label("No conversations found.\nStart one in Codex CLI, then press Refresh.");
+                var empty = new Label("No conversations yet.\nType a message below to start one, or start one in Codex CLI.");
                 empty.style.whiteSpace = WhiteSpace.Normal;
                 empty.style.color = CodexPalette.Muted;
                 empty.style.fontSize = 11;
@@ -305,17 +412,25 @@ namespace Minerva.Codex
 
         void RebuildTranscript()
         {
+            Vector2 previousOffset = m_Transcript.scrollOffset;
+            bool stickToBottom = IsTranscriptAtBottom();
+
             m_Transcript.Clear();
 
             if (string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
             {
-                AddPlaceholder("Select a conversation on the left.");
+                AddPlaceholder("Select a conversation on the left, or type a message below to start a new one.");
+                RestoreScroll(previousOffset, stickToBottom);
                 return;
             }
 
             if (m_Workspace.Turns.Count == 0)
             {
-                AddPlaceholder(m_Workspace.Error == null ? "Loading conversation..." : "Could not load this conversation.");
+                string placeholder = m_Workspace.Error != null
+                    ? "Could not load this conversation."
+                    : m_Workspace.IsRunning ? "Codex is working..." : "Loading conversation...";
+                AddPlaceholder(placeholder);
+                RestoreScroll(previousOffset, stickToBottom);
                 return;
             }
 
@@ -336,6 +451,25 @@ namespace Minerva.Codex
                     }
                 }
             }
+
+            RestoreScroll(previousOffset, stickToBottom);
+        }
+
+        bool IsTranscriptAtBottom()
+        {
+            float contentHeight = m_Transcript.contentContainer.layout.height;
+            return contentHeight <= 0 ||
+                   m_Transcript.scrollOffset.y + m_Transcript.layout.height >= contentHeight - 24;
+        }
+
+        void RestoreScroll(Vector2 previousOffset, bool stickToBottom)
+        {
+            m_Transcript.schedule.Execute(() =>
+            {
+                m_Transcript.scrollOffset = stickToBottom
+                    ? new Vector2(0, m_Transcript.contentContainer.layout.height)
+                    : previousOffset;
+            });
         }
 
         void AddPlaceholder(string text)
@@ -353,9 +487,10 @@ namespace Minerva.Codex
             CodexThreadInfo selected = m_Workspace.SelectedThread;
             if (selected == null)
             {
-                m_HeaderTitle.text = "No conversation selected";
-                m_HeaderMeta.text = string.Empty;
-                m_CopyButton.SetEnabled(false);
+                bool hasThread = !string.IsNullOrEmpty(m_Workspace.SelectedThreadId);
+                m_HeaderTitle.text = hasThread ? "New conversation" : "No conversation selected";
+                m_HeaderMeta.text = hasThread ? m_Workspace.SelectedThreadId : string.Empty;
+                m_CopyButton.SetEnabled(hasThread);
                 return;
             }
 

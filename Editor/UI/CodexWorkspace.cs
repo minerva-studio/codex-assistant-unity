@@ -32,6 +32,10 @@ namespace Minerva.Codex
         Process m_Process;
         bool m_Ready;
 
+        string m_ProjectRoot;
+        string m_ActiveThreadId;
+        string m_ActiveTurnId;
+
         public event Action Changed;
 
         public string Status { get; private set; } = "Not connected";
@@ -41,6 +45,10 @@ namespace Minerva.Codex
         public string SelectedThreadId { get; private set; }
         public string SelectedCwd { get; private set; }
         public bool IsConnected => m_Ready;
+        public bool ThreadsLoaded { get; private set; }
+        public bool IsRunning { get; private set; }
+        public bool CanStop =>
+            IsRunning && !string.IsNullOrEmpty(m_ActiveThreadId) && !string.IsNullOrEmpty(m_ActiveTurnId);
 
         /// <summary>Thread to select after the first listing, usually restored from prefs.</summary>
         public string InitialThreadId { get; set; }
@@ -60,8 +68,10 @@ namespace Minerva.Codex
                 Dispose();
             }
 
+            m_ProjectRoot = projectRoot;
             Status = "Starting codex app-server...";
             Error = null;
+            ThreadsLoaded = false;
             Changed?.Invoke();
 
             try
@@ -70,6 +80,7 @@ namespace Minerva.Codex
                 m_Process = CodexAppServerProcess.Start(spec, projectRoot, m_Stderr);
                 m_Connection = new CodexConnection(m_Process);
                 m_Connection.Disconnected += OnDisconnected;
+                m_Connection.Notification += OnNotification;
                 m_Client = new CodexClient(m_Connection);
                 m_Client.Initialize(OnInitialized, OnFailed);
             }
@@ -123,6 +134,187 @@ namespace Minerva.Codex
             }
         }
 
+        /// <summary>
+        /// Sends <paramref name="text"/> to the selected thread, starting a thread
+        /// first when none is selected. Returns false when the message was not
+        /// accepted because the connection is not ready, a turn is already running,
+        /// or the text is blank.
+        /// </summary>
+        public bool SendMessage(string text)
+        {
+            if (!m_Ready || IsRunning || string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            Error = null;
+            IsRunning = true;
+            Status = "Sending message...";
+            Changed?.Invoke();
+
+            if (string.IsNullOrEmpty(SelectedThreadId))
+            {
+                StartThread(text);
+            }
+            else
+            {
+                StartTurn(SelectedThreadId, text);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Interrupts the running turn. The composer stays disabled until
+        /// app-server reports <c>turn/completed</c>.
+        /// </summary>
+        public void Stop()
+        {
+            if (!CanStop)
+            {
+                return;
+            }
+
+            m_Client.InterruptTurn(m_ActiveThreadId, m_ActiveTurnId, () => { }, OnFailed);
+            Status = "Stopping...";
+            Changed?.Invoke();
+        }
+
+        void StartThread(string text)
+        {
+            Status = "Starting conversation...";
+            Changed?.Invoke();
+            m_Client.StartThread(m_ProjectRoot, result => OnThreadStarted(result, text), OnSendFailed);
+        }
+
+        void OnThreadStarted(JObject result, string text)
+        {
+            JObject thread = result?["thread"] as JObject;
+            string threadId = thread?["id"]?.Value<string>();
+            if (string.IsNullOrEmpty(threadId))
+            {
+                OnSendFailed("thread/start returned no thread id");
+                return;
+            }
+
+            CodexThreadInfo info = Parse(thread);
+            bool hasStoredPreview =
+                !string.IsNullOrEmpty(thread["preview"]?.Value<string>()) ||
+                !string.IsNullOrEmpty(thread["name"]?.Value<string>()) ||
+                !string.IsNullOrEmpty(thread["title"]?.Value<string>());
+            if (!hasStoredPreview)
+            {
+                info.Preview = text;
+            }
+
+            // A thread is only persisted once it has a turn, so it is absent from
+            // thread/list. Show the thread app-server returned; the next refresh
+            // replaces it with the stored version.
+            m_Threads.Insert(0, info);
+            SelectedThreadId = threadId;
+            SelectedCwd = info.Cwd ?? m_ProjectRoot;
+            m_Turns.Clear();
+            Changed?.Invoke();
+            StartTurn(threadId, text);
+        }
+
+        void StartTurn(string threadId, string text)
+        {
+            m_ActiveThreadId = threadId;
+            Status = "Starting turn...";
+            Changed?.Invoke();
+
+            string requested = threadId;
+            m_Client.StartTurn(threadId, text, SelectedCwd, result =>
+            {
+                if (!IsRunning || SelectedThreadId != requested)
+                {
+                    return;
+                }
+
+                string turnId = result?["turn"]?["id"]?.Value<string>();
+                if (!string.IsNullOrEmpty(turnId))
+                {
+                    m_ActiveTurnId = turnId;
+                }
+
+                Status = "Codex is working...";
+                Changed?.Invoke();
+            }, OnSendFailed);
+        }
+
+        void OnNotification(JObject message)
+        {
+            string method = message["method"]?.Value<string>();
+            if (message["params"] is not JObject parameters)
+            {
+                return;
+            }
+
+            switch (method)
+            {
+                case "turn/started":
+                    OnTurnStarted(parameters);
+                    break;
+                case "turn/completed":
+                    OnTurnCompleted(parameters);
+                    break;
+            }
+        }
+
+        void OnTurnStarted(JObject parameters)
+        {
+            string threadId = parameters["threadId"]?.Value<string>();
+            if (threadId != SelectedThreadId)
+            {
+                return;
+            }
+
+            m_ActiveThreadId = threadId;
+            string turnId = parameters["turn"]?["id"]?.Value<string>();
+            if (!string.IsNullOrEmpty(turnId))
+            {
+                m_ActiveTurnId = turnId;
+            }
+
+            if (!IsRunning)
+            {
+                IsRunning = true;
+                Status = "Codex is working...";
+                Changed?.Invoke();
+            }
+        }
+
+        void OnTurnCompleted(JObject parameters)
+        {
+            string threadId = parameters["threadId"]?.Value<string>();
+            if (threadId != m_ActiveThreadId)
+            {
+                return;
+            }
+
+            FinishTurn(threadId);
+        }
+
+        void FinishTurn(string threadId)
+        {
+            IsRunning = false;
+            m_ActiveThreadId = null;
+            m_ActiveTurnId = null;
+
+            if (threadId != SelectedThreadId)
+            {
+                Changed?.Invoke();
+                return;
+            }
+
+            Status = "Loading conversation...";
+            Changed?.Invoke();
+
+            string requested = threadId;
+            m_Client.ListTurns(threadId, 30, turns => OnTurnsLoaded(requested, turns), OnFailed);
+        }
+
         void OnInitialized(JObject result)
         {
             m_Ready = true;
@@ -143,6 +335,7 @@ namespace Minerva.Codex
                 }
             }
 
+            ThreadsLoaded = true;
             Status = m_Threads.Count == 1 ? "1 conversation" : $"{m_Threads.Count} conversations";
             Changed?.Invoke();
 
@@ -198,9 +391,20 @@ namespace Minerva.Codex
         void OnDisconnected(string reason)
         {
             m_Ready = false;
+            IsRunning = false;
+            m_ActiveThreadId = null;
+            m_ActiveTurnId = null;
             Status = "Disconnected";
             Error = reason;
             Changed?.Invoke();
+        }
+
+        void OnSendFailed(string message)
+        {
+            IsRunning = false;
+            m_ActiveThreadId = null;
+            m_ActiveTurnId = null;
+            OnFailed(message);
         }
 
         void OnFailed(string message)
@@ -250,6 +454,10 @@ namespace Minerva.Codex
         public void Dispose()
         {
             m_Ready = false;
+            ThreadsLoaded = false;
+            IsRunning = false;
+            m_ActiveThreadId = null;
+            m_ActiveTurnId = null;
             m_Connection?.Dispose();
             m_Connection = null;
             m_Client = null;
