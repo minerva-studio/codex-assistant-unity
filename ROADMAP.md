@@ -17,8 +17,8 @@
 - Thread navigation: content search, current-project/all-projects scope, titles, archive, fork, and a new
   conversation action. New conversations get a generated title after the first turn, using an optional
   dedicated title model.
-- Subagent support: `subAgent*` threads appear in the sidebar; `collabAgentToolCall` and `subAgentActivity`
-  render as Subagent sections with Open buttons.
+- Subagent support: `subAgent*` threads are opened from their parent (not listed in the sidebar);
+  `collabAgentToolCall` and `subAgentActivity` render as Subagent sections with Open and Parent navigation.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

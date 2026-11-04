@@ -29,8 +29,9 @@ tools are next.
   first turn it generates a short title, using the conversation model or a separate title model from Settings.
 - **Fork** copies the selected conversation into a new thread and opens it. The source conversation is
   unchanged.
-- Subagent tool calls and activity render as **Subagent** sections with **Open** buttons; subagent
-  conversations are also listed in the sidebar, and the header shows **← Parent** while viewing a subagent.
+- Subagent tool calls and activity render as **Subagent** sections with **Open** buttons. Subagent threads
+  are opened from their parent item, not listed as separate sidebar conversations; the header shows
+  **← Parent** while viewing one.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of
@@ -122,8 +123,9 @@ sends two real messages, one after creating a thread, and checks streaming and h
   configured title model. If that model is unavailable, the conversation keeps its preview title.
 - **Fork** copies persisted history into an independent thread; the source is unchanged. The fork is not
   auto-titled.
-- Subagent threads appear in the sidebar and can be opened from their parent. The package does not add a
-  manual "spawn subagent" button; the model decides when to delegate using the enabled `multi_agent` tools.
+- Subagent threads are not listed in the sidebar; open one from its parent's Subagent section, then use
+  **← Parent** to return. The package does not add a manual "spawn subagent" button; the model decides when
+  to delegate using the enabled `multi_agent` tools.
 - Approval requests are not handled yet. A turn that asks to run a command or change files will wait for a
   decision the window cannot give.
 - A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving

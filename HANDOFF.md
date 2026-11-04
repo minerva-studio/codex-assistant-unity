@@ -85,13 +85,14 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   the state. One title generation runs at a time.
 - **Fork** calls `thread/fork { threadId, excludeTurns: true }`, inserts the returned thread at the top of the
   sidebar, selects it, and lets the normal resume/turns path hydrate history. A fork is not auto-titled.
-- Subagents: `thread/list` includes all `subAgent*` source kinds. `collabAgentToolCall` renders a
-  `Subagent · spawnAgent/sendInput/...` foldout with status, prompt, model/effort, agent states and receiver
-  IDs. `subAgentActivity` renders a compact started/completed row. Both expose **Open** buttons that call
-  `SelectThread` on the receiver/agent thread. The `multi_agent` feature is stable and enabled by default;
-  whether a model spawns helpers depends on the model/effort, not on this UI. `CodexThreadInfo.ParentThreadId`
-  comes from the thread's `parentThreadId`; the header shows **← Parent** for those threads and calls
-  `SelectThread(parent)`.
+- Subagents are **not sidebar conversations**. `SourceKinds` excludes every `subAgent*` kind, and
+  `OnThreadsLoaded` also drops any thread with a non-empty `ParentThreadId` from both list and search
+  results. `collabAgentToolCall` renders a `Subagent · spawnAgent/sendInput/...` foldout with status, prompt,
+  model/effort, agent states and receiver IDs. `subAgentActivity` renders a compact started/completed row.
+  Both expose **Open** buttons that call `SelectThread` on the receiver/agent thread. The `multi_agent`
+  feature is stable and enabled by default; whether a model spawns helpers depends on the model/effort, not
+  on this UI. `CodexThreadInfo.ParentThreadId` comes from the thread's `parentThreadId`; the header shows
+  **← Parent** for those threads and calls `SelectThread(parent)`.
 - `Tools/Minerva/Codex/Send Smoke Test` exercises a lazy thread/start, a second turn, live text, and history
   reconciliation with real turns.
 - Markdown rendering through the UMarkdown fork: headings, lists, quotes, links, tables, code blocks with

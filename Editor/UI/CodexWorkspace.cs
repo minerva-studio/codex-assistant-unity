@@ -69,12 +69,9 @@ namespace Minerva.Codex
         const string LocalUserItemId = "local-user";
         const double StreamIntervalSeconds = 0.05;
         const double SearchDebounceSeconds = 0.25;
-        static readonly string[] SourceKinds =
-        {
-            "cli", "vscode", "exec", "appServer",
-            "subAgent", "subAgentReview", "subAgentCompact", "subAgentThreadSpawn", "subAgentOther",
-            "unknown",
-        };
+        // Subagents are opened from their parent item and must not become
+        // separate conversations in the sidebar.
+        static readonly string[] SourceKinds = { "cli", "vscode", "exec", "appServer", "unknown" };
         static readonly string[] s_SandboxModes = { "read-only", "workspace-write", "danger-full-access" };
 
         readonly List<CodexThreadInfo> m_Threads = new List<CodexThreadInfo>();
@@ -2248,7 +2245,8 @@ namespace Minerva.Codex
                     }
 
                     CodexThreadInfo info = Parse(searchThread);
-                    if (!m_ShowAllProjects && !IsInCurrentProject(info.Cwd))
+                    if (!string.IsNullOrEmpty(info.ParentThreadId) ||
+                        (!m_ShowAllProjects && !IsInCurrentProject(info.Cwd)))
                     {
                         continue;
                     }
@@ -2258,7 +2256,11 @@ namespace Minerva.Codex
                 }
                 else
                 {
-                    m_Threads.Add(Parse(result));
+                    CodexThreadInfo info = Parse(result);
+                    if (string.IsNullOrEmpty(info.ParentThreadId))
+                    {
+                        m_Threads.Add(info);
+                    }
                 }
             }
 
