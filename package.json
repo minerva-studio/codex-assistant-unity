@@ -5,7 +5,8 @@
   "description": "Editor client for the Codex app-server protocol. Conversations live in Codex's own store, so threads can be resumed from Codex CLI and Codex Desktop.",
   "unity": "6000.3",
   "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.2.1"
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "dev.helight.umarkdown": "https://github.com/minerva-studio/umarkdown.git?path=src/UMarkdown/Assets/Plugins/UMarkdown#171fafe43912c4d7d903b7c853424c1aa42ebe19"
   },
   "keywords": [
     "codex",
