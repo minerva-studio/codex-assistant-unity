@@ -42,6 +42,7 @@ namespace Minerva.Codex
             m_PlayButton.SetEnabled(m_Clip != null);
 
             m_Progress = new CodexAudioScrubber();
+            m_Progress.style.flexBasis = 0;
             m_Progress.SeekRequested += progress =>
             {
                 if (m_Clip != null)
@@ -56,12 +57,14 @@ namespace Minerva.Codex
             m_Time.style.color = CodexPalette.Muted;
             m_Time.style.marginLeft = 6;
             m_Time.style.marginRight = 6;
-            m_Time.style.minWidth = 78;
+            m_Time.style.width = 78;
+            m_Time.style.flexShrink = 0;
 
             var name = new Label(Path.GetFileName(path));
             name.style.fontSize = 10;
             name.style.color = CodexPalette.Muted;
-            name.style.maxWidth = 140;
+            name.style.width = 140;
+            name.style.flexShrink = 0;
             name.style.overflow = Overflow.Hidden;
             name.style.textOverflow = TextOverflow.Ellipsis;
 
