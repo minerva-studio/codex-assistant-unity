@@ -76,7 +76,8 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - The composer is a single rounded card with the pills inside it. One action button, not separate Send and
   Stop buttons. Sandbox sits on the left; context, model, effort and the action sit on the right.
 - Process activity is grouped by message boundary, not shown as a flat list of tool rows. The group is
-  collapsed by default; counts subtract items hidden by the reasoning/tool settings.
+  expanded while rendering the live turn (`RenderTurn(..., isLive: true)`) and collapsed for history;
+  counts subtract items hidden by the reasoning/tool settings.
 - The model/effort/sandbox popup is custom UI Toolkit (rounded panel, search for models, vertical-only
   scrolling) because `GenericDropdownMenu` opened a clipped list with a horizontal scrollbar near the window
   bottom.

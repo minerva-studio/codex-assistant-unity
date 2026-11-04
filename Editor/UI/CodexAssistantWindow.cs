@@ -1345,14 +1345,14 @@ namespace Minerva.Codex
             // The protocol returns newest first; read oldest to newest.
             for (int turnIndex = m_Workspace.Turns.Count - 1; turnIndex >= 0; turnIndex--)
             {
-                RenderTurn(m_Transcript, m_Workspace.Turns[turnIndex]);
+                RenderTurn(m_Transcript, m_Workspace.Turns[turnIndex], false);
             }
 
             if (liveTurn != null)
             {
                 m_LiveContainer = new VisualElement();
                 m_Transcript.Add(m_LiveContainer);
-                RenderTurn(m_LiveContainer, liveTurn);
+                RenderTurn(m_LiveContainer, liveTurn, true);
             }
 
             RestoreScroll(previousOffset, stickToBottom);
@@ -1376,12 +1376,12 @@ namespace Minerva.Codex
             bool stickToBottom = IsTranscriptAtBottom();
 
             m_LiveContainer.Clear();
-            RenderTurn(m_LiveContainer, liveTurn);
+            RenderTurn(m_LiveContainer, liveTurn, true);
 
             RestoreScroll(previousOffset, stickToBottom);
         }
 
-        void RenderTurn(VisualElement parent, JObject turn)
+        void RenderTurn(VisualElement parent, JObject turn, bool isLive)
         {
             if (turn["items"] is not JArray items)
             {
@@ -1408,12 +1408,12 @@ namespace Minerva.Codex
                 string type = item["type"]?.Value<string>();
                 if (type == "userMessage")
                 {
-                    FlushProcess(parent, process);
+                    FlushProcess(parent, process, isLive);
                     CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
                 }
                 else if (type == "agentMessage" && IsFinalAgentMessage(item, index, lastAgentIndex))
                 {
-                    FlushProcess(parent, process);
+                    FlushProcess(parent, process, isLive);
                     CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
                 }
                 else
@@ -1423,7 +1423,7 @@ namespace Minerva.Codex
                 }
             }
 
-            FlushProcess(parent, process);
+            FlushProcess(parent, process, isLive);
         }
 
         static bool IsFinalAgentMessage(JObject item, int index, int lastAgentIndex)
@@ -1442,7 +1442,7 @@ namespace Minerva.Codex
             return index == lastAgentIndex;
         }
 
-        void FlushProcess(VisualElement parent, List<JObject> items)
+        void FlushProcess(VisualElement parent, List<JObject> items, bool isLive)
         {
             if (items.Count == 0)
             {
@@ -1477,7 +1477,8 @@ namespace Minerva.Codex
                 var foldout = new Foldout
                 {
                     text = ProcessSummary(tools, thoughts, replies),
-                    value = false,
+                    // Keep live work visible; history stays compact.
+                    value = isLive,
                 };
 
                 foldout.style.marginLeft = 12;
