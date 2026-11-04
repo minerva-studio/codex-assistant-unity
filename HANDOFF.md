@@ -86,6 +86,10 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - Settings live in `EditorPrefs` under `Minerva.Codex.*`: context indicator (default **off**), show reasoning
   (default on), show tool calls (default on), and CODEX_HOME (empty = process default). CODEX_HOME is set as
   an environment variable on the app-server process; changing it disposes and reconnects the workspace.
+- `CodexPreferences.ReloadRequested` is the explicit backend reload path: it disposes/restarts app-server
+  without changing the home, clearing models and reloading `config/read` + `model/list`. Settings exposes it
+  as **Reconnect**; applying an unchanged CODEX_HOME also calls it so edits to `config.toml`/`models.json`
+  are picked up.
 - Context usage comes from `thread/tokenUsage/updated` notifications. The indicator uses
   `last.totalTokens` / `modelContextWindow` (config `model_context_window` as fallback) and stays hidden until
   the setting is enabled.
@@ -141,9 +145,13 @@ unity command --project-path <proj> package resolve
 - Codex 0.166 rejects `wire_api = "chat"` ("no longer supported"); only `responses` is accepted. DeepSeek's
   native API is Chat Completions, so a Responses-to-Chat bridge is required unless the DeepSeek route exposes
   `/responses`. A dedicated `~/.codex-ds` home with a `deepseek` provider and `deepseek.config.toml` profile
-  was created on this machine; the API key is intentionally left to the user as `DEEPSEEK_API_KEY`.
-- CODEX_HOME is inherited by app-server when the process starts. Setting an API key with `setx` after Unity is
-  already running requires a Unity restart before a newly started app-server sees it.
+  was created on this machine. Its `model_catalog_json` must point at an existing catalog: the file is parsed
+  as `ModelsResponse { models: [...] }`. A missing file makes app-server fail config load. The catalog now
+  provides DeepSeek models; the user owns the API key in that home.
+- App-server loads `model_catalog_json` only at startup. Editing it, or changing CODEX_HOME, requires a
+  reconnect. The UI clears its model list on reconnect; `Reconnect` in Settings is the manual path.
+- CODEX_HOME and provider API keys are inherited by app-server when the process starts. Setting an API key
+  with `setx` after Unity is already running requires a Unity restart before a newly started app-server sees it.
 - Codex Desktop groups threads by project by default; switch to chronological order to see CLI/Unity threads.
 - GitHub pushes occasionally return HTTP 500; retry. The sandbox also blocks the Windows credential helper,
   so pushing needs a wider sandbox mode.

@@ -36,6 +36,8 @@ tools are next.
   collapsed sections that expand in place, like the Codex app.
 - Optional context-window indicator next to the model. It is off by default and shows the last reported token
   usage as a colored dot and percentage.
+- Changing CODEX_HOME restarts app-server and reloads its provider model catalog. **Reconnect** in Settings
+  does the same without changing the home, so edits to `config.toml` or `models.json` take effect.
 - Renders assistant messages with markdown: headings, lists, quotes, links, tables and code blocks with
   syntax highlighting.
 - Images, audio and video appear inline, at the position the message references them:
@@ -79,8 +81,9 @@ projects**. **Archive** hides the selected thread from future lists.
 
 **Settings** (also **Window > Minerva > Codex Assistant Settings**) controls the context indicator, whether
 reasoning and tool records are shown, and the CODEX_HOME used by app-server. Changing CODEX_HOME restarts and
-reconnects the app-server; an empty value means the process default (`~/.codex`). Environment variables such as
-an API key are inherited when app-server starts, so restart Unity after changing one.
+reconnects the app-server; an empty value means the process default (`~/.codex`). **Reconnect** reloads
+`config.toml`, providers and models after editing the active home. Environment variables such as an API key
+are inherited when app-server starts, so restart Unity after changing one.
 
 `Tools > Minerva > Codex > Diagnose App Server` runs the same connection path without any UI and prints the
 handshake, the thread list and one thread's turns to the Console. `Tools > Minerva > Codex > Send Smoke Test`

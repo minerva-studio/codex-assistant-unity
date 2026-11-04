@@ -13,6 +13,7 @@ namespace Minerva.Codex
         const string CodexHomeKey = Prefix + "CodexHome";
 
         public static event Action Changed;
+        public static event Action ReloadRequested;
 
         public static bool ShowContextIndicator
         {
@@ -37,6 +38,12 @@ namespace Minerva.Codex
         {
             get => EditorPrefs.GetString(CodexHomeKey, string.Empty);
             set => SetString(CodexHomeKey, value);
+        }
+
+        /// <summary>Restart app-server when config files changed without a home change.</summary>
+        public static void RequestReload()
+        {
+            ReloadRequested?.Invoke();
         }
 
         public static void ResetToDefaults()

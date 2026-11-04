@@ -127,6 +127,12 @@ namespace Minerva.Codex
             browse.style.marginRight = 6;
             homeActions.Add(browse);
 
+            var reconnect = new Button(ReconnectBackend) { text = "Reconnect" };
+            reconnect.style.flexShrink = 0;
+            reconnect.style.marginRight = 6;
+            reconnect.tooltip = "Restart app-server and reload config, providers and models";
+            homeActions.Add(reconnect);
+
             var apply = new Button(ApplyCodexHome) { text = "Apply" };
             apply.style.flexShrink = 0;
             homeActions.Add(apply);
@@ -256,11 +262,25 @@ namespace Minerva.Codex
                 }
             }
 
+            bool changed = CodexPreferences.CodexHome != value;
             CodexPreferences.CodexHome = value;
+            if (!changed)
+            {
+                // The path is the same, but config.toml/models.json may have changed.
+                CodexPreferences.RequestReload();
+            }
+
             m_CodexHomeField.SetValueWithoutNotify(value);
             m_CodexHomeStatus.text = string.IsNullOrEmpty(value)
                 ? "Using the default Codex home."
                 : "Applied. The assistant reconnects with this Codex home.";
+            m_CodexHomeStatus.style.color = CodexPalette.Success;
+        }
+
+        void ReconnectBackend()
+        {
+            CodexPreferences.RequestReload();
+            m_CodexHomeStatus.text = "Reconnect requested. Config, providers and models reload.";
             m_CodexHomeStatus.style.color = CodexPalette.Success;
         }
 

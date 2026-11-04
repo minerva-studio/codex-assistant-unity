@@ -80,6 +80,7 @@ namespace Minerva.Codex
             m_ShowToolCalls = CodexPreferences.ShowToolCalls;
             m_CodexHome = CodexPreferences.CodexHome;
             CodexPreferences.Changed += OnPreferencesChanged;
+            CodexPreferences.ReloadRequested += OnBackendReloadRequested;
 
             if (m_Workspace == null)
             {
@@ -99,6 +100,7 @@ namespace Minerva.Codex
         {
             ClosePopup();
             CodexPreferences.Changed -= OnPreferencesChanged;
+            CodexPreferences.ReloadRequested -= OnBackendReloadRequested;
 
             if (m_Workspace != null)
             {
@@ -541,6 +543,7 @@ namespace Minerva.Codex
             }
 
             var items = new List<PopupItem>();
+            bool hasSelected = false;
             foreach (CodexModelInfo model in m_Workspace.Models)
             {
                 bool selected = model.Matches(m_Workspace.SelectedModel);
@@ -549,6 +552,7 @@ namespace Minerva.Codex
                     continue;
                 }
 
+                hasSelected |= selected;
                 string id = model.Id;
                 items.Add(new PopupItem
                 {
@@ -558,13 +562,20 @@ namespace Minerva.Codex
                 });
             }
 
-            if (items.Count == 0)
+            if (!hasSelected && !string.IsNullOrEmpty(m_Workspace.SelectedModel))
+            {
+                items.Insert(0, new PopupItem
+                {
+                    Label = m_Workspace.SelectedModel,
+                    Selected = true,
+                    Action = () => { },
+                });
+            }
+            else if (items.Count == 0)
             {
                 items.Add(new PopupItem
                 {
-                    Label = string.IsNullOrEmpty(m_Workspace.SelectedModel)
-                        ? "No models available"
-                        : m_Workspace.SelectedModel,
+                    Label = "No models available",
                     Selected = true,
                     Action = () => { },
                 });
@@ -898,17 +909,30 @@ namespace Minerva.Codex
             if (!string.Equals(home, m_CodexHome, StringComparison.OrdinalIgnoreCase))
             {
                 m_CodexHome = home;
-                if (m_Workspace != null)
-                {
-                    m_Workspace.Dispose();
-                    m_Workspace.Connect(ProjectRoot, m_CodexHome);
-                }
-
+                ReloadBackend();
                 return;
             }
 
             UpdateContextIndicator();
             RebuildTranscript();
+        }
+
+        void OnBackendReloadRequested()
+        {
+            m_CodexHome = CodexPreferences.CodexHome;
+            ReloadBackend();
+        }
+
+        void ReloadBackend()
+        {
+            ClosePopup();
+            if (m_Workspace == null)
+            {
+                return;
+            }
+
+            m_Workspace.Dispose();
+            m_Workspace.Connect(ProjectRoot, m_CodexHome);
         }
 
         void UpdateSidebarFilters()
