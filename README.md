@@ -113,6 +113,8 @@ sends two real messages, one after creating a thread, and checks streaming and h
   between homes does not migrate conversations.
 - The context indicator needs a token-usage notification. It shows `ctx —` until the conversation has run a
   turn with the indicator enabled.
+- Some providers emit a reasoning placeholder with empty `summary` and `content`; the window hides it
+  instead of showing a `1 thought` row with nothing inside.
 - A domain reload or play-mode transition reconnects to the existing listener, so a running turn continues.
   **Reconnect** or a CODEX_HOME change restarts the listener on purpose; that interrupts an in-flight turn so
   the new config can be loaded.

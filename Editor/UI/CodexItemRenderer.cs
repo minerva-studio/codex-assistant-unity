@@ -112,10 +112,28 @@ namespace Minerva.Codex
             parent.Add(bubble);
         }
 
+        internal static bool HasReasoningText(JObject item)
+        {
+            ReadReasoning(item, out string summary, out string content);
+            return !string.IsNullOrEmpty(summary) || !string.IsNullOrEmpty(content);
+        }
+
+        static void ReadReasoning(JObject item, out string summary, out string content)
+        {
+            summary = JoinText(item["summary"]).Trim();
+            content = JoinText(item["content"]).Trim();
+
+            // Some providers put the only reasoning text in `text` (or leave the
+            // summary/content arrays empty when the chain is not exposed).
+            if (summary.Length == 0 && content.Length == 0)
+            {
+                content = JoinText(item["text"]).Trim();
+            }
+        }
+
         static void RenderReasoning(VisualElement parent, JObject item)
         {
-            string summary = JoinText(item["summary"]).Trim();
-            string content = JoinText(item["content"]).Trim();
+            ReadReasoning(item, out string summary, out string content);
             if (string.IsNullOrEmpty(summary) && string.IsNullOrEmpty(content))
             {
                 return;

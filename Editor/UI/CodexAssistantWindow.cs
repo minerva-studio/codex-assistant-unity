@@ -1584,7 +1584,7 @@ namespace Minerva.Codex
                 string type = item["type"]?.Value<string>();
                 if (type == "reasoning")
                 {
-                    if (m_ShowReasoning)
+                    if (m_ShowReasoning && CodexItemRenderer.HasReasoningText(item))
                     {
                         thoughts++;
                     }

@@ -12,7 +12,8 @@ All notable changes to this package are documented here.
   play-mode transitions reconnect the window without interrupting a running turn, and restore the
   selected thread.
 - Intermediate agent replies join the collapsible Process group, short reasoning summaries are inline,
-  long chains fold under **Full reasoning**, and `imageView` tool results render as images.
+  long chains fold under **Full reasoning**, and `imageView` tool results render as images. Empty reasoning
+  placeholders are ignored instead of creating an empty thought row.
 - Steering and queuing while a turn runs: Enter persists a queued follow-up through
   `thread/queue/add`, Ctrl+Enter steers through `turn/steer`, and queued messages show above the composer.
 - Reasoning-effort changes use `thread/settings/update` and later turns omit the per-turn effort override.

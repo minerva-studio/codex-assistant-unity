@@ -44,8 +44,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `final_answer` is always visible; missing/`partial_answer` is visible only when it is the last agent
   message in the turn). Final answers stay as normal bubbles. Expanding Process shows short reasoning
   summaries inline; a chain longer than 280 characters or 4 lines folds under a collapsed **Full reasoning**
-  section inside the same bordered inset block. `imageView` paths render through `CodexMedia.RenderImage`.
-  The settings panel can hide reasoning or tool records.
+  section inside the same bordered inset block. Empty reasoning placeholders (`summary` and `content` both
+  empty, as some providers emit) are skipped and are not counted as thoughts. `imageView` paths render
+  through `CodexMedia.RenderImage`. The settings panel can hide reasoning or tool records.
 - Composer sends messages: no selection starts a thread, otherwise starts a turn. Enter sends while idle,
   Shift+Enter inserts a newline, one button switches Send/Stop. While running the input stays enabled:
   Enter queues through `thread/queue/add`, Ctrl+Enter steers through `turn/steer`. The queued strip above
