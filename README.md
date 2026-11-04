@@ -75,9 +75,11 @@ handshake, the thread list and one thread's turns to the Console.
 ## Credits
 
 - [UMarkdown](https://github.com/minerva-studio/umarkdown), a fork of
-  [helightdev/UMarkdown](https://github.com/helightdev/UMarkdown) (MIT), for markdown to UI Toolkit rendering.
-- [Markdig](https://github.com/xoofx/markdig) (MIT) and
-  [ColorCode](https://github.com/CommunityToolkit/ColorCode-Universal) (MIT) via that package.
+  [helightdev/UMarkdown](https://github.com/helightdev/UMarkdown) (MIT, Copyright (c) 2025 Christoph
+  'HelightDev' Feuerer), for markdown to UI Toolkit rendering.
+- [Markdig](https://github.com/xoofx/markdig) (BSD-2-Clause, Copyright (c) Alexandre Mutel) and
+  [ColorCode](https://github.com/CommunityToolkit/ColorCode-Universal) (MIT, Copyright (c) .NET
+  Foundation and Contributors), both distributed inside that package.
 - [Newtonsoft Json](https://www.newtonsoft.com/json) (MIT) for the app-server protocol.
 
 See [Third Party Notices](Third%20Party%20Notices.md).
