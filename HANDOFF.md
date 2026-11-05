@@ -150,6 +150,11 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   label. UI Toolkit's default `WhiteSpace.Normal` was collapsing every leading code indentation. Rich text
   stays enabled so UMarkdown's syntax color tags still render. `DecorateSkillTokens` wraps bare `$name`
   tokens outside fenced blocks as inline code; picker-inserted `[$name](path)` links are left intact.
+- Popup keyboard navigation: `FillPopupList` maintains `m_PopupButtons`/`m_PopupVisibleItems` and resets the
+  highlighted index to the first match. `OnPopupKeyDown` is registered on both the popup and the search
+  field with `TrickleDown`, so arrows wrap the selection, Enter invokes the selected item, and Escape closes
+  before the text field consumes the key. Mouse hover updates the same selection. The composer remains a
+  plain `TextField`; inline Markdown/chips inside the input would require a custom rich editor.
 - Image attachments: `CodexImageAttachment.TryLoad` reads the source once, builds a max-128px thumbnail and
   owns its texture; the composer keeps at most four in `m_Attachments` and disposes them on removal, send or
   window disable. `+ Image` uses the file panel, the composer card accepts Unity/Explorer image drags through

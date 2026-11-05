@@ -80,6 +80,10 @@ namespace Minerva.Codex
         string m_AgentsSignature;
         VisualElement m_Popup;
         VisualElement m_PopupScrim;
+        ScrollView m_PopupList;
+        readonly List<Button> m_PopupButtons = new List<Button>();
+        readonly List<PopupItem> m_PopupVisibleItems = new List<PopupItem>();
+        int m_PopupSelectionIndex = -1;
 
         bool m_FollowTranscript = true;
         string m_LastTranscriptThreadId;
@@ -1328,7 +1332,12 @@ namespace Minerva.Codex
             m_PopupScrim.RegisterCallback<MouseDownEvent>(_ => ClosePopup());
             rootVisualElement.Add(m_PopupScrim);
 
-            m_Popup = new VisualElement { name = "codex-popup", pickingMode = PickingMode.Position };
+            m_Popup = new VisualElement
+            {
+                name = "codex-popup",
+                pickingMode = PickingMode.Position,
+                focusable = true,
+            };
             m_Popup.style.position = Position.Absolute;
             m_Popup.style.width = width;
             m_Popup.style.backgroundColor = CodexPalette.Popover;
@@ -1375,22 +1384,20 @@ namespace Minerva.Codex
             list.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             list.verticalScrollerVisibility = ScrollerVisibility.Auto;
             m_Popup.Add(list);
+            m_PopupList = list;
             FillPopupList(list, items, string.Empty);
 
+            m_Popup.RegisterCallback<KeyDownEvent>(OnPopupKeyDown, TrickleDown.TrickleDown);
             if (search != null)
             {
                 search.RegisterValueChangedCallback(evt => FillPopupList(list, items, evt.newValue));
+                search.RegisterCallback<KeyDownEvent>(OnPopupKeyDown, TrickleDown.TrickleDown);
                 search.schedule.Execute(() => search.Focus());
             }
-
-            m_Popup.RegisterCallback<KeyDownEvent>(evt =>
+            else
             {
-                if (evt.keyCode == KeyCode.Escape)
-                {
-                    ClosePopup();
-                    evt.StopPropagation();
-                }
-            }, TrickleDown.TrickleDown);
+                m_Popup.schedule.Execute(() => m_Popup.Focus());
+            }
 
             float popupHeight = 8 + 16 + 4 + (searchable ? 28 : 0) + listHeight + 8;
             m_Popup.style.height = popupHeight;
@@ -1419,6 +1426,9 @@ namespace Minerva.Codex
         void FillPopupList(ScrollView list, List<PopupItem> items, string query)
         {
             list.Clear();
+            m_PopupButtons.Clear();
+            m_PopupVisibleItems.Clear();
+            m_PopupSelectionIndex = -1;
             int matches = 0;
             foreach (PopupItem item in items)
             {
@@ -1429,6 +1439,7 @@ namespace Minerva.Codex
                 }
 
                 PopupItem captured = item;
+                int rowIndex = m_PopupButtons.Count;
                 var row = new Button(() =>
                 {
                     ClosePopup();
@@ -1438,9 +1449,6 @@ namespace Minerva.Codex
                     text = (captured.Selected ? "✓  " : "     ") + captured.Label,
                 };
 
-                Color background = captured.Selected
-                    ? new Color(CodexPalette.Selected.r, CodexPalette.Selected.g, CodexPalette.Selected.b, 0.5f)
-                    : Color.clear;
                 row.style.height = 26;
                 row.style.marginTop = 0;
                 row.style.marginBottom = 0;
@@ -1448,7 +1456,7 @@ namespace Minerva.Codex
                 row.style.marginRight = 0;
                 row.style.paddingLeft = 6;
                 row.style.paddingRight = 6;
-                row.style.backgroundColor = background;
+                row.style.backgroundColor = Color.clear;
                 row.style.color = CodexPalette.Text;
                 row.style.fontSize = 11;
                 row.style.unityTextAlign = TextAnchor.MiddleLeft;
@@ -1462,13 +1470,12 @@ namespace Minerva.Codex
                 row.style.borderRightWidth = 0;
                 row.RegisterCallback<MouseEnterEvent>(_ =>
                 {
-                    if (!captured.Selected)
-                    {
-                        row.style.backgroundColor = CodexPalette.PopoverHover;
-                    }
+                    m_PopupSelectionIndex = rowIndex;
+                    RefreshPopupSelection();
                 });
-                row.RegisterCallback<MouseLeaveEvent>(_ => row.style.backgroundColor = background);
                 list.Add(row);
+                m_PopupButtons.Add(row);
+                m_PopupVisibleItems.Add(captured);
                 matches++;
             }
 
@@ -1480,6 +1487,94 @@ namespace Minerva.Codex
                 empty.style.paddingLeft = 6;
                 empty.style.paddingTop = 6;
                 list.Add(empty);
+                return;
+            }
+
+            m_PopupSelectionIndex = 0;
+            RefreshPopupSelection();
+        }
+
+        void RefreshPopupSelection()
+        {
+            for (int index = 0; index < m_PopupButtons.Count; index++)
+            {
+                bool selected = m_PopupVisibleItems[index].Selected;
+                bool active = index == m_PopupSelectionIndex;
+                Color background = Color.clear;
+                if (active)
+                {
+                    background = new Color(
+                        CodexPalette.Selected.r,
+                        CodexPalette.Selected.g,
+                        CodexPalette.Selected.b,
+                        0.72f);
+                }
+                else if (selected)
+                {
+                    background = new Color(
+                        CodexPalette.Selected.r,
+                        CodexPalette.Selected.g,
+                        CodexPalette.Selected.b,
+                        0.42f);
+                }
+
+                m_PopupButtons[index].style.backgroundColor = background;
+            }
+
+            if (m_PopupSelectionIndex >= 0 &&
+                m_PopupSelectionIndex < m_PopupButtons.Count &&
+                m_PopupList != null)
+            {
+                m_PopupList.ScrollTo(m_PopupButtons[m_PopupSelectionIndex]);
+            }
+        }
+
+        void MovePopupSelection(int delta)
+        {
+            if (m_PopupButtons.Count == 0)
+            {
+                return;
+            }
+
+            int count = m_PopupButtons.Count;
+            m_PopupSelectionIndex = (m_PopupSelectionIndex + delta + count) % count;
+            RefreshPopupSelection();
+        }
+
+        void ActivatePopupSelection()
+        {
+            if (m_PopupSelectionIndex < 0 ||
+                m_PopupSelectionIndex >= m_PopupVisibleItems.Count)
+            {
+                return;
+            }
+
+            PopupItem item = m_PopupVisibleItems[m_PopupSelectionIndex];
+            ClosePopup();
+            item.Action?.Invoke();
+        }
+
+        void OnPopupKeyDown(KeyDownEvent evt)
+        {
+            switch (evt.keyCode)
+            {
+                case KeyCode.Escape:
+                    ClosePopup();
+                    evt.StopPropagation();
+                    break;
+                case KeyCode.UpArrow:
+                    MovePopupSelection(-1);
+                    evt.StopPropagation();
+                    break;
+                case KeyCode.DownArrow:
+                    MovePopupSelection(1);
+                    evt.StopPropagation();
+                    break;
+                case KeyCode.Return:
+                case KeyCode.KeypadEnter:
+                    ActivatePopupSelection();
+                    evt.StopPropagation();
+                    break;
             }
         }
 
@@ -1489,6 +1584,10 @@ namespace Minerva.Codex
             m_Popup = null;
             m_PopupScrim?.RemoveFromHierarchy();
             m_PopupScrim = null;
+            m_PopupList = null;
+            m_PopupButtons.Clear();
+            m_PopupVisibleItems.Clear();
+            m_PopupSelectionIndex = -1;
         }
 
         static string FormatEffort(string effort)

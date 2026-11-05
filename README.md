@@ -74,7 +74,8 @@ tools are next.
   `[$skill](.../SKILL.md)` and `[file.name](relative/path)`. Markdown file and skill links in messages open
   locally when clicked. The file picker scans the selected conversation's cwd, not the Unity project. Raw
   `$skill` tokens typed outside a code block render as inline skill pills; fenced code blocks keep their
-  indentation and syntax colors.
+  indentation and syntax colors. In reference popups, Up/Down moves the highlighted option, Enter confirms,
+  and Escape closes.
 - Attach images from the same **+** menu, by dragging files onto the composer, or by capturing the Game view
   in Play Mode. Up to four thumbnails can be staged and removed before sending; messages send them as
   `localImage` inputs and render them inline on both sides.
