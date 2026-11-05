@@ -49,6 +49,8 @@
 - Thread-list pagination: the sidebar loads 50 threads and appends older pages with **Load more**.
 - Composer wrapping, caret sync after a reference insertion, and Windows IME candidate-window placement via
   IMM32 (the workaround compiles out from 6000.6 on).
+- Unity context attachments: a composer toggle prepends the active scene/prefab, selection, compile state and
+  the latest console errors/warnings to each normal message, captured at send time.
 
 ## Next
 
@@ -59,7 +61,6 @@
 
 ## Later
 
-- Unity context attachments: selection, scene snapshot, console, compile errors.
 - Unity tools: scene and asset operations with Undo, menu items, play mode control.
 - Detailed token usage and cost display.
 

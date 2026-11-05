@@ -161,6 +161,14 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `CodexMarkdown` forwards the selected cwd to `PointerDownLinkTagEvent`; local links open an AssetDatabase
   asset or fall back to `EditorUtility.OpenWithDefaultApp`, while http(s)/mailto links use `Application.OpenURL`.
   `JoinUserContent` also renders structured `skill` and `mention` inputs for history written by other clients.
+- Unity context: the **Unity state** pill (`m_UnityContextButton`) toggles
+  `CodexPreferences.AttachUnityContext` (EditorPrefs `Minerva.Codex.AttachUnityContext`, default **off**). At
+  send time `CodexUnityContext.Capture()` builds a `<unity-context>` block with the Editor version/platform/play
+  state, active scene or prefab stage, selection (name, components, asset path), compile state and up to five
+  newest errors plus three newest warnings. Console access uses reflection over `UnityEditor.LogEntries` /
+  `LogEntry`; it forces the Log/Warning/Error toolbar bits on and clears the search text for the read, then
+  restores both. Slash commands are sent without the block, and `StripContext` removes it from queued rows
+  while the persisted queued message still carries it.
 - Panel resizing: `BuildResizer` adds a five-pixel handle with a one-pixel grip on both sides of the content.
   Pointer capture drives `m_SidebarWidth`/`m_AgentsWidth`; `ClampSidebarWidth`/`ClampAgentsWidth` keep at least
   320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and
@@ -327,9 +335,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - The sidebar never steals the open conversation on a search/scope refresh. `SelectedThread` falls back to a
   cached thread entry when the selected thread is filtered out, so the header keeps its title.
 - Settings live in `EditorPrefs` under `Minerva.Codex.*`: context indicator (default **off**), show reasoning
-  (default on), show tool calls (default on), auto title (default **on**), title model (empty = conversation
-  model), and CODEX_HOME (empty = process default). CODEX_HOME is set as an environment variable when the
-  listener starts; changing it starts that home's listener and reconnects.
+  (default on), show tool calls (default on), attach Unity state (default **off**), auto title (default **on**),
+  title model (empty = conversation model), and CODEX_HOME (empty = process default). CODEX_HOME is set as an
+  environment variable when the listener starts; changing it starts that home's listener and reconnects.
 - `CodexPreferences.ReloadRequested` is the explicit backend reload path: it disposes/restarts the listener
   without changing the home, clearing models and reloading `config/read` + `model/list`. Settings exposes it
   as **Reconnect**; applying an unchanged CODEX_HOME also calls it so edits to `config.toml`/`models.json`

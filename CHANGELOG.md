@@ -50,6 +50,10 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- The composer's **Unity state** toggle prepends a send-time snapshot of the active scene or prefab stage,
+  selection, compile state and recent console errors/warnings. Reading the console temporarily clears the
+  Console toolbar/search filters so hidden severities still produce entry text, then restores them; slash
+  commands are sent unchanged, and queued rows show the user's text without the snapshot.
 - Optional JSON numbers are read as nullable (`Value<long?>()`), so a live item whose `completedAtMs` is
   still null no longer throws `InvalidCastException` during rendering.
 - The sidebar loads 50 threads and appends older pages with **Load more** (`thread/list` cursor); the

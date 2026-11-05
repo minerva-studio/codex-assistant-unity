@@ -61,6 +61,7 @@ namespace Minerva.Codex
         Button m_ModelButton;
         Button m_EffortButton;
         Button m_SandboxButton;
+        Button m_UnityContextButton;
         VisualElement m_ContextIndicator;
         VisualElement m_ContextDot;
         Label m_ContextLabel;
@@ -100,6 +101,7 @@ namespace Minerva.Codex
         bool m_ShowContextIndicator;
         bool m_ShowReasoning = true;
         bool m_ShowToolCalls = true;
+        bool m_AttachUnityContext;
         string m_CodexHome;
 
         sealed class PopupItem
@@ -146,6 +148,7 @@ namespace Minerva.Codex
             m_ShowContextIndicator = CodexPreferences.ShowContextIndicator;
             m_ShowReasoning = CodexPreferences.ShowReasoning;
             m_ShowToolCalls = CodexPreferences.ShowToolCalls;
+            m_AttachUnityContext = CodexPreferences.AttachUnityContext;
             m_CodexHome = CodexPreferences.CodexHome;
             m_SidebarWidth = Mathf.Clamp(
                 EditorPrefs.GetFloat(SidebarWidthKey, DefaultSidebarWidth),
@@ -1166,6 +1169,8 @@ namespace Minerva.Codex
             m_SandboxButton = AddPill(actions, "codex-sandbox", "Sandbox");
             m_SandboxButton.clicked += ShowSandboxMenu;
 
+            BuildUnityContextButton(actions);
+
             var spacer = new VisualElement();
             spacer.style.flexGrow = 1;
             actions.Add(spacer);
@@ -1236,6 +1241,7 @@ namespace Minerva.Codex
             actions.Add(m_ActionButton);
 
             UpdateSettingsBar();
+            UpdateUnityContextButton();
             UpdateComposer();
             UpdateContextIndicator();
 
@@ -1245,6 +1251,24 @@ namespace Minerva.Codex
         Button AddPill(VisualElement parent, string name, string tooltip)
         {
             var button = new Button { name = name, tooltip = tooltip };
+            StylePill(button);
+            button.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                if (button.enabledSelf)
+                {
+                    button.style.backgroundColor = CodexPalette.PillHover;
+                }
+            });
+            button.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                button.style.backgroundColor = CodexPalette.Pill;
+            });
+            parent.Add(button);
+            return button;
+        }
+
+        static void StylePill(Button button)
+        {
             button.style.height = 26;
             button.style.minWidth = 28;
             button.style.paddingLeft = 10;
@@ -1268,19 +1292,58 @@ namespace Minerva.Codex
             button.style.color = CodexPalette.Text;
             button.style.fontSize = 10;
             button.style.unityTextAlign = TextAnchor.MiddleLeft;
-            button.RegisterCallback<MouseEnterEvent>(_ =>
+        }
+
+        void BuildUnityContextButton(VisualElement parent)
+        {
+            m_UnityContextButton = new Button(ToggleUnityContext)
             {
-                if (button.enabledSelf)
+                name = "codex-unity-context",
+                text = "Unity state",
+            };
+            StylePill(m_UnityContextButton);
+            m_UnityContextButton.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                if (m_UnityContextButton.enabledSelf && !m_AttachUnityContext)
                 {
-                    button.style.backgroundColor = CodexPalette.PillHover;
+                    m_UnityContextButton.style.backgroundColor = CodexPalette.PillHover;
                 }
             });
-            button.RegisterCallback<MouseLeaveEvent>(_ =>
+            m_UnityContextButton.RegisterCallback<MouseLeaveEvent>(_ => UpdateUnityContextButton());
+            parent.Add(m_UnityContextButton);
+            UpdateUnityContextButton();
+        }
+
+        void UpdateUnityContextButton()
+        {
+            if (m_UnityContextButton == null)
             {
-                button.style.backgroundColor = CodexPalette.Pill;
-            });
-            parent.Add(button);
-            return button;
+                return;
+            }
+
+            Color border = m_AttachUnityContext ? CodexPalette.Accent : CodexPalette.PillBorder;
+            m_UnityContextButton.style.backgroundColor = m_AttachUnityContext
+                ? CodexPalette.AccentSoft
+                : CodexPalette.Pill;
+            m_UnityContextButton.style.color = m_AttachUnityContext
+                ? CodexPalette.Accent
+                : CodexPalette.Text;
+            m_UnityContextButton.style.borderTopColor = border;
+            m_UnityContextButton.style.borderBottomColor = border;
+            m_UnityContextButton.style.borderLeftColor = border;
+            m_UnityContextButton.style.borderRightColor = border;
+            m_UnityContextButton.tooltip = m_AttachUnityContext
+                ? "Unity state is attached to each message: scene, selection, compile state and recent console " +
+                  "errors. Click to stop attaching it."
+                : "Attach the current Unity Editor state to each message: scene, selection, compile state and " +
+                  "recent console errors.";
+        }
+
+        void ToggleUnityContext()
+        {
+            CodexPreferences.AttachUnityContext = !m_AttachUnityContext;
+            m_AttachUnityContext = CodexPreferences.AttachUnityContext;
+            UpdateUnityContextButton();
         }
 
         void StyleComposerInput()
@@ -1869,9 +1932,14 @@ namespace Minerva.Codex
 
         void OnPreferencesChanged()
         {
+            bool transcriptChanged =
+                m_ShowReasoning != CodexPreferences.ShowReasoning ||
+                m_ShowToolCalls != CodexPreferences.ShowToolCalls;
             m_ShowContextIndicator = CodexPreferences.ShowContextIndicator;
             m_ShowReasoning = CodexPreferences.ShowReasoning;
             m_ShowToolCalls = CodexPreferences.ShowToolCalls;
+            m_AttachUnityContext = CodexPreferences.AttachUnityContext;
+            UpdateUnityContextButton();
 
             string home = CodexPreferences.CodexHome;
             if (!string.Equals(home, m_CodexHome, StringComparison.OrdinalIgnoreCase))
@@ -1882,7 +1950,10 @@ namespace Minerva.Codex
             }
 
             UpdateContextIndicator();
-            RebuildTranscript();
+            if (transcriptChanged)
+            {
+                RebuildTranscript();
+            }
         }
 
         void OnBackendReloadRequested()
@@ -2979,14 +3050,15 @@ namespace Minerva.Codex
                 row.style.paddingBottom = 3;
                 row.style.marginBottom = 3;
 
-                var text = new Label(message.Text);
+                string display = CodexUnityContext.StripContext(message.Text);
+                var text = new Label(display);
                 text.style.flexGrow = 1;
                 text.style.fontSize = 10;
                 text.style.color = CodexPalette.Text;
                 text.style.whiteSpace = WhiteSpace.Normal;
                 text.style.overflow = Overflow.Hidden;
                 text.style.maxHeight = 46;
-                text.tooltip = message.Text;
+                text.tooltip = display;
                 row.Add(text);
 
                 var remove = new Button(() => m_Workspace?.RemoveQueuedMessage(message.Id))
@@ -4175,6 +4247,17 @@ namespace Minerva.Codex
                 return;
             }
 
+            // Slash commands have to stay at the start of the input; a context
+            // block in front of /compact would turn it into ordinary text.
+            if (m_AttachUnityContext && !IsSlashCommand(text))
+            {
+                string context = CodexUnityContext.Capture();
+                if (!string.IsNullOrEmpty(context))
+                {
+                    text = text.Length == 0 ? context : context + "\n\n" + text;
+                }
+            }
+
             bool accepted;
             if (m_Workspace.IsRunning)
             {
@@ -4201,6 +4284,11 @@ namespace Minerva.Codex
             ClearAttachments();
             RebuildReferenceChips();
             UpdateComposer();
+        }
+
+        static bool IsSlashCommand(string text)
+        {
+            return text.Length > 1 && text[0] == '/' && !char.IsWhiteSpace(text[1]);
         }
 
         void StopTurn()

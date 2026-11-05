@@ -13,6 +13,7 @@ namespace Minerva.Codex
         const string CodexHomeKey = Prefix + "CodexHome";
         const string AutoTitleKey = Prefix + "AutoTitle";
         const string AutoTitleModelKey = Prefix + "AutoTitleModel";
+        const string UnityContextKey = Prefix + "AttachUnityContext";
 
         public static event Action Changed;
         public static event Action ReloadRequested;
@@ -56,6 +57,13 @@ namespace Minerva.Codex
             set => SetString(AutoTitleModelKey, value);
         }
 
+        /// <summary>Prepend a live Unity Editor snapshot to every message.</summary>
+        public static bool AttachUnityContext
+        {
+            get => EditorPrefs.GetBool(UnityContextKey, false);
+            set => SetBool(UnityContextKey, false, value);
+        }
+
         /// <summary>Restart app-server when config files changed without a home change.</summary>
         public static void RequestReload()
         {
@@ -70,6 +78,7 @@ namespace Minerva.Codex
             EditorPrefs.DeleteKey(CodexHomeKey);
             EditorPrefs.SetBool(AutoTitleKey, true);
             EditorPrefs.DeleteKey(AutoTitleModelKey);
+            EditorPrefs.SetBool(UnityContextKey, false);
             Changed?.Invoke();
         }
 
