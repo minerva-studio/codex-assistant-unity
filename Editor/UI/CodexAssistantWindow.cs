@@ -84,6 +84,8 @@ namespace Minerva.Codex
         readonly List<Button> m_PopupButtons = new List<Button>();
         readonly List<PopupItem> m_PopupVisibleItems = new List<PopupItem>();
         int m_PopupSelectionIndex = -1;
+        EventCallback<KeyDownEvent> m_PopupKeyDownHandler;
+        EventCallback<KeyUpEvent> m_PopupKeyUpHandler;
 
         bool m_FollowTranscript = true;
         string m_LastTranscriptThreadId;
@@ -1388,6 +1390,10 @@ namespace Minerva.Codex
             FillPopupList(list, items, string.Empty);
 
             m_Popup.RegisterCallback<KeyDownEvent>(OnPopupKeyDown, TrickleDown.TrickleDown);
+            m_PopupKeyDownHandler ??= OnPopupKeyDown;
+            m_PopupKeyUpHandler ??= OnPopupKeyUp;
+            rootVisualElement.RegisterCallback(m_PopupKeyDownHandler, TrickleDown.TrickleDown);
+            rootVisualElement.RegisterCallback(m_PopupKeyUpHandler, TrickleDown.TrickleDown);
             if (search != null)
             {
                 search.RegisterValueChangedCallback(evt => FillPopupList(list, items, evt.newValue));
@@ -1611,6 +1617,18 @@ namespace Minerva.Codex
 
         void ClosePopup()
         {
+            if (m_PopupKeyDownHandler != null)
+            {
+                rootVisualElement.UnregisterCallback(m_PopupKeyDownHandler, TrickleDown.TrickleDown);
+                m_PopupKeyDownHandler = null;
+            }
+
+            if (m_PopupKeyUpHandler != null)
+            {
+                rootVisualElement.UnregisterCallback(m_PopupKeyUpHandler, TrickleDown.TrickleDown);
+                m_PopupKeyUpHandler = null;
+            }
+
             m_Popup?.RemoveFromHierarchy();
             m_Popup = null;
             m_PopupScrim?.RemoveFromHierarchy();
@@ -2880,7 +2898,7 @@ namespace Minerva.Codex
 
         void InsertReference(string token)
         {
-            if (m_Composer == null || string.IsNullOrEmpty(token))
+            if (m_Composer == null || string.IsNullOrWhiteSpace(token))
             {
                 return;
             }
@@ -2897,8 +2915,22 @@ namespace Minerva.Codex
                 value += " ";
             }
 
-            m_Composer.value = value + token + " ";
-            m_Composer.Focus();
+            // A popup activated with Enter runs inside the search field's key
+            // event. Focusing the composer immediately lets that same Enter
+            // reach the newly focused field and replace the inserted reference
+            // with a newline/space. Mutate and focus on the next UI tick instead.
+            string inserted = value + token + " ";
+            m_Composer.schedule.Execute(() =>
+            {
+                if (m_Composer == null)
+                {
+                    return;
+                }
+
+                m_Composer.SetValueWithoutNotify(inserted);
+                m_Composer.Focus();
+                UpdateComposer();
+            });
         }
 
         void ShowAddReferenceMenu()
