@@ -118,6 +118,12 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `CodexRenameWindow`, which calls `CodexWorkspace.RenameThread` -> `thread/name/set`. Archive uses
   `ArchiveThreadById`; selected-thread archive keeps the confirmation dialog. `ShowPopup` clamps mouse-
   anchored menus to the window bounds.
+- Per-message actions: `CodexItemRenderer.Render` takes `copyMessage`, `forkFromTurn` and the current
+  `turnId`. User wrappers and Codex blocks register mouse-enter/leave handlers that reveal a small Copy /
+  Fork from here strip. User actions sit to the left of the right-aligned bubble; Codex actions sit at the
+  top-right of the plain block, so they do not cover the message text. Fork calls
+  `CodexWorkspace.ForkThread(source, lastTurnId)` and the app-server `thread/fork` request sets
+  `lastTurnId`, which forks through that turn inclusively. Forking is refused while a turn is running.
 - `BuildAgentsPanel` resets `m_AgentsSignature`; otherwise a UI rebuild can reuse the old signature while
   the new `m_AgentsList` is empty, leaving the rail blank.
 - Historical question replies are user messages wrapped as

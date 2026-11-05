@@ -2843,6 +2843,7 @@ namespace Minerva.Codex
                 return;
             }
 
+            string turnId = turn["id"]?.Value<string>();
             int lastAgentIndex = -1;
             for (int index = 0; index < items.Count; index++)
             {
@@ -2863,13 +2864,31 @@ namespace Minerva.Codex
                 string type = item["type"]?.Value<string>();
                 if (type == "userMessage")
                 {
-                    FlushProcess(parent, process, isLive);
-                    CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
+                    FlushProcess(parent, process, isLive, turnId);
+                    CodexItemRenderer.Render(
+                        parent,
+                        item,
+                        m_ShowReasoning,
+                        m_ShowToolCalls,
+                        null,
+                        null,
+                        CopyMessageText,
+                        ForkFromTurn,
+                        turnId);
                 }
                 else if (type == "agentMessage" && IsFinalAgentMessage(item, index, lastAgentIndex))
                 {
-                    FlushProcess(parent, process, isLive);
-                    CodexItemRenderer.Render(parent, item, m_ShowReasoning, m_ShowToolCalls);
+                    FlushProcess(parent, process, isLive, turnId);
+                    CodexItemRenderer.Render(
+                        parent,
+                        item,
+                        m_ShowReasoning,
+                        m_ShowToolCalls,
+                        null,
+                        null,
+                        CopyMessageText,
+                        ForkFromTurn,
+                        turnId);
                 }
                 else
                 {
@@ -2878,7 +2897,7 @@ namespace Minerva.Codex
                 }
             }
 
-            FlushProcess(parent, process, isLive);
+            FlushProcess(parent, process, isLive, turnId);
         }
 
         static bool IsFinalAgentMessage(JObject item, int index, int lastAgentIndex)
@@ -2897,7 +2916,11 @@ namespace Minerva.Codex
             return index == lastAgentIndex;
         }
 
-        void FlushProcess(VisualElement parent, List<JObject> items, bool isLive)
+        void FlushProcess(
+            VisualElement parent,
+            List<JObject> items,
+            bool isLive,
+            string turnId)
         {
             if (items.Count == 0)
             {
@@ -2980,7 +3003,10 @@ namespace Minerva.Codex
                             m_ShowReasoning,
                             m_ShowToolCalls,
                             id => m_Workspace?.SelectThread(id),
-                            (processId, text) => m_Workspace?.SendTerminalInput(processId, text));
+                            (processId, text) => m_Workspace?.SendTerminalInput(processId, text),
+                            CopyMessageText,
+                            ForkFromTurn,
+                            turnId);
                     }
                 }
 
@@ -3189,6 +3215,30 @@ namespace Minerva.Codex
             }
 
             EditorGUIUtility.systemCopyBuffer = $"codex resume {threadId}";
+        }
+
+        static void CopyMessageText(string text)
+        {
+            if (!string.IsNullOrEmpty(text))
+            {
+                EditorGUIUtility.systemCopyBuffer = text;
+            }
+        }
+
+        void ForkFromTurn(string turnId)
+        {
+            if (m_Workspace == null || !m_Workspace.IsConnected || m_Workspace.IsRunning)
+            {
+                return;
+            }
+
+            string threadId = m_Workspace.SelectedThreadId;
+            if (string.IsNullOrEmpty(threadId) || string.IsNullOrEmpty(turnId))
+            {
+                return;
+            }
+
+            m_Workspace.ForkThread(threadId, turnId);
         }
 
         void ShowThreadContextMenu(CodexThreadInfo thread, Vector2 position)

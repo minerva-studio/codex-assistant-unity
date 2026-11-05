@@ -18,16 +18,19 @@ namespace Minerva.Codex
             bool showReasoning,
             bool showTools,
             Action<string> openThread = null,
-            Action<string, string> sendTerminalInput = null)
+            Action<string, string> sendTerminalInput = null,
+            Action<string> copyMessage = null,
+            Action<string> forkFromTurn = null,
+            string turnId = null)
         {
             string type = item["type"]?.Value<string>() ?? "unknown";
             switch (type)
             {
                 case "userMessage":
-                    RenderUserMessage(parent, item);
+                    RenderUserMessage(parent, item, turnId, copyMessage, forkFromTurn);
                     break;
                 case "agentMessage":
-                    RenderAgentMessage(parent, item);
+                    RenderAgentMessage(parent, item, turnId, copyMessage, forkFromTurn);
                     break;
                 case "reasoning":
                     if (showReasoning)
@@ -124,7 +127,12 @@ namespace Minerva.Codex
             }
         }
 
-        static void RenderUserMessage(VisualElement parent, JObject item)
+        static void RenderUserMessage(
+            VisualElement parent,
+            JObject item,
+            string turnId,
+            Action<string> copyMessage,
+            Action<string> forkFromTurn)
         {
             string raw = JoinUserContent(item["content"]);
             if (CodexQuestionReply.TryParse(raw, out List<CodexQuestionReply> replies, out string remainder))
@@ -136,25 +144,44 @@ namespace Minerva.Codex
 
                 if (!string.IsNullOrWhiteSpace(remainder))
                 {
-                    RenderUserBubble(parent, CodexAnnotations.Clean(remainder));
+                    RenderUserBubble(
+                        parent,
+                        CodexAnnotations.Clean(remainder),
+                        turnId,
+                        copyMessage,
+                        forkFromTurn);
                 }
 
                 return;
             }
 
-            RenderUserBubble(parent, CodexAnnotations.Clean(raw));
+            RenderUserBubble(
+                parent,
+                CodexAnnotations.Clean(raw),
+                turnId,
+                copyMessage,
+                forkFromTurn);
         }
 
-        static void RenderUserBubble(VisualElement parent, string text)
+        static void RenderUserBubble(
+            VisualElement parent,
+            string text,
+            string turnId,
+            Action<string> copyMessage,
+            Action<string> forkFromTurn)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
+            var wrapper = new VisualElement();
+            wrapper.style.flexDirection = FlexDirection.Column;
             VisualElement bubble = Bubble(CodexPalette.UserBubble);
             bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
-            parent.Add(bubble);
+            AddMessageActions(wrapper, text, turnId, copyMessage, forkFromTurn, true);
+            wrapper.Add(bubble);
+            parent.Add(wrapper);
         }
 
         static void RenderQuestionReply(VisualElement parent, CodexQuestionReply reply)
@@ -196,7 +223,12 @@ namespace Minerva.Codex
             parent.Add(card);
         }
 
-        static void RenderAgentMessage(VisualElement parent, JObject item)
+        static void RenderAgentMessage(
+            VisualElement parent,
+            JObject item,
+            string turnId,
+            Action<string> copyMessage,
+            Action<string> forkFromTurn)
         {
             string text = item["text"]?.Value<string>();
             if (string.IsNullOrEmpty(text))
@@ -220,7 +252,96 @@ namespace Minerva.Codex
             caption.style.marginBottom = 5;
             block.Add(caption);
             block.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
+            AddMessageActions(block, text, turnId, copyMessage, forkFromTurn, false);
             parent.Add(block);
+        }
+
+        static void AddMessageActions(
+            VisualElement container,
+            string text,
+            string turnId,
+            Action<string> copyMessage,
+            Action<string> forkFromTurn,
+            bool userMessage)
+        {
+            if (copyMessage == null && forkFromTurn == null)
+            {
+                return;
+            }
+
+            var actions = new VisualElement { name = "codex-message-actions" };
+            actions.style.position = Position.Absolute;
+            if (userMessage)
+            {
+                actions.style.top = 5;
+                actions.style.left = 18;
+            }
+            else
+            {
+                actions.style.top = 1;
+                actions.style.right = 2;
+            }
+
+            actions.style.flexDirection = FlexDirection.Row;
+            actions.style.backgroundColor = CodexPalette.Popover;
+            actions.style.borderTopWidth = 1;
+            actions.style.borderBottomWidth = 1;
+            actions.style.borderLeftWidth = 1;
+            actions.style.borderRightWidth = 1;
+            actions.style.borderTopColor = CodexPalette.PillBorder;
+            actions.style.borderBottomColor = CodexPalette.PillBorder;
+            actions.style.borderLeftColor = CodexPalette.PillBorder;
+            actions.style.borderRightColor = CodexPalette.PillBorder;
+            actions.style.borderTopLeftRadius = 6;
+            actions.style.borderTopRightRadius = 6;
+            actions.style.borderBottomLeftRadius = 6;
+            actions.style.borderBottomRightRadius = 6;
+            actions.style.paddingLeft = 2;
+            actions.style.paddingRight = 2;
+            actions.style.display = DisplayStyle.None;
+            container.Add(actions);
+
+            if (copyMessage != null)
+            {
+                var copy = ActionButton("Copy", () => copyMessage(text));
+                copy.tooltip = "Copy this message";
+                actions.Add(copy);
+            }
+
+            if (forkFromTurn != null && !string.IsNullOrEmpty(turnId))
+            {
+                var fork = ActionButton("Fork from here", () => forkFromTurn(turnId));
+                fork.tooltip = "Fork the conversation through this turn";
+                actions.Add(fork);
+            }
+
+            container.RegisterCallback<MouseEnterEvent>(_ => actions.style.display = DisplayStyle.Flex);
+            container.RegisterCallback<MouseLeaveEvent>(_ => actions.style.display = DisplayStyle.None);
+        }
+
+        static Button ActionButton(string text, Action action)
+        {
+            var button = new Button(action) { text = text };
+            button.style.height = 18;
+            button.style.minWidth = 0;
+            button.style.marginLeft = 1;
+            button.style.marginRight = 1;
+            button.style.paddingLeft = 5;
+            button.style.paddingRight = 5;
+            button.style.borderTopWidth = 0;
+            button.style.borderBottomWidth = 0;
+            button.style.borderLeftWidth = 0;
+            button.style.borderRightWidth = 0;
+            button.style.borderTopLeftRadius = 4;
+            button.style.borderTopRightRadius = 4;
+            button.style.borderBottomLeftRadius = 4;
+            button.style.borderBottomRightRadius = 4;
+            button.style.backgroundColor = Color.clear;
+            button.style.color = CodexPalette.Muted;
+            button.style.fontSize = 9;
+            button.RegisterCallback<MouseEnterEvent>(_ => button.style.backgroundColor = CodexPalette.Hover);
+            button.RegisterCallback<MouseLeaveEvent>(_ => button.style.backgroundColor = Color.clear);
+            return button;
         }
 
         internal static bool HasReasoningText(JObject item)

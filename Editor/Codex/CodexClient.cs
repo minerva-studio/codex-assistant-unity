@@ -211,12 +211,18 @@ namespace Minerva.Codex
             string threadId,
             bool excludeTurns,
             Action<JObject> onResult,
-            Action<string> onError)
+            Action<string> onError,
+            string lastTurnId = null)
         {
             var parameters = new JObject { ["threadId"] = threadId };
             if (excludeTurns)
             {
                 parameters["excludeTurns"] = true;
+            }
+
+            if (!string.IsNullOrEmpty(lastTurnId))
+            {
+                parameters["lastTurnId"] = lastTurnId;
             }
 
             Request("thread/fork", parameters, result => onResult?.Invoke(result as JObject), onError);

@@ -1312,7 +1312,7 @@ namespace Minerva.Codex
             return !string.IsNullOrEmpty(SelectedThreadId) && ForkThread(SelectedThreadId);
         }
 
-        public bool ForkThread(string source)
+        public bool ForkThread(string source, string lastTurnId = null)
         {
             if (!m_Ready || IsRunning || IsForking || string.IsNullOrEmpty(source))
             {
@@ -1362,7 +1362,8 @@ namespace Minerva.Codex
                 {
                     IsForking = false;
                     OnFailed(message);
-                });
+                },
+                lastTurnId);
             return true;
         }
 
