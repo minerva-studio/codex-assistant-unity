@@ -118,12 +118,15 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `CodexRenameWindow`, which calls `CodexWorkspace.RenameThread` -> `thread/name/set`. Archive uses
   `ArchiveThreadById`; selected-thread archive keeps the confirmation dialog. `ShowPopup` clamps mouse-
   anchored menus to the window bounds.
-- Per-message footer: `CodexItemRenderer.Render` takes `copyMessage`, `forkFromTurn`, `turnId` and the
-  turn timestamp. User wrappers place the footer under the right-aligned bubble; Codex blocks place it under
-  the plain text. The footer is always visible with Select / Copy / Fork buttons and a local `h:mm tt`
-  timestamp. Fork calls `CodexWorkspace.ForkThread(source, lastTurnId)` and the app-server `thread/fork`
-  request sets `lastTurnId`, which forks through that turn inclusively. Forking is refused while a turn is
-  running.
+- Per-message footer: `CodexItemRenderer.Render` takes `copyMessage`, `forkFromTurn`, `turnId`, the turn
+  timestamp and `canFork`. User wrappers place the footer under the right-aligned bubble; Codex blocks place
+  it under the plain text. The footer is always visible with Select / Copy / local `h:mm tt`; Fork is only
+  rendered when `canFork` is true. `RenderTurn` passes `canFork: true` only for a completed turn's final
+  Codex message; user messages, live turns and intermediate Process messages pass false. Fork calls
+  `CodexWorkspace.ForkThread(source, lastTurnId)` and the app-server `thread/fork` request sets
+  `lastTurnId`, which forks through that turn inclusively. Forking is refused while a turn is running.
+  Do not show Fork on an intermediate message: the API has no message-level fork and it would silently
+  branch after the whole turn.
 - Per-message selection: UI Toolkit `Label` exposes `ITextSelection` but reports `isSelectable == false` even
   with `focusable = true`, so the footer's Select button reveals a read-only multiline `TextField` inside
   that one message. It copies the message's raw text and keeps the field selection local to that message;

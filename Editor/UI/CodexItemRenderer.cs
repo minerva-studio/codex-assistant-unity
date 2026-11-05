@@ -22,7 +22,8 @@ namespace Minerva.Codex
             Action<string> copyMessage = null,
             Action<string> forkFromTurn = null,
             string turnId = null,
-            long turnTimestampMs = 0)
+            long turnTimestampMs = 0,
+            bool canFork = false)
         {
             string type = item["type"]?.Value<string>() ?? "unknown";
             switch (type)
@@ -34,7 +35,8 @@ namespace Minerva.Codex
                         turnId,
                         copyMessage,
                         forkFromTurn,
-                        turnTimestampMs);
+                        turnTimestampMs,
+                        canFork);
                     break;
                 case "agentMessage":
                     RenderAgentMessage(
@@ -43,7 +45,8 @@ namespace Minerva.Codex
                         turnId,
                         copyMessage,
                         forkFromTurn,
-                        turnTimestampMs);
+                        turnTimestampMs,
+                        canFork);
                     break;
                 case "reasoning":
                     if (showReasoning)
@@ -146,7 +149,8 @@ namespace Minerva.Codex
             string turnId,
             Action<string> copyMessage,
             Action<string> forkFromTurn,
-            long turnTimestampMs)
+            long turnTimestampMs,
+            bool canFork)
         {
             long timestamp = item["startedAtMs"]?.Value<long>() ??
                              item["completedAtMs"]?.Value<long>() ??
@@ -167,7 +171,8 @@ namespace Minerva.Codex
                         turnId,
                         copyMessage,
                         forkFromTurn,
-                        timestamp);
+                        timestamp,
+                        canFork);
                 }
 
                 return;
@@ -179,7 +184,8 @@ namespace Minerva.Codex
                 turnId,
                 copyMessage,
                 forkFromTurn,
-                timestamp);
+                timestamp,
+                canFork);
         }
 
         static void RenderUserBubble(
@@ -188,7 +194,8 @@ namespace Minerva.Codex
             string turnId,
             Action<string> copyMessage,
             Action<string> forkFromTurn,
-            long timestampMs)
+            long timestampMs,
+            bool canFork)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -210,7 +217,8 @@ namespace Minerva.Codex
                 timestampMs,
                 copyMessage,
                 forkFromTurn,
-                true);
+                true,
+                canFork);
             parent.Add(wrapper);
         }
 
@@ -259,7 +267,8 @@ namespace Minerva.Codex
             string turnId,
             Action<string> copyMessage,
             Action<string> forkFromTurn,
-            long turnTimestampMs)
+            long turnTimestampMs,
+            bool canFork)
         {
             string text = item["text"]?.Value<string>();
             if (string.IsNullOrEmpty(text))
@@ -297,7 +306,8 @@ namespace Minerva.Codex
                 timestamp,
                 copyMessage,
                 forkFromTurn,
-                false);
+                false,
+                canFork);
             parent.Add(block);
         }
 
@@ -310,7 +320,8 @@ namespace Minerva.Codex
             long timestampMs,
             Action<string> copyMessage,
             Action<string> forkFromTurn,
-            bool userMessage)
+            bool userMessage,
+            bool canFork)
         {
             if (copyMessage == null && forkFromTurn == null && string.IsNullOrEmpty(text))
             {
@@ -417,10 +428,10 @@ namespace Minerva.Codex
                 footer.Add(copy);
             }
 
-            if (forkFromTurn != null && !string.IsNullOrEmpty(turnId))
+            if (canFork && forkFromTurn != null && !string.IsNullOrEmpty(turnId))
             {
                 var fork = FooterButton("Fork", () => forkFromTurn(turnId));
-                fork.tooltip = "Fork the conversation through this turn";
+                fork.tooltip = "Fork after this completed turn";
                 footer.Add(fork);
             }
 

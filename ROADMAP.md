@@ -29,8 +29,9 @@
 - Modern visual pass: palette/surface hierarchy, compact toolbar/sidebar, card-based Process and interaction
   surfaces, roomier composer, empty state and stable active-thread indicator. Codex text is unbubbled; user
   input keeps a compact right-aligned bubble. Process/tool folds show elapsed time. Sidebar context menu
-  handles rename/archive/copy/fork; each message has a footer with local time, copy, fork-through-this-turn,
-  and a per-message read-only selection field.
+  handles rename/archive/copy/fork; each message has a footer with local time, copy and a per-message
+  read-only selection field. Fork is limited to the final Codex message of a completed turn because the
+  app-server forks by turn, not by item.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

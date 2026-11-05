@@ -2878,7 +2878,8 @@ namespace Minerva.Codex
                         CopyMessageText,
                         ForkFromTurn,
                         turnId,
-                        turnTimestamp);
+                        turnTimestamp,
+                        false);
                 }
                 else if (type == "agentMessage" && IsFinalAgentMessage(item, index, lastAgentIndex))
                 {
@@ -2893,7 +2894,8 @@ namespace Minerva.Codex
                         CopyMessageText,
                         ForkFromTurn,
                         turnId,
-                        turnTimestamp);
+                        turnTimestamp,
+                        !isLive);
                 }
                 else
                 {
@@ -3013,7 +3015,8 @@ namespace Minerva.Codex
                             CopyMessageText,
                             ForkFromTurn,
                             turnId,
-                            turnTimestamp);
+                            turnTimestamp,
+                            false);
                     }
                 }
 

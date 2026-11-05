@@ -56,10 +56,11 @@ tools are next.
   Process/interaction surfaces, a roomier composer and a dedicated empty state. The active-thread indicator
   now uses a reserved leading slot, so it no longer drifts with wrapped titles.
 - Right-click a sidebar conversation for **Open**, **Rename...**, **Copy resume**, **Fork** and **Archive...**.
-- Every user or Codex message has a compact footer with **Select**, **Copy**, **Fork** and its local time.
+- Every user or Codex message has a compact footer with **Select**, **Copy** and its local time.
   **Select** switches only that message to a read-only text field so its text can be dragged and copied;
-  **Done** restores the formatted message. **Fork** branches through that message's turn (`lastTurnId`), so
-  later turns are omitted. UI Toolkit rich labels themselves do not expose text selection.
+  **Done** restores the formatted message. **Fork** appears only on a completed turn's final Codex message:
+  `thread/fork` is turn-granular (`lastTurnId`), so mid-turn and intermediate messages cannot fork exactly
+  in place. UI Toolkit rich labels themselves do not expose text selection.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of
