@@ -30,6 +30,7 @@ namespace Minerva.Codex
 
         const string ScopeProject = "This project";
         const string ScopeAll = "All projects";
+        const string ScopeArchived = "Archived";
 
         CodexWorkspace m_Workspace;
         ScrollView m_ThreadList;
@@ -43,6 +44,7 @@ namespace Minerva.Codex
         Button m_CopyButton;
         Button m_ForkButton;
         Button m_ArchiveButton;
+        Button m_RestoreButton;
         Button m_SettingsButton;
         Button m_NewButton;
         TextField m_SearchField;
@@ -93,6 +95,7 @@ namespace Minerva.Codex
 
         bool m_FollowTranscript = true;
         string m_LastTranscriptThreadId;
+        int m_LastTurnCount;
         bool m_ShowContextIndicator;
         bool m_ShowReasoning = true;
         bool m_ShowToolCalls = true;
@@ -542,7 +545,7 @@ namespace Minerva.Codex
             filters.Add(m_SearchField);
 
             m_ScopeField = new DropdownField { name = "codex-thread-scope" };
-            m_ScopeField.choices = new List<string> { ScopeProject, ScopeAll };
+            m_ScopeField.choices = new List<string> { ScopeProject, ScopeAll, ScopeArchived };
             m_ScopeField.SetValueWithoutNotify(ScopeProject);
             m_ScopeField.style.height = 28;
             m_ScopeField.style.marginTop = 0;
@@ -553,9 +556,24 @@ namespace Minerva.Codex
             m_ScopeField.style.borderBottomRightRadius = 7;
             m_ScopeField.style.paddingLeft = 8;
             m_ScopeField.style.color = CodexPalette.Muted;
-            m_ScopeField.tooltip = "Show conversations from this project or from every folder";
+            m_ScopeField.tooltip = "Show conversations from this project, from every folder, or archived ones";
             m_ScopeField.RegisterValueChangedCallback(evt =>
-                m_Workspace?.SetShowAllProjects(evt.newValue == ScopeAll));
+            {
+                if (m_Workspace == null)
+                {
+                    return;
+                }
+
+                if (evt.newValue == ScopeArchived)
+                {
+                    m_Workspace.SetShowArchived(true);
+                }
+                else
+                {
+                    // SetShowAllProjects also leaves the archived view.
+                    m_Workspace.SetShowAllProjects(evt.newValue == ScopeAll);
+                }
+            });
             filters.Add(m_ScopeField);
             sidebar.Add(filters);
 
@@ -633,6 +651,13 @@ namespace Minerva.Codex
             m_BackButton.tooltip = "Return to the parent agent conversation";
             StyleAccentSoftButton(m_BackButton);
             header.Add(m_BackButton);
+
+            m_RestoreButton = new Button(RestoreSelectedThread) { text = "Restore" };
+            m_RestoreButton.style.marginLeft = 4;
+            m_RestoreButton.style.display = DisplayStyle.None;
+            m_RestoreButton.tooltip = "Move this conversation back to the active list and open it";
+            StyleAccentSoftButton(m_RestoreButton);
+            header.Add(m_RestoreButton);
 
             m_ArchiveButton = new Button(ArchiveSelectedThread) { text = "Archive" };
             m_ArchiveButton.style.marginLeft = 4;
@@ -1810,10 +1835,17 @@ namespace Minerva.Codex
                 m_SearchField.SetValueWithoutNotify(m_Workspace.SearchTerm);
             }
 
-            string scope = m_Workspace.ShowAllProjects ? ScopeAll : ScopeProject;
+            string scope = m_Workspace.ShowArchived
+                ? ScopeArchived
+                : m_Workspace.ShowAllProjects ? ScopeAll : ScopeProject;
             if (m_ScopeField.value != scope)
             {
                 m_ScopeField.SetValueWithoutNotify(scope);
+            }
+
+            if (m_SearchField != null)
+            {
+                m_SearchField.SetEnabled(!m_Workspace.ShowArchived);
             }
 
             if (m_NewButton != null)
@@ -1956,12 +1988,13 @@ namespace Minerva.Codex
             bool hasContent = !string.IsNullOrWhiteSpace(m_Composer.value) || m_Attachments.Count > 0;
             bool settingsReady = m_Workspace != null && m_Workspace.SettingsLoaded;
             bool waitingForInteraction = m_Workspace != null && m_Workspace.HasPendingInteraction;
+            bool archived = m_Workspace != null && m_Workspace.SelectedIsArchived;
 
-            m_Composer.SetEnabled(ready && settingsReady && !waitingForInteraction);
+            m_Composer.SetEnabled(ready && settingsReady && !waitingForInteraction && !archived);
 
             bool actionEnabled = running
                 ? m_Workspace != null && m_Workspace.CanStop
-                : ready && settingsReady && hasContent && !waitingForInteraction;
+                : ready && settingsReady && hasContent && !waitingForInteraction && !archived;
 
             m_ActionButton.text = running ? "Stop" : "Send";
             m_ActionButton.SetEnabled(actionEnabled);
@@ -1975,21 +2008,25 @@ namespace Minerva.Codex
             }
 
             string steerKey = Application.platform == RuntimePlatform.OSXEditor ? "Cmd+Enter" : "Ctrl+Enter";
-            string hint = waitingForInteraction
-                ? "Resolve Codex's request above"
-                : running
-                    ? $"Enter to queue  ·  {steerKey} to steer"
-                    : "Enter to send  ·  Shift+Enter for a new line";
+            string hint = archived
+                ? "Restore this archived conversation to continue"
+                : waitingForInteraction
+                    ? "Resolve Codex's request above"
+                    : running
+                        ? $"Enter to queue  ·  {steerKey} to steer"
+                        : "Enter to send  ·  Shift+Enter for a new line";
             if (m_ComposerHint != null)
             {
                 m_ComposerHint.text = hint;
             }
 
-            m_Composer.tooltip = waitingForInteraction
-                ? "Codex is waiting for your response"
-                : running
-                    ? $"Enter queues for after this turn; {steerKey} steers the active turn"
-                    : "Enter to send · Shift+Enter for a new line";
+            m_Composer.tooltip = archived
+                ? "Archived conversations are read-only until restored"
+                : waitingForInteraction
+                    ? "Codex is waiting for your response"
+                    : running
+                        ? $"Enter queues for after this turn; {steerKey} steers the active turn"
+                        : "Enter to send · Shift+Enter for a new line";
         }
 
         void RefreshInteractionPanel()
@@ -4017,7 +4054,11 @@ namespace Minerva.Codex
             if (m_Workspace.Threads.Count == 0)
             {
                 string message;
-                if (m_Workspace.IsSearching)
+                if (m_Workspace.ShowArchived)
+                {
+                    message = "No archived conversations.\nArchived conversations stay here until you restore them.";
+                }
+                else if (m_Workspace.IsSearching)
                 {
                     message = m_Workspace.ShowAllProjects
                         ? "No conversations match your search."
@@ -4123,7 +4164,7 @@ namespace Minerva.Codex
                 }
             }
 
-            string metaText = m_Workspace.ShowAllProjects
+            string metaText = m_Workspace.ShowAllProjects || m_Workspace.ShowArchived
                 ? $"{FolderName(thread.Cwd)}  ·  {Ago(thread.UpdatedAt)}"
                 : Ago(thread.UpdatedAt);
             var meta = new Label(metaText);
@@ -4134,7 +4175,17 @@ namespace Minerva.Codex
             row.Add(meta);
 
             string id = thread.Id;
-            row.RegisterCallback<ClickEvent>(_ => m_Workspace.SelectThread(id));
+            row.RegisterCallback<ClickEvent>(_ =>
+            {
+                if (m_Workspace.ShowArchived)
+                {
+                    m_Workspace.SelectArchivedThread(id);
+                }
+                else
+                {
+                    m_Workspace.SelectThread(id);
+                }
+            });
             row.RegisterCallback<ContextClickEvent>(evt =>
             {
                 evt.StopPropagation();
@@ -4168,12 +4219,15 @@ namespace Minerva.Codex
 
             Vector2 previousOffset = m_Transcript.scrollOffset;
             bool stickToBottom = m_FollowTranscript || IsTranscriptAtBottom();
+            int previousTurnCount = m_LastTurnCount;
+            float previousContentHeight = m_Transcript.contentContainer.layout.height;
 
             m_Transcript.Clear();
             m_LiveContainer = null;
 
             if (string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
             {
+                m_LastTurnCount = 0;
                 AddEmptyState();
                 RestoreScroll(previousOffset, stickToBottom);
                 return;
@@ -4182,12 +4236,20 @@ namespace Minerva.Codex
             JObject liveTurn = m_Workspace.LiveTurn;
             if (m_Workspace.Turns.Count == 0 && liveTurn == null)
             {
-                string placeholder = m_Workspace.Error != null
-                    ? "Could not load this conversation."
-                    : m_Workspace.IsRunning ? "Codex is working..." : "Loading conversation...";
+                m_LastTurnCount = 0;
+                string placeholder = m_Workspace.SelectedIsArchived
+                    ? "This conversation is archived. Use Restore to open it."
+                    : m_Workspace.Error != null
+                        ? "Could not load this conversation."
+                        : m_Workspace.IsRunning ? "Codex is working..." : "Loading conversation...";
                 AddPlaceholder(placeholder);
                 RestoreScroll(previousOffset, stickToBottom);
                 return;
+            }
+
+            if (m_Workspace.HasMoreTurns || m_Workspace.IsLoadingMoreTurns)
+            {
+                AddLoadEarlierButton();
             }
 
             // The protocol returns newest first; read oldest to newest.
@@ -4203,7 +4265,14 @@ namespace Minerva.Codex
                 RenderTurn(m_LiveContainer, liveTurn, true);
             }
 
-            RestoreScroll(previousOffset, stickToBottom);
+            m_LastTurnCount = m_Workspace.Turns.Count;
+            // Appending older turns pushes the current content down; keep the
+            // reader on the same message instead of jumping to the new page.
+            bool appendedOlderTurns = previousTurnCount > 0 && m_LastTurnCount > previousTurnCount;
+            RestoreScroll(
+                previousOffset,
+                stickToBottom,
+                appendedOlderTurns ? previousContentHeight : -1f);
         }
 
         void OnTranscriptChanged()
@@ -4522,7 +4591,7 @@ namespace Minerva.Codex
             return scroller.highValue <= 0 || scroller.value >= scroller.highValue - 24;
         }
 
-        void RestoreScroll(Vector2 previousOffset, bool stickToBottom)
+        void RestoreScroll(Vector2 previousOffset, bool stickToBottom, float previousContentHeight = -1f)
         {
             m_Transcript.schedule.Execute(() =>
             {
@@ -4536,9 +4605,38 @@ namespace Minerva.Codex
                 }
                 else
                 {
-                    m_Transcript.scrollOffset = previousOffset;
+                    float delta = 0f;
+                    if (previousContentHeight >= 0f)
+                    {
+                        float contentHeight = m_Transcript.contentContainer.layout.height;
+                        delta = Math.Max(0f, contentHeight - previousContentHeight);
+                    }
+
+                    m_Transcript.scrollOffset = new Vector2(0, previousOffset.y + delta);
                 }
             });
+        }
+
+        void AddLoadEarlierButton()
+        {
+            var button = new Button(() => m_Workspace?.LoadEarlierTurns())
+            {
+                text = m_Workspace.IsLoadingMoreTurns ? "Loading earlier turns..." : "Load earlier turns",
+            };
+            button.SetEnabled(!m_Workspace.IsLoadingMoreTurns);
+            button.style.alignSelf = Align.Center;
+            button.style.height = 24;
+            button.style.paddingLeft = 14;
+            button.style.paddingRight = 14;
+            button.style.marginBottom = 10;
+            button.style.fontSize = 10;
+            button.style.color = CodexPalette.Muted;
+            button.style.backgroundColor = CodexPalette.Pill;
+            button.style.borderTopLeftRadius = 7;
+            button.style.borderTopRightRadius = 7;
+            button.style.borderBottomLeftRadius = 7;
+            button.style.borderBottomRightRadius = 7;
+            m_Transcript.Add(button);
         }
 
         void AddEmptyState()
@@ -4557,13 +4655,18 @@ namespace Minerva.Codex
             mark.style.marginBottom = 12;
             state.Add(mark);
 
-            var title = new Label("Codex Assistant");
+            bool browsingArchived = m_Workspace != null && m_Workspace.ShowArchived;
+
+            var title = new Label(browsingArchived ? "Archived conversations" : "Codex Assistant");
             title.style.fontSize = 19;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
             title.style.color = CodexPalette.Text;
             state.Add(title);
 
-            var copy = new Label("Start a conversation below, or choose one from the sidebar.");
+            var copy = new Label(
+                browsingArchived
+                    ? "Choose one from the sidebar and restore it to continue where it left off."
+                    : "Start a conversation below, or choose one from the sidebar.");
             copy.style.fontSize = 11;
             copy.style.color = CodexPalette.Muted;
             copy.style.whiteSpace = WhiteSpace.Normal;
@@ -4572,7 +4675,10 @@ namespace Minerva.Codex
             copy.style.maxWidth = 360;
             state.Add(copy);
 
-            var hint = new Label("The active Editor project is used as the working directory.");
+            var hint = new Label(
+                browsingArchived
+                    ? "Archived conversations are hidden from the active list."
+                    : "The active Editor project is used as the working directory.");
             hint.style.fontSize = 9;
             hint.style.color = CodexPalette.TextDim;
             hint.style.marginTop = 14;
@@ -4593,6 +4699,10 @@ namespace Minerva.Codex
 
         void UpdateHeader()
         {
+            bool archived = m_Workspace.SelectedIsArchived;
+            m_RestoreButton.style.display = archived ? DisplayStyle.Flex : DisplayStyle.None;
+            m_RestoreButton.SetEnabled(archived && m_Workspace.IsConnected);
+
             CodexThreadInfo selected = m_Workspace.SelectedThread;
             if (selected == null)
             {
@@ -4606,22 +4716,38 @@ namespace Minerva.Codex
                 m_BackButton.style.display = DisplayStyle.None;
                 m_CopyButton.SetEnabled(hasThread);
                 m_ForkButton.SetEnabled(
-                    hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
-                m_ArchiveButton.SetEnabled(hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning);
+                    hasThread && !archived && m_Workspace.IsConnected && !m_Workspace.IsRunning &&
+                    !m_Workspace.IsForking);
+                m_ArchiveButton.SetEnabled(
+                    hasThread && !archived && m_Workspace.IsConnected && !m_Workspace.IsRunning);
                 return;
             }
 
             bool hasParent = !string.IsNullOrEmpty(selected.ParentThreadId);
             m_HeaderTitle.text = DisplayTitle(selected);
-            m_HeaderMeta.text = hasParent
-                ? $"{selected.Cwd}  ·  {selected.Id}  ·  subagent"
-                : $"{selected.Cwd}  ·  {selected.Id}";
-            m_BackButton.style.display = hasParent ? DisplayStyle.Flex : DisplayStyle.None;
+            m_HeaderMeta.text = archived
+                ? $"{selected.Cwd}  ·  {selected.Id}  ·  archived"
+                : hasParent
+                    ? $"{selected.Cwd}  ·  {selected.Id}  ·  subagent"
+                    : $"{selected.Cwd}  ·  {selected.Id}";
+            m_BackButton.style.display = hasParent && !archived ? DisplayStyle.Flex : DisplayStyle.None;
             m_BackButton.SetEnabled(hasParent && m_Workspace.IsConnected);
             m_CopyButton.SetEnabled(true);
             m_ForkButton.SetEnabled(
-                m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
-            m_ArchiveButton.SetEnabled(m_Workspace.IsConnected && !m_Workspace.IsRunning);
+                !archived && m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
+            m_ArchiveButton.SetEnabled(
+                !archived && m_Workspace.IsConnected && !m_Workspace.IsRunning);
+        }
+
+        void RestoreSelectedThread()
+        {
+            string threadId = m_Workspace?.SelectedThreadId;
+            if (string.IsNullOrEmpty(threadId))
+            {
+                return;
+            }
+
+            m_Workspace.UnarchiveThread(threadId, true);
         }
 
         void GoToParentThread()
@@ -4672,6 +4798,25 @@ namespace Minerva.Codex
         {
             if (thread == null || m_Workspace == null)
             {
+                return;
+            }
+
+            if (m_Workspace.ShowArchived)
+            {
+                var archivedItems = new List<PopupItem>
+                {
+                    new PopupItem
+                    {
+                        Label = "Restore and open",
+                        Action = () => m_Workspace.UnarchiveThread(thread.Id, true),
+                    },
+                    new PopupItem
+                    {
+                        Label = "Copy resume",
+                        Action = () => EditorGUIUtility.systemCopyBuffer = $"codex resume {thread.Id}",
+                    },
+                };
+                ShowPopup(null, "ARCHIVED CONVERSATION", 230, archivedItems, false, position);
                 return;
             }
 

@@ -118,6 +118,16 @@ namespace Minerva.Codex
             Request("thread/archive", parameters, _ => onResult?.Invoke(), onError);
         }
 
+        public void UnarchiveThread(string threadId, Action<JObject> onResult, Action<string> onError)
+        {
+            var parameters = new JObject { ["threadId"] = threadId };
+            Request(
+                "thread/unarchive",
+                parameters,
+                result => onResult?.Invoke(result as JObject),
+                onError);
+        }
+
         public void UnsubscribeThread(string threadId, Action onResult, Action<string> onError)
         {
             var parameters = new JObject { ["threadId"] = threadId };
@@ -266,7 +276,16 @@ namespace Minerva.Codex
             Request("model/list", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);
         }
 
-        public void ListTurns(string threadId, int limit, Action<JArray> onResult, Action<string> onError)
+        /// <summary>
+        /// Reads one page of turns, newest first. <paramref name="cursor"/> is the
+        /// previous response's <c>nextCursor</c>; the response carries the next one.
+        /// </summary>
+        public void ListTurns(
+            string threadId,
+            int limit,
+            string cursor,
+            Action<JObject> onResult,
+            Action<string> onError)
         {
             var parameters = new JObject
             {
@@ -276,7 +295,12 @@ namespace Minerva.Codex
                 ["itemsView"] = "full",
             };
 
-            Request("thread/turns/list", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);
+            if (!string.IsNullOrEmpty(cursor))
+            {
+                parameters["cursor"] = cursor;
+            }
+
+            Request("thread/turns/list", parameters, result => onResult?.Invoke(result as JObject), onError);
         }
 
         /// <summary>

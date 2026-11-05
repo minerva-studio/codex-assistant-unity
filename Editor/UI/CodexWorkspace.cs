@@ -82,6 +82,7 @@ namespace Minerva.Codex
         const string LocalUserItemId = "local-user";
         const double StreamIntervalSeconds = 0.05;
         const double SearchDebounceSeconds = 0.25;
+        const int TurnPageSize = 30;
         // Subagents are opened from their parent item and must not become
         // separate conversations in the sidebar.
         static readonly string[] SourceKinds = { "cli", "vscode", "exec", "appServer", "unknown" };
@@ -123,12 +124,20 @@ namespace Minerva.Codex
         string m_SearchTerm = string.Empty;
         CodexThreadInfo m_SelectedThreadInfo;
         bool m_ShowAllProjects;
+        bool m_ShowArchived;
+        string m_SelectedArchivedThreadId;
         bool m_InitialSelectionDone;
         int m_ThreadListGeneration;
         bool m_SearchDebounceSubscribed;
         bool m_SearchPending;
         double m_SearchDeadline;
         long m_ConfigContextWindow;
+
+        // Turn paging: the newest page loads with the thread, older pages are
+        // appended on demand. nextCursor is null when the history is exhausted.
+        string m_TurnsCursor;
+        bool m_HasMoreTurns;
+        bool m_LoadingMoreTurns;
 
         bool m_ConfigLoaded;
         bool m_SettingsFromThread;
@@ -163,6 +172,7 @@ namespace Minerva.Codex
         public IReadOnlyList<JObject> Turns => m_Turns;
         public string SearchTerm => m_SearchTerm;
         public bool ShowAllProjects => m_ShowAllProjects;
+        public bool ShowArchived => m_ShowArchived;
         public bool IsSearching => !string.IsNullOrWhiteSpace(m_SearchTerm);
         public string SelectedThreadId { get; private set; }
         public string SelectedCwd { get; private set; }
@@ -170,6 +180,13 @@ namespace Minerva.Codex
         public bool ThreadsLoaded { get; private set; }
         public bool IsRunning { get; private set; }
         public bool IsForking { get; private set; }
+        public bool HasMoreTurns => m_HasMoreTurns;
+        public bool IsLoadingMoreTurns => m_LoadingMoreTurns;
+
+        /// <summary>The selection is an archived thread that was not resumed.</summary>
+        public bool SelectedIsArchived =>
+            !string.IsNullOrEmpty(m_SelectedArchivedThreadId) &&
+            m_SelectedArchivedThreadId == SelectedThreadId;
         public bool CanStop =>
             IsRunning && !string.IsNullOrEmpty(m_ActiveThreadId) && !string.IsNullOrEmpty(m_ActiveTurnId);
 
@@ -288,6 +305,8 @@ namespace Minerva.Codex
             ThreadsLoaded = false;
             m_SearchTerm = string.Empty;
             m_ShowAllProjects = false;
+            m_ShowArchived = false;
+            m_SelectedArchivedThreadId = null;
             m_InitialSelectionDone = false;
             m_ThreadListGeneration++;
             CancelSearchDebounce();
@@ -508,15 +527,61 @@ namespace Minerva.Codex
 
         public void SetShowAllProjects(bool showAll)
         {
-            if (m_ShowAllProjects == showAll)
+            bool scopeChanged = m_ShowArchived || m_ShowAllProjects != showAll;
+            m_ShowArchived = false;
+            m_ShowAllProjects = showAll;
+            if (!scopeChanged)
             {
                 return;
             }
 
-            m_ShowAllProjects = showAll;
+            // An archived selection belongs to the archived view.
+            DropArchivedSelection();
             m_ThreadListGeneration++;
             CancelSearchDebounce();
             RequestThreads();
+        }
+
+        /// <summary>
+        /// Switches the sidebar to the archived view. Archived conversations are
+        /// listed across every project and are never resumed until restored.
+        /// </summary>
+        public void SetShowArchived(bool archived)
+        {
+            if (m_ShowArchived == archived)
+            {
+                return;
+            }
+
+            m_ShowArchived = archived;
+            if (archived)
+            {
+                m_ShowAllProjects = false;
+            }
+            else
+            {
+                DropArchivedSelection();
+            }
+
+            m_ThreadListGeneration++;
+            CancelSearchDebounce();
+            RequestThreads();
+        }
+
+        void DropArchivedSelection()
+        {
+            if (!SelectedIsArchived)
+            {
+                return;
+            }
+
+            SelectedThreadId = null;
+            m_SelectedThreadInfo = null;
+            SelectedCwd = null;
+            m_SelectedArchivedThreadId = null;
+            m_Turns.Clear();
+            ResetTurnPaging();
+            Status = "New conversation";
         }
 
         public bool RenameThread(string threadId, string title)
@@ -671,8 +736,10 @@ namespace Minerva.Codex
             }
 
             int generation = ++m_ThreadListGeneration;
-            bool searching = IsSearching;
-            Status = searching ? "Searching conversations..." : "Loading conversations...";
+            bool searching = IsSearching && !m_ShowArchived;
+            Status = searching
+                ? "Searching conversations..."
+                : m_ShowArchived ? "Loading archived conversations..." : "Loading conversations...";
             Error = null;
             Changed?.Invoke();
 
@@ -680,9 +747,9 @@ namespace Minerva.Codex
             {
                 Limit = searching ? 100 : 50,
                 SourceKinds = SourceKinds,
-                Cwd = m_ShowAllProjects ? null : m_ProjectRoot,
-                SearchTerm = m_SearchTerm.Trim(),
-                IncludeArchived = false,
+                Cwd = m_ShowAllProjects || m_ShowArchived ? null : m_ProjectRoot,
+                SearchTerm = searching ? m_SearchTerm.Trim() : string.Empty,
+                IncludeArchived = m_ShowArchived,
             };
 
             if (searching)
@@ -752,7 +819,9 @@ namespace Minerva.Codex
             SelectedThreadId = threadId;
             m_SelectedThreadInfo = FindThread(threadId);
             SelectedCwd = m_SelectedThreadInfo?.Cwd;
+            m_SelectedArchivedThreadId = null;
             m_Turns.Clear();
+            ResetTurnPaging();
             m_EffortSyncedThreadId = null;
             m_Queued.Clear();
             m_QueueGeneration++;
@@ -766,6 +835,73 @@ namespace Minerva.Codex
                 true,
                 result => OnThreadResumed(requested, result),
                 message => OnThreadResumeFailed(requested, message));
+        }
+
+        /// <summary>
+        /// Selects an archived thread for inspection. It is not resumed until it is
+        /// restored, so its turns stay unloaded and the composer stays disabled.
+        /// </summary>
+        public void SelectArchivedThread(string threadId)
+        {
+            if (string.IsNullOrEmpty(threadId))
+            {
+                return;
+            }
+
+            m_SelectedArchivedThreadId = threadId;
+            SelectedThreadId = threadId;
+            m_SelectedThreadInfo = FindThread(threadId);
+            SelectedCwd = m_SelectedThreadInfo?.Cwd;
+            m_Turns.Clear();
+            ResetTurnPaging();
+            m_LiveTurn = null;
+            m_LiveThreadId = null;
+            m_EffortSyncedThreadId = null;
+            Error = null;
+            Status = "Archived conversation";
+            Changed?.Invoke();
+            ContextChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Restores an archived thread. With <paramref name="open"/>, the sidebar
+        /// returns to the active list and the restored thread is opened.
+        /// </summary>
+        public bool UnarchiveThread(string threadId, bool open)
+        {
+            if (!m_Ready || string.IsNullOrEmpty(threadId))
+            {
+                return false;
+            }
+
+            Status = "Restoring conversation...";
+            Changed?.Invoke();
+            m_Client.UnarchiveThread(
+                threadId,
+                _ =>
+                {
+                    m_ArchivedThreadIds.Remove(threadId);
+                    if (m_SelectedArchivedThreadId == threadId)
+                    {
+                        m_SelectedArchivedThreadId = null;
+                    }
+
+                    Error = null;
+                    Status = "Conversation restored";
+                    m_ThreadListGeneration++;
+                    if (open)
+                    {
+                        m_ShowArchived = false;
+                        SelectThread(threadId);
+                        RequestThreads();
+                        return;
+                    }
+
+                    RequestThreads();
+                    Changed?.Invoke();
+                },
+                OnFailed);
+            return true;
         }
 
         public void ReloadSelected()
@@ -790,7 +926,9 @@ namespace Minerva.Codex
             SelectedThreadId = null;
             m_SelectedThreadInfo = null;
             SelectedCwd = null;
+            m_SelectedArchivedThreadId = null;
             m_Turns.Clear();
+            ResetTurnPaging();
             m_LiveTurn = null;
             m_LiveThreadId = null;
             m_ActiveThreadId = null;
@@ -822,7 +960,8 @@ namespace Minerva.Codex
         public bool SendMessage(string text, IReadOnlyList<string> imagePaths = null)
         {
             bool hasImages = imagePaths != null && imagePaths.Count > 0;
-            if (!m_Ready || IsRunning || (string.IsNullOrWhiteSpace(text) && !hasImages))
+            if (!m_Ready || IsRunning || SelectedIsArchived ||
+                (string.IsNullOrWhiteSpace(text) && !hasImages))
             {
                 return false;
             }
@@ -1400,11 +1539,50 @@ namespace Minerva.Codex
         void LoadTurns(string threadId)
         {
             int generation = m_TurnGeneration;
+            ResetTurnPaging();
             m_Client.ListTurns(
                 threadId,
-                30,
-                turns => OnTurnsLoaded(threadId, turns, generation),
+                TurnPageSize,
+                null,
+                result => OnTurnsLoaded(threadId, result, generation, false),
                 OnFailed);
+        }
+
+        void ResetTurnPaging()
+        {
+            m_TurnsCursor = null;
+            m_HasMoreTurns = false;
+            m_LoadingMoreTurns = false;
+        }
+
+        /// <summary>
+        /// Appends the next older page of turns to the transcript. Returns false
+        /// when the history is exhausted or a page is already in flight.
+        /// </summary>
+        public bool LoadEarlierTurns()
+        {
+            if (!m_Ready || string.IsNullOrEmpty(SelectedThreadId) || !m_HasMoreTurns ||
+                m_LoadingMoreTurns)
+            {
+                return false;
+            }
+
+            string threadId = SelectedThreadId;
+            int generation = m_TurnGeneration;
+            m_LoadingMoreTurns = true;
+            Status = "Loading earlier turns...";
+            Changed?.Invoke();
+            m_Client.ListTurns(
+                threadId,
+                TurnPageSize,
+                m_TurnsCursor,
+                result => OnTurnsLoaded(threadId, result, generation, true),
+                message =>
+                {
+                    m_LoadingMoreTurns = false;
+                    OnFailed(message);
+                });
+            return true;
         }
 
         void StartThread(string text, IReadOnlyList<string> imagePaths)
@@ -1445,7 +1623,9 @@ namespace Minerva.Codex
             SelectedThreadId = threadId;
             m_SelectedThreadInfo = info;
             SelectedCwd = info.Cwd ?? m_ProjectRoot;
+            m_SelectedArchivedThreadId = null;
             m_Turns.Clear();
+            ResetTurnPaging();
             m_AutoTitleThreadId = CodexPreferences.AutoTitle ? threadId : null;
             m_EffortSyncedThreadId = null;
             m_Queued.Clear();
@@ -1498,7 +1678,9 @@ namespace Minerva.Codex
                     m_SelectedThreadInfo = info;
                     SelectedThreadId = threadId;
                     SelectedCwd = info.Cwd ?? m_ProjectRoot;
+                    m_SelectedArchivedThreadId = null;
                     m_Turns.Clear();
+                    ResetTurnPaging();
                     m_LiveTurn = null;
                     m_LiveThreadId = null;
                     m_ActiveThreadId = null;
@@ -2076,7 +2258,9 @@ namespace Minerva.Codex
             SelectedThreadId = null;
             m_SelectedThreadInfo = null;
             SelectedCwd = null;
+            m_SelectedArchivedThreadId = null;
             m_Turns.Clear();
+            ResetTurnPaging();
             m_LiveTurn = null;
             m_LiveThreadId = null;
             m_EffortSyncedThreadId = null;
@@ -2086,7 +2270,15 @@ namespace Minerva.Codex
             if (m_Threads.Count > 0)
             {
                 int nextIndex = Math.Min(Math.Max(index, 0), m_Threads.Count - 1);
-                SelectThread(m_Threads[nextIndex].Id);
+                if (m_ShowArchived)
+                {
+                    SelectArchivedThread(m_Threads[nextIndex].Id);
+                }
+                else
+                {
+                    SelectThread(m_Threads[nextIndex].Id);
+                }
+
                 return;
             }
 
@@ -2913,8 +3105,15 @@ namespace Minerva.Codex
                 else
                 {
                     CodexThreadInfo info = Parse(result);
-                    if (!m_ArchivedThreadIds.Contains(info.Id) &&
-                        string.IsNullOrEmpty(info.ParentThreadId))
+                    if (m_ShowArchived)
+                    {
+                        if (string.IsNullOrEmpty(info.ParentThreadId))
+                        {
+                            m_Threads.Add(info);
+                        }
+                    }
+                    else if (!m_ArchivedThreadIds.Contains(info.Id) &&
+                             string.IsNullOrEmpty(info.ParentThreadId))
                     {
                         m_Threads.Add(info);
                     }
@@ -2931,6 +3130,12 @@ namespace Minerva.Codex
                     _ => $"{m_Threads.Count} matches",
                 };
             }
+            else if (m_ShowArchived)
+            {
+                Status = m_Threads.Count == 1
+                    ? "1 archived conversation"
+                    : $"{m_Threads.Count} archived conversations";
+            }
             else if (!m_ShowAllProjects && m_Threads.Count == 0)
             {
                 Status = "No conversations in this project";
@@ -2942,7 +3147,9 @@ namespace Minerva.Codex
 
             Changed?.Invoke();
 
-            if (IsRunning)
+            // The archived view is a browsing surface; open a thread only when the
+            // reader picks one, never automatically.
+            if (IsRunning || m_ShowArchived)
             {
                 return;
             }
@@ -2981,6 +3188,7 @@ namespace Minerva.Codex
             SelectedThreadId = null;
             SelectedCwd = null;
             m_Turns.Clear();
+            ResetTurnPaging();
             Changed?.Invoke();
             ContextChanged?.Invoke();
         }
@@ -2998,51 +3206,93 @@ namespace Minerva.Codex
                 StringComparison.OrdinalIgnoreCase);
         }
 
-        void OnTurnsLoaded(string threadId, JArray turns, int generation)
+        void OnTurnsLoaded(string threadId, JObject result, int generation, bool append)
         {
             if (SelectedThreadId != threadId)
             {
                 return;
             }
 
-            m_Turns.Clear();
+            if (append && generation != m_TurnGeneration)
+            {
+                // The transcript was replaced while this page was in flight.
+                m_LoadingMoreTurns = false;
+                Changed?.Invoke();
+                return;
+            }
+
+            JArray turns = result?["data"] as JArray;
+            if (!append)
+            {
+                m_Turns.Clear();
+            }
+
+            int added = 0;
             if (turns != null)
             {
                 foreach (JToken token in turns)
                 {
-                    if (token is JObject turn)
+                    if (token is not JObject turn)
                     {
-                        MergeCachedReasoningSummaries(threadId, turn["items"] as JArray);
-                        m_Turns.Add(turn);
+                        continue;
                     }
+
+                    // A page can repeat the turn it anchored on.
+                    string id = turn["id"]?.Value<string>();
+                    if (append && !string.IsNullOrEmpty(id) &&
+                        m_Turns.Exists(existing => existing["id"]?.Value<string>() == id))
+                    {
+                        continue;
+                    }
+
+                    MergeCachedReasoningSummaries(threadId, turn["items"] as JArray);
+                    m_Turns.Add(turn);
+                    added++;
                 }
             }
 
-            // A daemon keeps the turn running across a domain reload. Hydrating
-            // the thread again must put that turn back into the live slot.
-            int activeIndex = m_Turns.FindIndex(
-                turn => turn["status"]?.Value<string>() == "inProgress");
-            if (activeIndex >= 0)
+            m_LoadingMoreTurns = false;
+            m_TurnsCursor = result?["nextCursor"]?.Value<string>();
+            m_HasMoreTurns = !string.IsNullOrEmpty(m_TurnsCursor);
+            if (append && added == 0)
             {
-                JObject active = m_Turns[activeIndex];
-                m_Turns.RemoveAt(activeIndex);
-                m_LiveTurn = active;
-                m_LiveThreadId = threadId;
-                m_ActiveThreadId = threadId;
-                m_ActiveTurnId = active["id"]?.Value<string>();
-                IsRunning = true;
+                // A cursor that keeps returning the same page must not loop.
+                m_HasMoreTurns = false;
             }
 
-            if (!IsRunning && generation == m_TurnGeneration && m_LiveThreadId == threadId)
+            if (!append)
             {
-                m_LiveTurn = null;
-                m_LiveThreadId = null;
+                // A daemon keeps the turn running across a domain reload. Hydrating
+                // the thread again must put that turn back into the live slot.
+                int activeIndex = m_Turns.FindIndex(
+                    turn => turn["status"]?.Value<string>() == "inProgress");
+                if (activeIndex >= 0)
+                {
+                    JObject active = m_Turns[activeIndex];
+                    m_Turns.RemoveAt(activeIndex);
+                    m_LiveTurn = active;
+                    m_LiveThreadId = threadId;
+                    m_ActiveThreadId = threadId;
+                    m_ActiveTurnId = active["id"]?.Value<string>();
+                    IsRunning = true;
+                }
+
+                if (!IsRunning && generation == m_TurnGeneration && m_LiveThreadId == threadId)
+                {
+                    m_LiveTurn = null;
+                    m_LiveThreadId = null;
+                }
             }
 
             Status = IsRunning
                 ? "Codex is working..."
                 : m_Turns.Count == 1 ? "1 turn" : $"{m_Turns.Count} turns";
             Changed?.Invoke();
+            if (append)
+            {
+                return;
+            }
+
             LoadQueue(threadId);
             MaybeStartAutoTitle(threadId, turns);
         }
@@ -3800,10 +4050,13 @@ namespace Minerva.Codex
             m_LiveTurn = null;
             m_LiveThreadId = null;
             m_Turns.Clear();
+            ResetTurnPaging();
             m_Threads.Clear();
             m_ContextUsage.Clear();
             m_ReasoningSummaries.Clear();
             m_ArchivedThreadIds.Clear();
+            m_ShowArchived = false;
+            m_SelectedArchivedThreadId = null;
             m_ArchiveVerifyingThreadId = null;
             m_QuestionRequests.Clear();
             m_ApprovalRequests.Clear();
@@ -3835,6 +4088,8 @@ namespace Minerva.Codex
             m_ContextUsage.Clear();
             m_ReasoningSummaries.Clear();
             m_ArchivedThreadIds.Clear();
+            m_ShowArchived = false;
+            m_SelectedArchivedThreadId = null;
             m_ArchiveVerifyingThreadId = null;
             m_QuestionRequests.Clear();
             m_ApprovalRequests.Clear();

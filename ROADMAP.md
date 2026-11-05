@@ -47,10 +47,11 @@
 
 ## Next
 
+- Thread-list paging: `thread/list` also returns a cursor; the sidebar still loads one page of 50.
 - Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard OpenAI
   elicitation forms.
 - Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
-- Thread management: rename, paginated history, unarchive.
+- Fix IME candidate-window placement in the composer; the current caret synchronization is not enough.
 
 ## Later
 

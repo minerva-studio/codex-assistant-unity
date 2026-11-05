@@ -131,6 +131,20 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   with `focusable = true`, so the footer's Select button reveals a read-only multiline `TextField` inside
   that one message. It copies the message's raw text and keeps the field selection local to that message;
   Done restores the rich Markdown content. There is no global plain-text transcript mode.
+- Turn paging: `thread/turns/list` is requested with `limit: 30` and the response's `nextCursor`;
+  **Load earlier turns** at the top of the transcript calls `LoadEarlierTurns`, which appends the next page,
+  skips turns already in `m_Turns` by id (a page can repeat its anchor turn), and clears the cursor when the
+  response has no `nextCursor` or adds nothing. A page that arrives after the transcript was replaced
+  (`m_TurnGeneration` changed) is dropped. The button renders only while `HasMoreTurns`; after an append the
+  scroll offset is shifted by the height the new page added so the reader stays on the same message. Every
+  `m_Turns.Clear()` must be paired with `ResetTurnPaging()`.
+- Archived view: the sidebar scope dropdown has a third choice, **Archived**. It lists
+  `thread/list { archived: true }` (that flag returns only archived threads) across every project, disables
+  the search box, and never auto-selects. Clicking a row calls `SelectArchivedThread`, which sets the
+  selection **without `thread/resume`**, so turns stay unloaded and the composer is disabled. **Restore**
+  (header button, or the row menu's **Restore and open**) calls `thread/unarchive`, leaves the archived view,
+  reloads the active list and resumes the thread. Changing the view drops an archived selection;
+  `SelectedIsArchived` is the predicate the UI uses for the read-only state.
 - Reference composer: `/`, `$` and `@` at a token boundary open command, skill and file pickers. The circular
   **+** button at the bottom-left of the composer opens an ADD menu for file/skill/command references,
   image attachment and Game view capture; it anchors the same popups without typing. Insertion uses Codex's
@@ -293,13 +307,17 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `last.totalTokens` / `modelContextWindow` (config `model_context_window` as fallback) and stays hidden until
   the setting is enabled.
 
-## Next task: approvals and thread management
+## Next tasks
 
-1. Approvals: app-server sends `ServerRequest` for command execution / file change; render accept/decline
-   with session scope. `CodexConnection.ServerRequest` already exists but nothing subscribes.
-2. Thread management: rename, paginated history, unarchive view.
-3. Optional: refresh the sidebar thread entry automatically after the first turn so its preview/updatedAt
-   match the store, without triggering the auto-select path in `OnThreadsLoaded`.
+1. Thread-list paging: `thread/list` returns a cursor too; the sidebar still asks for 50 and drops the rest.
+   Add a **Load more** row at the bottom of the sidebar. (`thread/turns/list` paging is done.)
+2. Legacy `execCommandApproval` / `applyPatchApproval`, MCP device verification and non-standard OpenAI
+   elicitation forms.
+3. Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
+4. IME caret placement is still wrong in practice (see Gotchas). The composer now synchronizes
+   `TextEditingUtilities` and reports its caret through `SetImeWindowPosition`, but the candidate window
+   still appears at the wrong place; this needs a real repro with the window's absolute screen position
+   rather than another blind edit.
 
 ## Workflow that works on this machine
 
@@ -337,6 +355,15 @@ unity command --project-path <proj> package resolve
   not fire there. Observe `LiveTurn` from `Changed` (which fires at completion before the reload) instead.
 - `thread/turns/list` with `itemsView: "summary"` returns only user/agent messages. Use `"full"` for tool and
   reasoning records.
+- `thread/turns/list` is paginated: pass `nextCursor` back as `cursor`; `backwardsCursor` is only for reversing
+  `sortDirection` (to re-read the anchor turn and catch updates to it). A page can repeat the turn it anchored
+  on, so merge by turn id, and stop paging when a page adds nothing.
+- `thread/list { archived: true }` returns **only** archived threads; false/null returns only active ones.
+  Do not `thread/resume` an archived thread: select it without resume and call `thread/unarchive` first.
+- The `codex-assistant-unity-dev` project pins `dev.helight.umarkdown` to the upstream `helightdev` repo, while
+  this package depends on the `minerva-studio` fork (`HeadingScale`, `MarkdownCodeTheme`). Batchmode compile of
+  that dev project reports `CS0117` in `CodexMarkdown.cs` before reaching newer code. Compile
+  `markdown-proto-2` instead, or repoint the dev manifest to the pinned fork.
 - `thread/search` fails with code -32600 unless initialize declared `capabilities.experimentalApi = true`.
 - Archiving a loaded thread with `thread/archive` returns success but the thread reappears in `thread/list`.
   Call `thread/unsubscribe` first, then archive. The same lock makes `codex archive <id>` fail for a thread

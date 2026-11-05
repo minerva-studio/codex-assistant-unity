@@ -99,7 +99,12 @@ namespace Minerva.Codex.Editor.Dev
 
                 JArray turns = null;
                 failure = null;
-                client.ListTurns(threadId, 5, result => turns = result, error => failure = error);
+                client.ListTurns(
+                    threadId,
+                    5,
+                    null,
+                    result => turns = result?["data"] as JArray,
+                    error => failure = error);
                 WaitUntil(() => turns != null || failure != null, "thread/turns/list");
 
                 if (failure != null)

@@ -37,6 +37,11 @@ All notable changes to this package are documented here.
 - Codex output is no longer wrapped in a bubble; user input keeps a compact right-aligned bubble.
 - Collapsed Process and tool headers show elapsed time.
 - Sidebar context menu with Open, Rename, Copy resume, Fork and Archive.
+- Turn history is paginated: the transcript loads the newest 30 turns and a **Load earlier turns** control
+  appends older pages through `nextCursor`, skipping repeats and keeping the reader on the same message.
+- The sidebar scope selector has an **Archived** view backed by `thread/list { archived: true }`. Archived
+  conversations open without resuming, so they are read-only until **Restore** (or **Restore and open** in
+  the row menu) calls `thread/unarchive` and reopens the thread.
 - Per-message footer with Select / Copy and local time; Select swaps only that message to a read-only
   selectable text field. Fork is shown only on a completed turn's final Codex message because
   `thread/fork` supports turn granularity, not mid-turn branching.
