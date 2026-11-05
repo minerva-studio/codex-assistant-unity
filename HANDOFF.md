@@ -165,7 +165,10 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   fix is `PlaceComposerImeWindow` in `CodexAssistantWindow`: while the window and the composer have focus, an
   `EditorApplication.update` hook calls IMM32 `ImmSetCandidateWindow` **and** `ImmSetCompositionWindow` with
   the composer's client-area position, using `GetForegroundWindow` for the IME context (`GetFocus` returns a
-  child window and the call silently does nothing). The IMM32 block no-ops on non-Windows editors.
+  child window and the call silently does nothing). The IMM32 block is guarded by
+  `#if UNITY_EDITOR_WIN && !UNITY_6000_6_OR_NEWER`: it is compiled out on non-Windows editors and from 6000.6
+  on, with no runtime version parsing. Verified on 6000.3.25f1 that the branch is still compiled in (the
+  `CodexIme` nested type is present).
   Approaches that were measured and do **not** work:
   1. UI Toolkit default (ATG): candidate window misplaced, and Chinese composition throws
      `ArgumentOutOfRangeException` in `TextEditingUtilities.UpdateImeState -> ReplaceSelection`.
@@ -341,8 +344,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 2. Legacy `execCommandApproval` / `applyPatchApproval`, MCP device verification and non-standard OpenAI
    elicitation forms.
 3. Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
-4. Remove the IMM32 IME workaround after moving to 6000.6.0a7+ (UUM-143713), and check IME placement on
-   macOS, where the workaround is a no-op.
+4. The IMM32 IME workaround is compiled out from 6000.6 on (`UNITY_6000_6_OR_NEWER`) on the assumption that
+   UUM-143713 covers the candidate-window position; that assumption has not been checked on a 6.6+ editor.
+   Verify it there and remove the workaround if the position is correct; check macOS separately.
 
 ## Workflow that works on this machine
 
