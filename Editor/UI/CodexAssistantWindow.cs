@@ -2995,13 +2995,9 @@ namespace Minerva.Codex
             }
         }
 
+#if UNITY_EDITOR_WIN && !UNITY_6000_6_OR_NEWER
         void PlaceComposerImeWindow()
         {
-            if (Application.platform != RuntimePlatform.WindowsEditor)
-            {
-                return;
-            }
-
             if (m_Composer == null || m_Composer.panel == null || EditorWindow.focusedWindow != this)
             {
                 return;
@@ -3119,6 +3115,13 @@ namespace Minerva.Codex
                 }
             }
         }
+#else
+        // UI Toolkit places the candidate window itself on other platforms and
+        // from 6000.6 on (UUM-143713).
+        void PlaceComposerImeWindow()
+        {
+        }
+#endif
 
         static object FindEditingUtilities(TextElement element)
         {
