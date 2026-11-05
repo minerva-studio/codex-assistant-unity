@@ -44,6 +44,10 @@
   window, keep a running turn alive and restore the selected thread. Direct stdio remains the fallback.
 - Settings panel and configurable CODEX_HOME; changing it restarts the listener and refreshes the model
   catalog. **Reconnect** reloads config/providers/models without changing the home.
+- Turn pagination (**Load earlier turns**) and an **Archived** sidebar view with restore; the sidebar header
+  is two rows (scope dropdown + `+` new conversation, search below).
+- Composer wrapping, caret sync after a reference insertion, and Windows IME candidate-window placement via
+  IMM32 (the workaround compiles out from 6000.6 on).
 
 ## Next
 
@@ -51,7 +55,7 @@
 - Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard OpenAI
   elicitation forms.
 - Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
-- Fix IME candidate-window placement in the composer; the current caret synchronization is not enough.
+- Verify composer IME placement on 6000.6+ (the workaround compiles out there) and on macOS.
 
 ## Later
 
