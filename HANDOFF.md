@@ -146,6 +146,11 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   Pointer capture drives `m_SidebarWidth`/`m_AgentsWidth`; `ClampSidebarWidth`/`ClampAgentsWidth` keep at least
   320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and
   `Minerva.Codex.AgentsWidth`; the right handle is hidden whenever the subagent rail is hidden.
+- IME positioning: the composer opts out of UI Toolkit's Advanced Text Generator
+  (`TextGeneratorType.Standard`) because ATG has caret/composition-coordinate defects. `PlaceComposerCaretAtEnd`
+  now updates the composer's internal `TextEditingUtilities` (`stringCursorIndex`/`stringSelectIndex`), then
+  calls `UpdateImeState` and `SetImeWindowPosition`; setting only the TextElement selection left IME's own
+  selection stale and produced `ArgumentOutOfRangeException` during Chinese composition.
 - Markdown: `CodexMarkdownFactory` overrides `CodeBlock` and sets `WhiteSpace.PreWrap` on the `CodeContent`
   label. UI Toolkit's default `WhiteSpace.Normal` was collapsing every leading code indentation. Rich text
   stays enabled so UMarkdown's syntax color tags still render. `DecorateSkillTokens` wraps bare `$name`

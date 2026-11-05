@@ -980,6 +980,10 @@ namespace Minerva.Codex
             m_ComposerCard.RegisterCallback<DragExitedEvent>(_ => ResetComposerDragStyle());
 
             m_Composer = new TextField { multiline = true, name = "codex-composer" };
+            // Keep the composer on legacy Text Core. UI Toolkit's Advanced Text
+            // Generator has known caret/IME positioning defects; the transcript
+            // can keep ATG, but the input field needs a correct composition cursor.
+            m_Composer.style.unityTextGenerator = TextGeneratorType.Standard;
             m_Composer.style.flexGrow = 1;
             m_Composer.style.minHeight = 54;
             m_Composer.style.maxHeight = 180;
@@ -1196,6 +1200,11 @@ namespace Minerva.Codex
             if (m_Composer == null)
             {
                 return;
+            }
+
+            foreach (TextElement textElement in m_Composer.Query<TextElement>().ToList())
+            {
+                textElement.style.unityTextGenerator = TextGeneratorType.Standard;
             }
 
             VisualElement input = m_Composer.Q(className: "unity-base-text-field__input")
@@ -2904,27 +2913,47 @@ namespace Minerva.Codex
                     return;
                 }
 
-                ITextSelection selection = element.selection;
-                if (selection == null)
+                object manipulator = null;
+                foreach (FieldInfo field in element.GetType().GetFields(
+                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (field.FieldType.Name == "TextEditingManipulator")
+                    {
+                        manipulator = field.GetValue(element);
+                        break;
+                    }
+                }
+
+                object utilities = manipulator?.GetType()
+                    .GetField("editingUtilities", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                    ?.GetValue(manipulator);
+                if (utilities == null)
                 {
                     return;
                 }
 
                 int end = m_Composer.value?.Length ?? 0;
-                PropertyInfo cursor = selection.GetType().GetProperty(
-                    "cursorIndex",
-                    BindingFlags.NonPublic | BindingFlags.Instance);
-                PropertyInfo anchor = selection.GetType().GetProperty(
-                    "selectIndex",
-                    BindingFlags.NonPublic | BindingFlags.Instance);
-                anchor?.SetValue(selection, end);
-                cursor?.SetValue(selection, end);
+                SetNonPublicProperty(utilities, "stringSelectIndex", end);
+                SetNonPublicProperty(utilities, "stringCursorIndex", end);
+                utilities.GetType()
+                    .GetMethod("UpdateImeState", BindingFlags.Public | BindingFlags.Instance)
+                    ?.Invoke(utilities, null);
+                utilities.GetType()
+                    .GetMethod("SetImeWindowPosition", BindingFlags.Public | BindingFlags.Instance)
+                    ?.Invoke(utilities, null);
             }
             catch (Exception)
             {
                 // The caret is cosmetic; never fail the reference insertion because
-                // this Unity build hides the selection setters.
+                // this Unity build hides the text-editing utilities.
             }
+        }
+
+        static void SetNonPublicProperty(object target, string name, object value)
+        {
+            target.GetType()
+                .GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.SetValue(target, value);
         }
 
         void RebuildReferenceChips()
