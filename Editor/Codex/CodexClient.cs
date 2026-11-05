@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using Newtonsoft.Json.Linq;
 
@@ -306,12 +307,13 @@ namespace Minerva.Codex
             JObject sandboxPolicy,
             JToken approvalPolicy,
             Action<JObject> onResult,
-            Action<string> onError)
+            Action<string> onError,
+            IReadOnlyList<string> imagePaths = null)
         {
             var parameters = new JObject
             {
                 ["threadId"] = threadId,
-                ["input"] = TextInput(text),
+                ["input"] = Input(text, imagePaths),
             };
 
             if (!string.IsNullOrEmpty(cwd))
@@ -349,13 +351,14 @@ namespace Minerva.Codex
             string expectedTurnId,
             string text,
             Action<JObject> onResult,
-            Action<string> onError)
+            Action<string> onError,
+            IReadOnlyList<string> imagePaths = null)
         {
             var parameters = new JObject
             {
                 ["threadId"] = threadId,
                 ["expectedTurnId"] = expectedTurnId,
-                ["input"] = TextInput(text),
+                ["input"] = Input(text, imagePaths),
             };
 
             Request("turn/steer", parameters, result => onResult?.Invoke(result as JObject), onError);
@@ -366,13 +369,14 @@ namespace Minerva.Codex
             string clientUserMessageId,
             string text,
             Action<JObject> onResult,
-            Action<string> onError)
+            Action<string> onError,
+            IReadOnlyList<string> imagePaths = null)
         {
             var parameters = new JObject
             {
                 ["threadId"] = threadId,
                 ["clientUserMessageId"] = clientUserMessageId,
-                ["input"] = TextInput(text),
+                ["input"] = Input(text, imagePaths),
             };
 
             Request("thread/queue/add", parameters, result => onResult?.Invoke(result as JObject), onError);
@@ -435,13 +439,34 @@ namespace Minerva.Codex
                 onError);
         }
 
-        static JArray TextInput(string text)
+        static JArray Input(string text, IReadOnlyList<string> imagePaths)
         {
-            return new JArray(new JObject
+            var input = new JArray(new JObject
             {
                 ["type"] = "text",
-                ["text"] = text,
+                ["text"] = text ?? string.Empty,
             });
+
+            if (imagePaths == null)
+            {
+                return input;
+            }
+
+            foreach (string path in imagePaths)
+            {
+                if (string.IsNullOrEmpty(path))
+                {
+                    continue;
+                }
+
+                input.Add(new JObject
+                {
+                    ["type"] = "localImage",
+                    ["path"] = path,
+                });
+            }
+
+            return input;
         }
 
         static void AddIfPresent(JObject target, string name, JToken value)

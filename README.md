@@ -72,6 +72,9 @@ tools are next.
   file pickers. They insert the same serialized references as Codex: `/review`, `[$skill](.../SKILL.md)` and
   `[file.name](relative/path)`. Markdown file and skill links in messages open locally when clicked. The file
   picker scans the selected conversation's cwd, not the Unity project.
+- Attach images with **+ Image**, by dragging files onto the composer, or with **Capture** while in Play Mode.
+  Up to four thumbnails can be staged and removed before sending; messages send them as `localImage` inputs
+  and render them inline on both sides.
 - Assistant replies stream into the transcript as Codex writes them; the completed turn is reloaded from
   history so the transcript matches the stored conversation.
 - The app-server runs as a localhost WebSocket listener per CODEX_HOME instead of a stdio child. A domain

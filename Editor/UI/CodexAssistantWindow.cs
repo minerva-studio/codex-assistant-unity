@@ -41,6 +41,10 @@ namespace Minerva.Codex
         Button m_FileReferenceButton;
         Button m_SkillReferenceButton;
         Button m_CommandReferenceButton;
+        Button m_AttachImageButton;
+        Button m_CaptureButton;
+        VisualElement m_AttachmentStrip;
+        readonly List<CodexImageAttachment> m_Attachments = new List<CodexImageAttachment>();
         int m_ReferenceTriggerIndex = -1;
         Button m_ModelButton;
         Button m_EffortButton;
@@ -118,6 +122,7 @@ namespace Minerva.Codex
         void OnDisable()
         {
             ClosePopup();
+            ClearAttachments();
             CodexPreferences.Changed -= OnPreferencesChanged;
             CodexPreferences.ReloadRequested -= OnBackendReloadRequested;
 
@@ -762,6 +767,13 @@ namespace Minerva.Codex
 
             composer.Add(m_ComposerCard);
 
+            m_AttachmentStrip = new VisualElement { name = "codex-attachments" };
+            m_AttachmentStrip.style.flexDirection = FlexDirection.Row;
+            m_AttachmentStrip.style.flexWrap = Wrap.Wrap;
+            m_AttachmentStrip.style.marginBottom = 5;
+            m_AttachmentStrip.style.display = DisplayStyle.None;
+            m_ComposerCard.Add(m_AttachmentStrip);
+
             var references = new VisualElement { name = "codex-references" };
             references.style.flexDirection = FlexDirection.Row;
             references.style.alignItems = Align.Center;
@@ -793,7 +805,22 @@ namespace Minerva.Codex
             m_CommandReferenceButton.name = "codex-ref-command";
             m_CommandReferenceButton.tooltip = "Insert a slash-command reference";
             references.Add(m_CommandReferenceButton);
+
+            m_AttachImageButton = ReferenceButton("+ Image", AttachImage);
+            m_AttachImageButton.name = "codex-attach-image";
+            m_AttachImageButton.tooltip = "Attach an image file";
+            references.Add(m_AttachImageButton);
+
+            m_CaptureButton = ReferenceButton("Capture", CaptureGameView);
+            m_CaptureButton.name = "codex-capture-game";
+            m_CaptureButton.tooltip = "Capture the Game view (requires Play Mode)";
+            references.Add(m_CaptureButton);
             m_ComposerCard.Add(references);
+
+            m_ComposerCard.RegisterCallback<DragEnterEvent>(OnComposerDragEnter);
+            m_ComposerCard.RegisterCallback<DragUpdatedEvent>(OnComposerDragUpdated);
+            m_ComposerCard.RegisterCallback<DragPerformEvent>(OnComposerDragPerform);
+            m_ComposerCard.RegisterCallback<DragExitedEvent>(_ => ResetComposerDragStyle());
 
             m_Composer = new TextField { multiline = true, name = "codex-composer" };
             m_Composer.style.flexGrow = 1;
@@ -1579,7 +1606,7 @@ namespace Minerva.Codex
 
             bool ready = m_Workspace != null && m_Workspace.IsConnected && m_Workspace.ThreadsLoaded;
             bool running = m_Workspace != null && m_Workspace.IsRunning;
-            bool hasText = !string.IsNullOrWhiteSpace(m_Composer.value);
+            bool hasContent = !string.IsNullOrWhiteSpace(m_Composer.value) || m_Attachments.Count > 0;
             bool settingsReady = m_Workspace != null && m_Workspace.SettingsLoaded;
             bool waitingForInteraction = m_Workspace != null && m_Workspace.HasPendingInteraction;
 
@@ -1587,7 +1614,7 @@ namespace Minerva.Codex
 
             bool actionEnabled = running
                 ? m_Workspace != null && m_Workspace.CanStop
-                : ready && settingsReady && hasText && !waitingForInteraction;
+                : ready && settingsReady && hasContent && !waitingForInteraction;
 
             m_ActionButton.text = running ? "Stop" : "Send";
             m_ActionButton.SetEnabled(actionEnabled);
@@ -2792,6 +2819,298 @@ namespace Minerva.Codex
             ShowPopup(m_CommandReferenceButton, "COMMAND REFERENCES", 390, items, true);
         }
 
+        void AttachImage()
+        {
+            string start = m_Workspace != null && !string.IsNullOrEmpty(m_Workspace.SelectedCwd)
+                ? m_Workspace.SelectedCwd
+                : Path.GetDirectoryName(Application.dataPath);
+            string path = EditorUtility.OpenFilePanelWithFilters(
+                "Attach image",
+                start,
+                new[] { "Images", "png,jpg,jpeg,gif,webp,tga,bmp" });
+            AddAttachment(path);
+        }
+
+        void CaptureGameView()
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                m_StatusLabel.text = "Enter Play Mode to capture the Game view.";
+                return;
+            }
+
+            try
+            {
+                Texture2D texture = ScreenCapture.CaptureScreenshotAsTexture();
+                if (texture == null)
+                {
+                    m_StatusLabel.text = "Game view capture returned no image.";
+                    return;
+                }
+
+                byte[] png = texture.EncodeToPNG();
+                UnityEngine.Object.DestroyImmediate(texture);
+                if (png == null)
+                {
+                    m_StatusLabel.text = "Could not encode the Game view capture.";
+                    return;
+                }
+
+                string directory = Path.Combine(
+                    Path.GetDirectoryName(Application.dataPath),
+                    "Library",
+                    "CodexAssistant",
+                    "attachments");
+                Directory.CreateDirectory(directory);
+                string path = Path.Combine(
+                    directory,
+                    $"capture-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+                File.WriteAllBytes(path, png);
+                AddAttachment(path);
+            }
+            catch (Exception exception)
+            {
+                m_StatusLabel.text = "Game view capture failed: " + exception.Message;
+                Debug.LogWarning("Codex Assistant: Game view capture failed: " + exception);
+            }
+        }
+
+        void AddAttachment(string path)
+        {
+            if (m_Attachments.Count >= 4)
+            {
+                m_StatusLabel.text = "At most 4 images per message.";
+                return;
+            }
+
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return;
+            }
+
+            foreach (CodexImageAttachment existing in m_Attachments)
+            {
+                if (string.Equals(existing.Path, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            CodexImageAttachment attachment = CodexImageAttachment.TryLoad(path);
+            if (attachment == null)
+            {
+                m_StatusLabel.text = "Could not load that image.";
+                return;
+            }
+
+            m_Attachments.Add(attachment);
+            RebuildAttachments();
+            UpdateComposer();
+        }
+
+        void AddAttachmentPaths(IEnumerable<string> paths)
+        {
+            foreach (string path in paths)
+            {
+                if (IsSupportedImagePath(path))
+                {
+                    AddAttachment(path);
+                }
+            }
+        }
+
+        void RebuildAttachments()
+        {
+            if (m_AttachmentStrip == null)
+            {
+                return;
+            }
+
+            m_AttachmentStrip.Clear();
+            m_AttachmentStrip.style.display = m_Attachments.Count == 0
+                ? DisplayStyle.None
+                : DisplayStyle.Flex;
+
+            foreach (CodexImageAttachment attachment in m_Attachments)
+            {
+                CodexImageAttachment captured = attachment;
+                var chip = new VisualElement();
+                chip.style.width = 54;
+                chip.style.height = 54;
+                chip.style.marginRight = 4;
+                chip.style.marginBottom = 4;
+                chip.style.borderTopWidth = 1;
+                chip.style.borderBottomWidth = 1;
+                chip.style.borderLeftWidth = 1;
+                chip.style.borderRightWidth = 1;
+                chip.style.borderTopColor = CodexPalette.Border;
+                chip.style.borderBottomColor = CodexPalette.Border;
+                chip.style.borderLeftColor = CodexPalette.Border;
+                chip.style.borderRightColor = CodexPalette.Border;
+                chip.style.borderTopLeftRadius = 8;
+                chip.style.borderTopRightRadius = 8;
+                chip.style.borderBottomLeftRadius = 8;
+                chip.style.borderBottomRightRadius = 8;
+                chip.style.overflow = Overflow.Hidden;
+                chip.tooltip = attachment.Path;
+
+                var image = new Image
+                {
+                    image = attachment.Thumbnail,
+                    scaleMode = ScaleMode.ScaleAndCrop,
+                };
+                image.style.width = Length.Percent(100);
+                image.style.height = Length.Percent(100);
+                chip.Add(image);
+
+                var remove = new Button(() => RemoveAttachment(captured)) { text = "×" };
+                remove.style.position = Position.Absolute;
+                remove.style.top = 2;
+                remove.style.right = 2;
+                remove.style.width = 18;
+                remove.style.height = 18;
+                remove.style.paddingLeft = 0;
+                remove.style.paddingRight = 0;
+                remove.style.paddingTop = 0;
+                remove.style.paddingBottom = 0;
+                remove.style.fontSize = 12;
+                remove.style.unityFontStyleAndWeight = FontStyle.Bold;
+                remove.style.color = Color.white;
+                remove.style.backgroundColor = new Color(0f, 0f, 0f, 0.82f);
+                remove.style.borderTopLeftRadius = 8;
+                remove.style.borderTopRightRadius = 8;
+                remove.style.borderBottomLeftRadius = 8;
+                remove.style.borderBottomRightRadius = 8;
+                chip.Add(remove);
+                m_AttachmentStrip.Add(chip);
+            }
+        }
+
+        void RemoveAttachment(CodexImageAttachment attachment)
+        {
+            m_Attachments.Remove(attachment);
+            attachment.Dispose();
+            RebuildAttachments();
+            UpdateComposer();
+        }
+
+        void ClearAttachments()
+        {
+            foreach (CodexImageAttachment attachment in m_Attachments)
+            {
+                attachment.Dispose();
+            }
+
+            m_Attachments.Clear();
+            RebuildAttachments();
+        }
+
+        List<string> AttachmentPaths()
+        {
+            var paths = new List<string>(m_Attachments.Count);
+            foreach (CodexImageAttachment attachment in m_Attachments)
+            {
+                paths.Add(attachment.Path);
+            }
+
+            return paths;
+        }
+
+        static bool IsSupportedImagePath(string path)
+        {
+            switch (Path.GetExtension(path).ToLowerInvariant())
+            {
+                case ".png":
+                case ".jpg":
+                case ".jpeg":
+                case ".gif":
+                case ".webp":
+                case ".tga":
+                case ".bmp":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        void OnComposerDragEnter(DragEnterEvent evt)
+        {
+            List<string> paths = DraggedImagePaths();
+            DragAndDrop.visualMode = paths.Count == 0
+                ? DragAndDropVisualMode.None
+                : DragAndDropVisualMode.Copy;
+            if (paths.Count > 0)
+            {
+                SetComposerDragStyle();
+            }
+        }
+
+        void OnComposerDragUpdated(DragUpdatedEvent evt)
+        {
+            List<string> paths = DraggedImagePaths();
+            DragAndDrop.visualMode = paths.Count == 0
+                ? DragAndDropVisualMode.None
+                : DragAndDropVisualMode.Copy;
+        }
+
+        void OnComposerDragPerform(DragPerformEvent evt)
+        {
+            AddAttachmentPaths(DraggedImagePaths());
+            DragAndDrop.AcceptDrag();
+            ResetComposerDragStyle();
+            evt.StopPropagation();
+        }
+
+        void SetComposerDragStyle()
+        {
+            m_ComposerCard.style.borderTopColor = CodexPalette.Accent;
+            m_ComposerCard.style.borderBottomColor = CodexPalette.Accent;
+            m_ComposerCard.style.borderLeftColor = CodexPalette.Accent;
+            m_ComposerCard.style.borderRightColor = CodexPalette.Accent;
+        }
+
+        void ResetComposerDragStyle()
+        {
+            m_ComposerCard.style.borderTopColor = CodexPalette.Border;
+            m_ComposerCard.style.borderBottomColor = CodexPalette.Border;
+            m_ComposerCard.style.borderLeftColor = CodexPalette.Border;
+            m_ComposerCard.style.borderRightColor = CodexPalette.Border;
+        }
+
+        static List<string> DraggedImagePaths()
+        {
+            var paths = new List<string>();
+            foreach (string path in DragAndDrop.paths)
+            {
+                if (IsSupportedImagePath(path))
+                {
+                    paths.Add(ToAbsoluteReferencePath(path));
+                }
+            }
+
+            foreach (UnityEngine.Object reference in DragAndDrop.objectReferences)
+            {
+                string assetPath = AssetDatabase.GetAssetPath(reference);
+                if (!string.IsNullOrEmpty(assetPath) && IsSupportedImagePath(assetPath))
+                {
+                    paths.Add(ToAbsoluteReferencePath(assetPath));
+                }
+            }
+
+            return paths;
+        }
+
+        static string ToAbsoluteReferencePath(string path)
+        {
+            if (Path.IsPathRooted(path))
+            {
+                return Path.GetFullPath(path);
+            }
+
+            string root = Path.GetDirectoryName(Application.dataPath);
+            return Path.GetFullPath(Path.Combine(root, path));
+        }
+
         void OnComposerAction()
         {
             if (m_Workspace != null && m_Workspace.IsRunning)
@@ -2827,8 +3146,9 @@ namespace Minerva.Codex
                 return;
             }
 
-            string text = m_Composer.value?.Trim();
-            if (string.IsNullOrEmpty(text))
+            string text = m_Composer.value?.Trim() ?? string.Empty;
+            List<string> imagePaths = AttachmentPaths();
+            if (string.IsNullOrEmpty(text) && imagePaths.Count == 0)
             {
                 return;
             }
@@ -2836,15 +3156,17 @@ namespace Minerva.Codex
             bool accepted;
             if (m_Workspace.IsRunning)
             {
-                accepted = steer ? m_Workspace.SteerMessage(text) : m_Workspace.QueueMessage(text);
+                accepted = steer
+                    ? m_Workspace.SteerMessage(text, imagePaths)
+                    : m_Workspace.QueueMessage(text, imagePaths);
                 if (!accepted && steer)
                 {
-                    accepted = m_Workspace.QueueMessage(text);
+                    accepted = m_Workspace.QueueMessage(text, imagePaths);
                 }
             }
             else
             {
-                accepted = m_Workspace.SendMessage(text);
+                accepted = m_Workspace.SendMessage(text, imagePaths);
             }
 
             if (!accepted)
@@ -2854,6 +3176,7 @@ namespace Minerva.Codex
 
             m_FollowTranscript = true;
             m_Composer.SetValueWithoutNotify(string.Empty);
+            ClearAttachments();
             UpdateComposer();
         }
 

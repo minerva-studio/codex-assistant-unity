@@ -140,6 +140,14 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `CodexMarkdown` forwards the selected cwd to `PointerDownLinkTagEvent`; local links open an AssetDatabase
   asset or fall back to `EditorUtility.OpenWithDefaultApp`, while http(s)/mailto links use `Application.OpenURL`.
   `JoinUserContent` also renders structured `skill` and `mention` inputs for history written by other clients.
+- Image attachments: `CodexImageAttachment.TryLoad` reads the source once, builds a max-128px thumbnail and
+  owns its texture; the composer keeps at most four in `m_Attachments` and disposes them on removal, send or
+  window disable. `+ Image` uses the file panel, the composer card accepts Unity/Explorer image drags through
+  UI Toolkit Drag events (`DragAndDrop.paths`/`objectReferences`, normalized against the project root), and
+  `Capture` uses `ScreenCapture.CaptureScreenshotAsTexture` in Play Mode, writing a PNG under
+  `Library/CodexAssistant/attachments`. `SendMessage`/`SteerMessage`/`QueueMessage` take optional image paths;
+  `CodexClient.Input` emits the text item followed by `localImage` items. Image-only sends are allowed, and
+  the live user message is replaced by the persisted image content after the turn reloads.
 - `BuildAgentsPanel` resets `m_AgentsSignature`; otherwise a UI rebuild can reuse the old signature while
   the new `m_AgentsList` is empty, leaving the rail blank.
 - Historical question replies are user messages wrapped as

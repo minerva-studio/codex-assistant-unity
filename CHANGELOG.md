@@ -42,6 +42,8 @@ All notable changes to this package are documented here.
   `thread/fork` supports turn granularity, not mid-turn branching.
 - Command, skill and file references in the composer (`/`, `$`, `@` or the reference row), serialized as
   Codex mention text; local file/skill links in messages open on click.
+- Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
+  sending (including image-only messages).
 - Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
   filters the archived id; if another Codex client still holds it, the window keeps it and explains why.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image
