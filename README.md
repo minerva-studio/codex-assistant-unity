@@ -69,8 +69,9 @@ tools are next.
 - Composer at the bottom of the window: Enter sends while idle, Shift+Enter inserts a newline, and one button
   switches between Send and Stop. While a turn runs, Enter queues a follow-up and Ctrl+Enter steers the
   active turn. Queued messages appear above the composer and can be removed individually.
-- Typing **/**, **$** or **@** (or using the **+** menu at the bottom-left of the composer) opens command,
-  skill and file pickers. They insert the same serialized references as Codex: `/review`,
+- Typing **/**, **$** or **@** (or the full-width **／**, **￥/¥/＄**, **＠** while using a Chinese IME, or
+  the **+** menu at the bottom-left of the composer) opens command, skill and file pickers. They insert the
+  same serialized references as Codex: `/review`,
   `[$skill](.../SKILL.md)` and `[file.name](relative/path)`. Markdown file and skill links in messages open
   locally when clicked. The file picker scans the selected conversation's cwd, not the Unity project. Raw
   `$skill` tokens typed outside a code block render as inline skill pills; fenced code blocks keep their

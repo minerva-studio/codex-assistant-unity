@@ -120,7 +120,7 @@ namespace Minerva.Codex
             @"\[([^\]]+)\]\(([^)]+)\)",
             RegexOptions.Compiled);
         static readonly Regex BareSkillPattern = new Regex(
-            @"(?<![\w`\[\]$])\$([A-Za-z_][A-Za-z0-9_.-]*)",
+            @"(?<![\w`\[\]$￥¥＄])[$￥¥＄]([A-Za-z_][A-Za-z0-9_.-]*)",
             RegexOptions.Compiled);
 
         [MenuItem("Window/Minerva/Codex Assistant", priority = 1)]
@@ -3193,28 +3193,33 @@ namespace Minerva.Codex
             }
 
             char trigger = value[value.Length - 1];
-            if (trigger != '@' && trigger != '$' && trigger != '/')
+            bool skillTrigger = trigger == '$' || trigger == '￥' || trigger == '¥' || trigger == '＄';
+            bool fileTrigger = trigger == '@' || trigger == '＠';
+            bool commandTrigger = trigger == '/' || trigger == '／';
+            if (!skillTrigger && !fileTrigger && !commandTrigger)
             {
                 return;
             }
 
-            if (value.Length > 1 && !char.IsWhiteSpace(value[value.Length - 2]))
+            bool fullWidth = trigger == '￥' || trigger == '¥' || trigger == '＄' ||
+                             trigger == '＠' || trigger == '／';
+            if (!fullWidth && value.Length > 1 && !char.IsWhiteSpace(value[value.Length - 2]))
             {
                 return;
             }
 
             m_ReferenceTriggerIndex = value.Length - 1;
-            switch (trigger)
+            if (skillTrigger)
             {
-                case '@':
-                    ShowFileReferenceMenu();
-                    break;
-                case '$':
-                    ShowSkillReferenceMenu();
-                    break;
-                case '/':
-                    ShowCommandReferenceMenu();
-                    break;
+                ShowSkillReferenceMenu();
+            }
+            else if (fileTrigger)
+            {
+                ShowFileReferenceMenu();
+            }
+            else
+            {
+                ShowCommandReferenceMenu();
             }
         }
 

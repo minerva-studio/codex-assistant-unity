@@ -51,6 +51,8 @@ All notable changes to this package are documented here.
 - Code blocks preserve leading indentation and syntax colors; bare `$skill` tokens render as inline skill pills.
 - Reference popups support Up/Down selection and Enter confirmation while the search field stays focused;
   inserted references leave the caret after the token instead of selecting it.
+- Full-width `￥`/`¥`/`＄`, `＠` and `／` work as reference triggers during Chinese input; the first async
+  skill load now also delivers its waiting popup.
 - Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
   filters the archived id; if another Codex client still holds it, the window keeps it and explains why.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image

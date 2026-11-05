@@ -163,6 +163,11 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   that range out of the composer. Empty or remote links are ignored. Dragging the image of an attachment or the
   content of a file/skill chip calls `StartFileDrag`, which sets `DragAndDrop.paths` (and an AssetDatabase
   object reference when applicable) so the item can be dropped into Project or Explorer.
+- Chinese/full-width trigger aliases: `MaybeShowReferencePicker` accepts `￥`, `¥` and `＄` for skills, `＠`
+  for files and `／` for commands. Currency aliases bypass the whitespace-boundary check so they work after
+  Chinese text. `BareSkillPattern` and `CodexMarkdown.DecorateSkillTokens` accept the same currency glyphs.
+  `CodexWorkspace.LoadSkills` adds the caller to `m_SkillWaiters` before starting the request; otherwise the
+  first popup opened by `$`/`￥` would never receive the async completion.
 - Image attachments: `CodexImageAttachment.TryLoad` reads the source once, builds a max-128px thumbnail and
   owns its texture; the composer keeps at most four in `m_Attachments` and disposes them on removal, send or
   window disable. `+ Image` uses the file panel, the composer card accepts Unity/Explorer image drags through

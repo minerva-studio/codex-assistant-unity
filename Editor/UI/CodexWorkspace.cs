@@ -374,6 +374,10 @@ namespace Minerva.Codex
             m_SkillsLoading = true;
             m_SkillsLoadedFor = cwd;
             m_Skills.Clear();
+            if (onReady != null)
+            {
+                m_SkillWaiters.Add(onReady);
+            }
 
             m_Client.ListSkills(
                 cwd,

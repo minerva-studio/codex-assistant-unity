@@ -20,7 +20,7 @@ namespace Minerva.Codex
     internal static class CodexMarkdown
     {
         static readonly Regex SkillTokenPattern = new Regex(
-            @"(?<![\w`\[\]$])\$([A-Za-z_][A-Za-z0-9_.-]*)",
+            @"(?<![\w`\[\]$￥¥＄])[$￥¥＄]([A-Za-z_][A-Za-z0-9_.-]*)",
             RegexOptions.Compiled);
 
         static string ProjectRoot => Path.GetDirectoryName(Application.dataPath);
