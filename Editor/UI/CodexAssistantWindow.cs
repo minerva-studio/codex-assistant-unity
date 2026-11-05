@@ -16,6 +16,15 @@ namespace Minerva.Codex
     internal sealed class CodexAssistantWindow : EditorWindow
     {
         const string LastThreadKey = "Minerva.Codex.LastThread";
+        const string SidebarWidthKey = "Minerva.Codex.SidebarWidth";
+        const string AgentsWidthKey = "Minerva.Codex.AgentsWidth";
+        const float DefaultSidebarWidth = 292f;
+        const float DefaultAgentsWidth = 250f;
+        const float MinSidebarWidth = 230f;
+        const float MaxSidebarWidth = 460f;
+        const float MinAgentsWidth = 200f;
+        const float MaxAgentsWidth = 420f;
+        const float MinTranscriptWidth = 320f;
 
         const string ScopeProject = "This project";
         const string ScopeAll = "All projects";
@@ -38,11 +47,7 @@ namespace Minerva.Codex
         DropdownField m_ScopeField;
         TextField m_Composer;
         Button m_ActionButton;
-        Button m_FileReferenceButton;
-        Button m_SkillReferenceButton;
-        Button m_CommandReferenceButton;
-        Button m_AttachImageButton;
-        Button m_CaptureButton;
+        Button m_AddReferenceButton;
         VisualElement m_AttachmentStrip;
         readonly List<CodexImageAttachment> m_Attachments = new List<CodexImageAttachment>();
         int m_ReferenceTriggerIndex = -1;
@@ -58,6 +63,14 @@ namespace Minerva.Codex
         VisualElement m_ComposerCard;
         VisualElement m_QueueStrip;
         VisualElement m_QuestionPanel;
+        VisualElement m_Sidebar;
+        VisualElement m_SidebarResizer;
+        VisualElement m_AgentsResizer;
+        float m_SidebarWidth = DefaultSidebarWidth;
+        float m_AgentsWidth = DefaultAgentsWidth;
+        float m_ResizeStartX;
+        float m_ResizeStartWidth;
+        int m_ResizePointerId = -1;
         VisualElement m_AgentsPanel;
         ScrollView m_AgentsList;
         Label m_AgentsCountLabel;
@@ -102,6 +115,14 @@ namespace Minerva.Codex
             m_ShowReasoning = CodexPreferences.ShowReasoning;
             m_ShowToolCalls = CodexPreferences.ShowToolCalls;
             m_CodexHome = CodexPreferences.CodexHome;
+            m_SidebarWidth = Mathf.Clamp(
+                EditorPrefs.GetFloat(SidebarWidthKey, DefaultSidebarWidth),
+                MinSidebarWidth,
+                MaxSidebarWidth);
+            m_AgentsWidth = Mathf.Clamp(
+                EditorPrefs.GetFloat(AgentsWidthKey, DefaultAgentsWidth),
+                MinAgentsWidth,
+                MaxAgentsWidth);
             CodexPreferences.Changed += OnPreferencesChanged;
             CodexPreferences.ReloadRequested += OnBackendReloadRequested;
 
@@ -153,7 +174,9 @@ namespace Minerva.Codex
             rootVisualElement.Add(main);
 
             main.Add(BuildSidebar());
+            main.Add(BuildSidebarResizer());
             main.Add(BuildContent());
+            main.Add(BuildAgentsResizer());
             main.Add(BuildAgentsPanel());
         }
 
@@ -287,10 +310,154 @@ namespace Minerva.Codex
             });
         }
 
+        VisualElement BuildSidebarResizer()
+        {
+            m_SidebarResizer = BuildResizer("codex-sidebar-resizer", true);
+            return m_SidebarResizer;
+        }
+
+        VisualElement BuildAgentsResizer()
+        {
+            m_AgentsResizer = BuildResizer("codex-agents-resizer", false);
+            m_AgentsResizer.style.display = DisplayStyle.None;
+            return m_AgentsResizer;
+        }
+
+        VisualElement BuildResizer(string name, bool sidebar)
+        {
+            var handle = new VisualElement
+            {
+                name = name,
+                pickingMode = PickingMode.Position,
+            };
+            handle.style.width = 5;
+            handle.style.flexShrink = 0;
+            handle.style.backgroundColor = Color.clear;
+            handle.tooltip = sidebar
+                ? "Drag to resize conversations"
+                : "Drag to resize subagents";
+
+            var line = new VisualElement();
+            line.style.width = 1;
+            line.style.height = Length.Percent(100);
+            line.style.alignSelf = Align.Center;
+            line.style.backgroundColor = CodexPalette.Border;
+            handle.Add(line);
+
+            handle.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                if (evt.button != 0)
+                {
+                    return;
+                }
+
+                m_ResizePointerId = evt.pointerId;
+                m_ResizeStartX = evt.position.x;
+                m_ResizeStartWidth = sidebar ? m_SidebarWidth : m_AgentsWidth;
+                line.style.backgroundColor = CodexPalette.Accent;
+                handle.CapturePointer(evt.pointerId);
+                evt.StopPropagation();
+            });
+
+            handle.RegisterCallback<PointerMoveEvent>(evt =>
+            {
+                if (!handle.HasPointerCapture(evt.pointerId))
+                {
+                    return;
+                }
+
+                float delta = evt.position.x - m_ResizeStartX;
+                if (sidebar)
+                {
+                    m_SidebarWidth = ClampSidebarWidth(m_ResizeStartWidth + delta);
+                    if (m_Sidebar != null)
+                    {
+                        m_Sidebar.style.width = m_SidebarWidth;
+                    }
+                }
+                else
+                {
+                    m_AgentsWidth = ClampAgentsWidth(m_ResizeStartWidth - delta);
+                    if (m_AgentsPanel != null)
+                    {
+                        m_AgentsPanel.style.width = m_AgentsWidth;
+                    }
+                }
+
+                evt.StopPropagation();
+            });
+
+            handle.RegisterCallback<PointerUpEvent>(evt =>
+            {
+                if (handle.HasPointerCapture(evt.pointerId))
+                {
+                    handle.ReleasePointer(evt.pointerId);
+                }
+
+                FinishResize(line);
+                evt.StopPropagation();
+            });
+
+            handle.RegisterCallback<PointerCancelEvent>(evt =>
+            {
+                if (handle.HasPointerCapture(evt.pointerId))
+                {
+                    handle.ReleasePointer(evt.pointerId);
+                }
+
+                FinishResize(line);
+                evt.StopPropagation();
+            });
+
+            handle.RegisterCallback<PointerCaptureOutEvent>(_ => FinishResize(line));
+            handle.RegisterCallback<MouseEnterEvent>(_ =>
+                line.style.backgroundColor = CodexPalette.Accent);
+            handle.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                if (m_ResizePointerId < 0)
+                {
+                    line.style.backgroundColor = CodexPalette.Border;
+                }
+            });
+
+            return handle;
+        }
+
+        void FinishResize(VisualElement line)
+        {
+            m_ResizePointerId = -1;
+            if (line != null)
+            {
+                line.style.backgroundColor = CodexPalette.Border;
+            }
+
+            EditorPrefs.SetFloat(SidebarWidthKey, m_SidebarWidth);
+            EditorPrefs.SetFloat(AgentsWidthKey, m_AgentsWidth);
+        }
+
+        float ClampSidebarWidth(float width)
+        {
+            bool agentsVisible = m_AgentsPanel != null &&
+                                 m_AgentsPanel.style.display.value == DisplayStyle.Flex;
+            float available = rootVisualElement.layout.width -
+                              MinTranscriptWidth -
+                              (agentsVisible ? m_AgentsWidth : 0f);
+            float upper = Mathf.Clamp(available, MinSidebarWidth, MaxSidebarWidth);
+            return Mathf.Clamp(width, MinSidebarWidth, upper);
+        }
+
+        float ClampAgentsWidth(float width)
+        {
+            float available = rootVisualElement.layout.width - MinTranscriptWidth - m_SidebarWidth;
+            float upper = Mathf.Clamp(available, MinAgentsWidth, MaxAgentsWidth);
+            return Mathf.Clamp(width, MinAgentsWidth, upper);
+        }
+
         VisualElement BuildSidebar()
         {
-            var sidebar = new VisualElement();
-            sidebar.style.width = 292;
+            var sidebar = new VisualElement { name = "codex-sidebar" };
+            m_Sidebar = sidebar;
+            sidebar.style.width = m_SidebarWidth;
             sidebar.style.flexShrink = 0;
             sidebar.style.borderRightWidth = 1;
             sidebar.style.borderRightColor = CodexPalette.Border;
@@ -496,7 +663,7 @@ namespace Minerva.Codex
         VisualElement BuildAgentsPanel()
         {
             m_AgentsPanel = new VisualElement { name = "codex-agents" };
-            m_AgentsPanel.style.width = 250;
+            m_AgentsPanel.style.width = m_AgentsWidth;
             m_AgentsPanel.style.flexShrink = 0;
             m_AgentsPanel.style.flexDirection = FlexDirection.Column;
             m_AgentsPanel.style.backgroundColor = CodexPalette.Sidebar;
@@ -600,6 +767,11 @@ namespace Minerva.Codex
 
             bool visible = count > 0 && !m_AgentsPanelCollapsed;
             m_AgentsPanel.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            if (m_AgentsResizer != null)
+            {
+                m_AgentsResizer.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
             if (!visible)
             {
                 return;
@@ -774,49 +946,6 @@ namespace Minerva.Codex
             m_AttachmentStrip.style.display = DisplayStyle.None;
             m_ComposerCard.Add(m_AttachmentStrip);
 
-            var references = new VisualElement { name = "codex-references" };
-            references.style.flexDirection = FlexDirection.Row;
-            references.style.alignItems = Align.Center;
-            references.style.marginBottom = 5;
-
-            m_FileReferenceButton = ReferenceButton("@ File", () =>
-            {
-                m_ReferenceTriggerIndex = -1;
-                ShowFileReferenceMenu();
-            });
-            m_FileReferenceButton.name = "codex-ref-file";
-            m_FileReferenceButton.tooltip = "Insert a file reference";
-            references.Add(m_FileReferenceButton);
-
-            m_SkillReferenceButton = ReferenceButton("$ Skill", () =>
-            {
-                m_ReferenceTriggerIndex = -1;
-                ShowSkillReferenceMenu();
-            });
-            m_SkillReferenceButton.name = "codex-ref-skill";
-            m_SkillReferenceButton.tooltip = "Insert a skill reference";
-            references.Add(m_SkillReferenceButton);
-
-            m_CommandReferenceButton = ReferenceButton("/ Command", () =>
-            {
-                m_ReferenceTriggerIndex = -1;
-                ShowCommandReferenceMenu();
-            });
-            m_CommandReferenceButton.name = "codex-ref-command";
-            m_CommandReferenceButton.tooltip = "Insert a slash-command reference";
-            references.Add(m_CommandReferenceButton);
-
-            m_AttachImageButton = ReferenceButton("+ Image", AttachImage);
-            m_AttachImageButton.name = "codex-attach-image";
-            m_AttachImageButton.tooltip = "Attach an image file";
-            references.Add(m_AttachImageButton);
-
-            m_CaptureButton = ReferenceButton("Capture", CaptureGameView);
-            m_CaptureButton.name = "codex-capture-game";
-            m_CaptureButton.tooltip = "Capture the Game view (requires Play Mode)";
-            references.Add(m_CaptureButton);
-            m_ComposerCard.Add(references);
-
             m_ComposerCard.RegisterCallback<DragEnterEvent>(OnComposerDragEnter);
             m_ComposerCard.RegisterCallback<DragUpdatedEvent>(OnComposerDragUpdated);
             m_ComposerCard.RegisterCallback<DragPerformEvent>(OnComposerDragPerform);
@@ -874,6 +1003,37 @@ namespace Minerva.Codex
             actions.style.alignItems = Align.Center;
             actions.style.marginTop = 7;
             m_ComposerCard.Add(actions);
+
+            m_AddReferenceButton = new Button(ShowAddReferenceMenu)
+            {
+                text = "+",
+                name = "codex-add-reference",
+            };
+            m_AddReferenceButton.style.width = 26;
+            m_AddReferenceButton.style.height = 26;
+            m_AddReferenceButton.style.minWidth = 0;
+            m_AddReferenceButton.style.marginRight = 6;
+            m_AddReferenceButton.style.paddingLeft = 0;
+            m_AddReferenceButton.style.paddingRight = 0;
+            m_AddReferenceButton.style.paddingTop = 0;
+            m_AddReferenceButton.style.paddingBottom = 0;
+            m_AddReferenceButton.style.borderTopWidth = 0;
+            m_AddReferenceButton.style.borderBottomWidth = 0;
+            m_AddReferenceButton.style.borderLeftWidth = 0;
+            m_AddReferenceButton.style.borderRightWidth = 0;
+            m_AddReferenceButton.style.borderTopLeftRadius = 13;
+            m_AddReferenceButton.style.borderTopRightRadius = 13;
+            m_AddReferenceButton.style.borderBottomLeftRadius = 13;
+            m_AddReferenceButton.style.borderBottomRightRadius = 13;
+            m_AddReferenceButton.style.backgroundColor = CodexPalette.Pill;
+            m_AddReferenceButton.style.color = CodexPalette.Text;
+            m_AddReferenceButton.style.fontSize = 16;
+            m_AddReferenceButton.tooltip = "Add a file, skill, command or image";
+            m_AddReferenceButton.RegisterCallback<MouseEnterEvent>(_ =>
+                m_AddReferenceButton.style.backgroundColor = CodexPalette.Hover);
+            m_AddReferenceButton.RegisterCallback<MouseLeaveEvent>(_ =>
+                m_AddReferenceButton.style.backgroundColor = CodexPalette.Pill);
+            actions.Add(m_AddReferenceButton);
 
             m_SandboxButton = AddPill(actions, "codex-sandbox", "Sandbox");
             m_SandboxButton.clicked += ShowSandboxMenu;
@@ -2549,38 +2709,6 @@ namespace Minerva.Codex
             }
         }
 
-        static Button ReferenceButton(string text, Action action)
-        {
-            var button = new Button(action) { text = text };
-            button.style.height = 20;
-            button.style.minWidth = 0;
-            button.style.marginRight = 2;
-            button.style.paddingLeft = 5;
-            button.style.paddingRight = 5;
-            button.style.borderTopWidth = 0;
-            button.style.borderBottomWidth = 0;
-            button.style.borderLeftWidth = 0;
-            button.style.borderRightWidth = 0;
-            button.style.borderTopLeftRadius = 4;
-            button.style.borderTopRightRadius = 4;
-            button.style.borderBottomLeftRadius = 4;
-            button.style.borderBottomRightRadius = 4;
-            button.style.backgroundColor = Color.clear;
-            button.style.color = CodexPalette.TextDim;
-            button.style.fontSize = 9;
-            button.RegisterCallback<MouseEnterEvent>(_ =>
-            {
-                button.style.backgroundColor = CodexPalette.Hover;
-                button.style.color = CodexPalette.Text;
-            });
-            button.RegisterCallback<MouseLeaveEvent>(_ =>
-            {
-                button.style.backgroundColor = Color.clear;
-                button.style.color = CodexPalette.TextDim;
-            });
-            return button;
-        }
-
         void MaybeShowReferencePicker()
         {
             if (m_Composer == null || m_Popup != null || !m_Composer.enabledSelf)
@@ -2643,6 +2771,52 @@ namespace Minerva.Codex
             m_Composer.Focus();
         }
 
+        void ShowAddReferenceMenu()
+        {
+            var items = new List<PopupItem>
+            {
+                new PopupItem
+                {
+                    Label = "File reference",
+                    Action = () =>
+                    {
+                        m_ReferenceTriggerIndex = -1;
+                        ShowFileReferenceMenu();
+                    },
+                },
+                new PopupItem
+                {
+                    Label = "Skill reference",
+                    Action = () =>
+                    {
+                        m_ReferenceTriggerIndex = -1;
+                        ShowSkillReferenceMenu();
+                    },
+                },
+                new PopupItem
+                {
+                    Label = "Command reference",
+                    Action = () =>
+                    {
+                        m_ReferenceTriggerIndex = -1;
+                        ShowCommandReferenceMenu();
+                    },
+                },
+                new PopupItem
+                {
+                    Label = "Attach image...",
+                    Action = AttachImage,
+                },
+                new PopupItem
+                {
+                    Label = "Capture Game view",
+                    Action = CaptureGameView,
+                },
+            };
+
+            ShowPopup(m_AddReferenceButton, "ADD", 240, items, false);
+        }
+
         void ShowFileReferenceMenu()
         {
             string root = m_Workspace != null && !string.IsNullOrEmpty(m_Workspace.SelectedCwd)
@@ -2669,7 +2843,7 @@ namespace Minerva.Codex
                 items.Add(new PopupItem { Label = "No project files found" });
             }
 
-            ShowPopup(m_FileReferenceButton, "FILES", 470, items, true);
+            ShowPopup(m_AddReferenceButton, "FILES", 470, items, true);
         }
 
         static void CollectReferenceFiles(string root, string directory, List<string> files)
@@ -2757,7 +2931,7 @@ namespace Minerva.Codex
 
             m_Workspace.LoadSkills(skills =>
             {
-                if (m_SkillReferenceButton == null)
+                if (m_AddReferenceButton == null)
                 {
                     return;
                 }
@@ -2788,7 +2962,7 @@ namespace Minerva.Codex
                     items.Add(new PopupItem { Label = "No skills found for this project" });
                 }
 
-                ShowPopup(m_SkillReferenceButton, "SKILLS", 390, items, true);
+                ShowPopup(m_AddReferenceButton, "SKILLS", 390, items, true);
             });
         }
 
@@ -2816,7 +2990,7 @@ namespace Minerva.Codex
                 });
             }
 
-            ShowPopup(m_CommandReferenceButton, "COMMAND REFERENCES", 390, items, true);
+            ShowPopup(m_AddReferenceButton, "COMMAND REFERENCES", 390, items, true);
         }
 
         void AttachImage()

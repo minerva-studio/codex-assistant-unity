@@ -54,7 +54,8 @@ tools are next.
   `Process · 22 tools · 2 replies · 9m 55s` or `$ npm test · 4s`.
 - A modernized dark/light visual pass: compact toolbar and sidebar rows, accent selections, card-based
   Process/interaction surfaces, a roomier composer and a dedicated empty state. The active-thread indicator
-  now uses a reserved leading slot, so it no longer drifts with wrapped titles.
+  now uses a reserved leading slot, so it no longer drifts with wrapped titles. Drag the dividers beside the
+  conversation sidebar and subagent rail to resize them; widths persist in EditorPrefs.
 - Right-click a sidebar conversation for **Open**, **Rename...**, **Copy resume**, **Fork** and **Archive...**.
 - Every user or Codex message has a compact footer with **Select**, **Copy** and its local time.
   **Select** switches only that message to a read-only text field so its text can be dragged and copied;
@@ -68,13 +69,15 @@ tools are next.
 - Composer at the bottom of the window: Enter sends while idle, Shift+Enter inserts a newline, and one button
   switches between Send and Stop. While a turn runs, Enter queues a follow-up and Ctrl+Enter steers the
   active turn. Queued messages appear above the composer and can be removed individually.
-- Typing **/**, **$** or **@** (or using the reference buttons above the composer) opens command, skill and
-  file pickers. They insert the same serialized references as Codex: `/review`, `[$skill](.../SKILL.md)` and
-  `[file.name](relative/path)`. Markdown file and skill links in messages open locally when clicked. The file
-  picker scans the selected conversation's cwd, not the Unity project.
-- Attach images with **+ Image**, by dragging files onto the composer, or with **Capture** while in Play Mode.
-  Up to four thumbnails can be staged and removed before sending; messages send them as `localImage` inputs
-  and render them inline on both sides.
+- Typing **/**, **$** or **@** (or using the **+** menu at the bottom-left of the composer) opens command,
+  skill and file pickers. They insert the same serialized references as Codex: `/review`,
+  `[$skill](.../SKILL.md)` and `[file.name](relative/path)`. Markdown file and skill links in messages open
+  locally when clicked. The file picker scans the selected conversation's cwd, not the Unity project. Raw
+  `$skill` tokens typed outside a code block render as inline skill pills; fenced code blocks keep their
+  indentation and syntax colors.
+- Attach images from the same **+** menu, by dragging files onto the composer, or by capturing the Game view
+  in Play Mode. Up to four thumbnails can be staged and removed before sending; messages send them as
+  `localImage` inputs and render them inline on both sides.
 - Assistant replies stream into the transcript as Codex writes them; the completed turn is reloaded from
   history so the transcript matches the stored conversation.
 - The app-server runs as a localhost WebSocket listener per CODEX_HOME instead of a stdio child. A domain

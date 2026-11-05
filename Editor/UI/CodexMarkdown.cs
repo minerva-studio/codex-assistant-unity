@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEngine.UIElements.Experimental;
 using UMarkdown;
+using UMarkdown.Parsing;
 using UMarkdown.Styling;
 using UMarkdown.VisualElements;
 using Object = UnityEngine.Object;
@@ -17,11 +19,16 @@ namespace Minerva.Codex
     /// </summary>
     internal static class CodexMarkdown
     {
+        static readonly Regex SkillTokenPattern = new Regex(
+            @"(?<![\w`\[\]$])\$([A-Za-z_][A-Za-z0-9_.-]*)",
+            RegexOptions.Compiled);
+
         static string ProjectRoot => Path.GetDirectoryName(Application.dataPath);
 
         public static VisualElement Render(string markdown, string linkRoot = null)
         {
             string baseDirectory = string.IsNullOrEmpty(linkRoot) ? ProjectRoot : linkRoot;
+            markdown = DecorateSkillTokens(markdown);
             var style = new RichTextMarkdownStyle
             {
                 FontColor = CodexPalette.Text,
@@ -31,7 +38,7 @@ namespace Minerva.Codex
                 CodeTheme = EditorGUIUtility.isProSkin ? MarkdownCodeTheme.Dark : MarkdownCodeTheme.Light,
             };
 
-            var factory = new DefaultMarkdownVisualElementFactory
+            var factory = new CodexMarkdownFactory
             {
                 ImageBaseDirectory = baseDirectory,
                 MediaResolver = CodexMedia.Render,
@@ -44,6 +51,39 @@ namespace Minerva.Codex
                 evt.StopPropagation();
             }, TrickleDown.TrickleDown);
             return element;
+        }
+
+        static string DecorateSkillTokens(string markdown)
+        {
+            if (string.IsNullOrEmpty(markdown) || markdown.IndexOf('$') < 0)
+            {
+                return markdown;
+            }
+
+            string normalized = markdown.Replace("\r\n", "\n");
+            string[] lines = normalized.Split('\n');
+            bool fenced = false;
+            for (int index = 0; index < lines.Length; index++)
+            {
+                string trimmed = lines[index].TrimStart();
+                if (trimmed.StartsWith("```", StringComparison.Ordinal) ||
+                    trimmed.StartsWith("~~~", StringComparison.Ordinal))
+                {
+                    fenced = !fenced;
+                    continue;
+                }
+
+                if (fenced)
+                {
+                    continue;
+                }
+
+                lines[index] = SkillTokenPattern.Replace(
+                    lines[index],
+                    match => "`$" + match.Groups[1].Value + "`");
+            }
+
+            return string.Join("\n", lines);
         }
 
         static void OpenLink(string link, string baseDirectory)
@@ -99,6 +139,25 @@ namespace Minerva.Codex
             }
 
             EditorUtility.OpenWithDefaultApp(path);
+        }
+
+        sealed class CodexMarkdownFactory : DefaultMarkdownVisualElementFactory
+        {
+            public override VisualElement CodeBlock(RichTextRenderer renderer, string richText)
+            {
+                VisualElement block = base.CodeBlock(renderer, richText);
+                Label code = block.Q<Label>("CodeContent");
+                if (code != null)
+                {
+                    // UI Toolkit labels default to WhiteSpace.Normal, which
+                    // collapses the leading indentation of every code line.
+                    // Keep rich text enabled: UMarkdown's syntax colors are
+                    // emitted as color tags inside this label.
+                    code.style.whiteSpace = WhiteSpace.PreWrap;
+                }
+
+                return block;
+            }
         }
     }
 }

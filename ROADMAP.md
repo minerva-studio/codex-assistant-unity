@@ -33,7 +33,8 @@
   read-only selection field. Fork is limited to the final Codex message of a completed turn because the
   app-server forks by turn, not by item. The composer has `/`, `$` and `@` reference pickers for commands,
   skills and files, with clickable local links in the transcript, plus image attachments from files,
-  drag/drop or a Play Mode Game view capture.
+  drag/drop or a Play Mode Game view capture. Sidebar and subagent columns are resizable with persisted
+  widths; code blocks preserve indentation and raw `$skill` tokens render as inline pills.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

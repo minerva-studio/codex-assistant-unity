@@ -131,15 +131,25 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   with `focusable = true`, so the footer's Select button reveals a read-only multiline `TextField` inside
   that one message. It copies the message's raw text and keeps the field selection local to that message;
   Done restores the rich Markdown content. There is no global plain-text transcript mode.
-- Reference composer: `/`, `$` and `@` at a token boundary open command, skill and file pickers; the small
-  reference row above the text field opens the same pickers without typing. Insertion uses Codex's serialized
-  mention text: `/review`, `[$skill](absolute/SKILL.md)` and `[file.name](relative/path)`. This matches the
-  current Codex desktop main path, which sends one `text` UserInput rather than separate skill/mention inputs.
+- Reference composer: `/`, `$` and `@` at a token boundary open command, skill and file pickers. The circular
+  **+** button at the bottom-left of the composer opens an ADD menu for file/skill/command references,
+  image attachment and Game view capture; it anchors the same popups without typing. Insertion uses Codex's
+  serialized mention text: `/review`, `[$skill](absolute/SKILL.md)` and `[file.name](relative/path)`. This
+  matches the current Codex desktop main path, which sends one `text` UserInput rather than separate
+  skill/mention inputs.
   Skills come from `skills/list` (`CodexWorkspace.LoadSkills`, cached by cwd); files come from the selected
   thread's cwd, bounded to 600 entries with Library/Temp/.git and similar directories skipped.
   `CodexMarkdown` forwards the selected cwd to `PointerDownLinkTagEvent`; local links open an AssetDatabase
   asset or fall back to `EditorUtility.OpenWithDefaultApp`, while http(s)/mailto links use `Application.OpenURL`.
   `JoinUserContent` also renders structured `skill` and `mention` inputs for history written by other clients.
+- Panel resizing: `BuildResizer` adds a five-pixel handle with a one-pixel grip on both sides of the content.
+  Pointer capture drives `m_SidebarWidth`/`m_AgentsWidth`; `ClampSidebarWidth`/`ClampAgentsWidth` keep at least
+  320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and
+  `Minerva.Codex.AgentsWidth`; the right handle is hidden whenever the subagent rail is hidden.
+- Markdown: `CodexMarkdownFactory` overrides `CodeBlock` and sets `WhiteSpace.PreWrap` on the `CodeContent`
+  label. UI Toolkit's default `WhiteSpace.Normal` was collapsing every leading code indentation. Rich text
+  stays enabled so UMarkdown's syntax color tags still render. `DecorateSkillTokens` wraps bare `$name`
+  tokens outside fenced blocks as inline code; picker-inserted `[$name](path)` links are left intact.
 - Image attachments: `CodexImageAttachment.TryLoad` reads the source once, builds a max-128px thumbnail and
   owns its texture; the composer keeps at most four in `m_Attachments` and disposes them on removal, send or
   window disable. `+ Image` uses the file panel, the composer card accepts Unity/Explorer image drags through

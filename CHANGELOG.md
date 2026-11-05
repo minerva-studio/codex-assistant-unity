@@ -40,10 +40,13 @@ All notable changes to this package are documented here.
 - Per-message footer with Select / Copy and local time; Select swaps only that message to a read-only
   selectable text field. Fork is shown only on a completed turn's final Codex message because
   `thread/fork` supports turn granularity, not mid-turn branching.
-- Command, skill and file references in the composer (`/`, `$`, `@` or the reference row), serialized as
-  Codex mention text; local file/skill links in messages open on click.
+- Command, skill and file references live behind the circular **+** menu at the composer's bottom-left
+  (typing `/`, `$`, `@` still opens them directly), serialized as Codex mention text; local file/skill links
+  in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- Resizable conversation sidebar and subagent rail, with persisted widths.
+- Code blocks preserve leading indentation and syntax colors; bare `$skill` tokens render as inline skill pills.
 - Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
   filters the archived id; if another Codex client still holds it, the window keeps it and explains why.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image
