@@ -50,6 +50,9 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- Composer caret after a reference insertion is now moved through `TextField.SelectRange` plus the
+  text-editing utilities' unvalidated indices; the previous reflection path silently did nothing, leaving
+  the keyboard/IME cursor at the old position and throwing on the next insert.
 - Composer uses legacy Text Core and synchronizes `TextEditingUtilities` after insertions, fixing stale IME
   selection that could leave Chinese input candidate windows detached from the caret.
 - Any non-image file can be dragged into the composer as a reference; image and reference chips can be dragged

@@ -161,10 +161,17 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and
   `Minerva.Codex.AgentsWidth`; the right handle is hidden whenever the subagent rail is hidden.
 - IME positioning: the composer opts out of UI Toolkit's Advanced Text Generator
-  (`TextGeneratorType.Standard`) because ATG has caret/composition-coordinate defects. `PlaceComposerCaretAtEnd`
-  now updates the composer's internal `TextEditingUtilities` (`stringCursorIndex`/`stringSelectIndex`), then
-  calls `UpdateImeState` and `SetImeWindowPosition`; setting only the TextElement selection left IME's own
-  selection stale and produced `ArgumentOutOfRangeException` during Chinese composition.
+  (`TextGeneratorType.Standard`) because ATG has caret/composition-coordinate defects.
+- Composer caret after a reference insertion: `PlaceComposerCaretAtEnd` now finds the composer's
+  `TextElement` (`m_Composer.Q<TextElement>()`) and calls `m_Composer.SelectRange(end, end)`, then writes
+  `cursorIndexNoValidation`/`selectIndexNoValidation`. The previous version could never work: it read
+  `TextField.textSelection` (a `TextSelection` struct, not a `TextElement`) and returned immediately, and it
+  looked for a parameterless `SetImeWindowPosition`, which does not exist in 6000.3 (the real one takes a
+  `Vector2 worldPosition`). `TextEditingUtilities.text` has a writable-looking property that throws on set,
+  and the validated `stringCursorIndex`/`stringSelectIndex` setters read back 0 until the next layout pass;
+  set the `*NoValidation` indices instead. Do not "fix" this by setting only the text: the text is synced by
+  `SetValueWithoutNotify`, but the caret is not, and the next insert then throws
+  `ArgumentOutOfRangeException` from `DeleteSelection`.
 - Markdown: `CodexMarkdownFactory` overrides `CodeBlock` and sets `WhiteSpace.PreWrap` on the `CodeContent`
   label. UI Toolkit's default `WhiteSpace.Normal` was collapsing every leading code indentation. Rich text
   stays enabled so UMarkdown's syntax color tags still render. `DecorateSkillTokens` wraps bare `$name`
@@ -314,10 +321,13 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 2. Legacy `execCommandApproval` / `applyPatchApproval`, MCP device verification and non-standard OpenAI
    elicitation forms.
 3. Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
-4. IME caret placement is still wrong in practice (see Gotchas). The composer now synchronizes
-   `TextEditingUtilities` and reports its caret through `SetImeWindowPosition`, but the candidate window
-   still appears at the wrong place; this needs a real repro with the window's absolute screen position
-   rather than another blind edit.
+4. IME candidate-window placement: the composer caret now moves with the text after a reference
+   insertion, so the candidate window should follow it. If it is still misplaced, record how it is
+   misplaced: a fixed offset from the caret (or a fixed corner of the window) means the panel/world
+   position handed to `TextEditingUtilities.SetImeWindowPosition(Vector2 worldPosition)` is missing the
+   EditorWindow screen offset; a per-character drift means the glyph-index mapping is stale. Either way the
+   next step is to compute the caret world position ourselves and call that method during composition,
+   instead of guessing again.
 
 ## Workflow that works on this machine
 

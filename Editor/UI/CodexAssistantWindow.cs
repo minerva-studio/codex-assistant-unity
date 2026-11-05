@@ -2933,6 +2933,14 @@ namespace Minerva.Codex
             }
         }
 
+        /// <summary>
+        /// Moves the composer caret to the end after the text is replaced from
+        /// code. The TextField's visible selection and its text-editing indices
+        /// are different state: if only the text is replaced, the keyboard
+        /// handlers and the IME candidate window keep operating on the old caret,
+        /// which puts the composition window in the wrong place and can throw
+        /// from the next insert.
+        /// </summary>
         void PlaceComposerCaretAtEnd()
         {
             if (m_Composer == null)
@@ -2940,44 +2948,25 @@ namespace Minerva.Codex
                 return;
             }
 
+            int end = m_Composer.value?.Length ?? 0;
+
+            // Public path: updates the visible selection and the text editing
+            // state together.
+            m_Composer.SelectRange(end, end);
+
             try
             {
-                PropertyInfo textProperty = typeof(TextField).GetProperty(
-                    "textSelection",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                if (textProperty?.GetValue(m_Composer) is not TextElement element)
-                {
-                    return;
-                }
-
-                object manipulator = null;
-                foreach (FieldInfo field in element.GetType().GetFields(
-                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-                {
-                    if (field.FieldType.Name == "TextEditingManipulator")
-                    {
-                        manipulator = field.GetValue(element);
-                        break;
-                    }
-                }
-
-                object utilities = manipulator?.GetType()
-                    .GetField("editingUtilities", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                    ?.GetValue(manipulator);
+                object utilities = FindEditingUtilities(m_Composer.Q<TextElement>());
                 if (utilities == null)
                 {
                     return;
                 }
 
-                int end = m_Composer.value?.Length ?? 0;
-                SetNonPublicProperty(utilities, "stringSelectIndex", end);
-                SetNonPublicProperty(utilities, "stringCursorIndex", end);
-                utilities.GetType()
-                    .GetMethod("UpdateImeState", BindingFlags.Public | BindingFlags.Instance)
-                    ?.Invoke(utilities, null);
-                utilities.GetType()
-                    .GetMethod("SetImeWindowPosition", BindingFlags.Public | BindingFlags.Instance)
-                    ?.Invoke(utilities, null);
+                // The indices the keyboard handlers and the IME position read.
+                // Set them without glyph-index validation, which clamps to 0 while
+                // the element has not been laid out again.
+                SetNonPublicProperty(utilities, "cursorIndexNoValidation", end);
+                SetNonPublicProperty(utilities, "selectIndexNoValidation", end);
             }
             catch (Exception)
             {
@@ -2986,10 +2975,38 @@ namespace Minerva.Codex
             }
         }
 
+        static object FindEditingUtilities(TextElement element)
+        {
+            if (element == null)
+            {
+                return null;
+            }
+
+            object manipulator = null;
+            for (Type type = element.GetType(); type != null && manipulator == null; type = type.BaseType)
+            {
+                foreach (FieldInfo field in type.GetFields(
+                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                             BindingFlags.DeclaredOnly))
+                {
+                    if (field.FieldType.Name == "TextEditingManipulator")
+                    {
+                        manipulator = field.GetValue(element);
+                        break;
+                    }
+                }
+            }
+
+            return manipulator?
+                .GetType()
+                .GetField("editingUtilities", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.GetValue(manipulator);
+        }
+
         static void SetNonPublicProperty(object target, string name, object value)
         {
             target.GetType()
-                .GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance)
+                .GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
                 ?.SetValue(target, value);
         }
 
