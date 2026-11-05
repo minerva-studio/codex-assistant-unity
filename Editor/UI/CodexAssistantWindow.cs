@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -2857,6 +2858,46 @@ namespace Minerva.Codex
             }
         }
 
+        void PlaceComposerCaretAtEnd()
+        {
+            if (m_Composer == null)
+            {
+                return;
+            }
+
+            try
+            {
+                PropertyInfo textProperty = typeof(TextField).GetProperty(
+                    "textSelection",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (textProperty?.GetValue(m_Composer) is not TextElement element)
+                {
+                    return;
+                }
+
+                ITextSelection selection = element.selection;
+                if (selection == null)
+                {
+                    return;
+                }
+
+                int end = m_Composer.value?.Length ?? 0;
+                PropertyInfo cursor = selection.GetType().GetProperty(
+                    "cursorIndex",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                PropertyInfo anchor = selection.GetType().GetProperty(
+                    "selectIndex",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                anchor?.SetValue(selection, end);
+                cursor?.SetValue(selection, end);
+            }
+            catch (Exception)
+            {
+                // The caret is cosmetic; never fail the reference insertion because
+                // this Unity build hides the selection setters.
+            }
+        }
+
         void MaybeShowReferencePicker()
         {
             if (m_Composer == null || m_Popup != null || !m_Composer.enabledSelf)
@@ -2929,6 +2970,8 @@ namespace Minerva.Codex
 
                 m_Composer.SetValueWithoutNotify(inserted);
                 m_Composer.Focus();
+                PlaceComposerCaretAtEnd();
+                m_Composer.schedule.Execute(PlaceComposerCaretAtEnd);
                 UpdateComposer();
             });
         }
