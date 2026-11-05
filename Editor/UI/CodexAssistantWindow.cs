@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -50,6 +51,8 @@ namespace Minerva.Codex
         Button m_ActionButton;
         Button m_AddReferenceButton;
         VisualElement m_AttachmentStrip;
+        VisualElement m_ReferenceChipStrip;
+        readonly List<ReferenceChip> m_ReferenceChips = new List<ReferenceChip>();
         readonly List<CodexImageAttachment> m_Attachments = new List<CodexImageAttachment>();
         int m_ReferenceTriggerIndex = -1;
         Button m_ModelButton;
@@ -101,6 +104,24 @@ namespace Minerva.Codex
             public bool Selected;
             public Action Action;
         }
+
+        sealed class ReferenceChip
+        {
+            public string Raw;
+            public string Label;
+            public string Target;
+            public string AbsolutePath;
+            public bool Skill;
+            public int Start;
+            public int Length;
+        }
+
+        static readonly Regex ReferenceLinkPattern = new Regex(
+            @"\[([^\]]+)\]\(([^)]+)\)",
+            RegexOptions.Compiled);
+        static readonly Regex BareSkillPattern = new Regex(
+            @"(?<![\w`\[\]$])\$([A-Za-z_][A-Za-z0-9_.-]*)",
+            RegexOptions.Compiled);
 
         [MenuItem("Window/Minerva/Codex Assistant", priority = 1)]
         public static void Open()
@@ -977,12 +998,20 @@ namespace Minerva.Codex
             {
                 UpdateComposer();
                 MaybeShowReferencePicker();
+                RebuildReferenceChips();
             });
             m_Composer.RegisterCallback<FocusInEvent>(_ => SetComposerFocus(true));
             m_Composer.RegisterCallback<FocusOutEvent>(_ => SetComposerFocus(false));
             m_Composer.RegisterCallback<AttachToPanelEvent>(_ => StyleComposerInput());
             m_Composer.schedule.Execute(StyleComposerInput);
             m_ComposerCard.Add(m_Composer);
+
+            m_ReferenceChipStrip = new VisualElement { name = "codex-reference-chips" };
+            m_ReferenceChipStrip.style.flexDirection = FlexDirection.Row;
+            m_ReferenceChipStrip.style.flexWrap = Wrap.Wrap;
+            m_ReferenceChipStrip.style.marginTop = 4;
+            m_ReferenceChipStrip.style.display = DisplayStyle.None;
+            m_ComposerCard.Add(m_ReferenceChipStrip);
 
             var meta = new VisualElement();
             meta.style.flexDirection = FlexDirection.Row;
@@ -2898,6 +2927,258 @@ namespace Minerva.Codex
             }
         }
 
+        void RebuildReferenceChips()
+        {
+            if (m_ReferenceChipStrip == null)
+            {
+                return;
+            }
+
+            string text = m_Composer != null ? m_Composer.value ?? string.Empty : string.Empty;
+            var chips = new List<ReferenceChip>();
+            var linkRanges = new List<Vector2Int>();
+
+            foreach (Match match in ReferenceLinkPattern.Matches(text))
+            {
+                if (match.Index > 0 && text[match.Index - 1] == '!')
+                {
+                    continue;
+                }
+
+                string label = match.Groups[1].Value.Trim();
+                string target = match.Groups[2].Value.Trim().Trim('<', '>');
+                if (IsRemoteReference(target))
+                {
+                    continue;
+                }
+
+                bool skill = label.StartsWith("$", StringComparison.Ordinal) ||
+                             target.EndsWith("/SKILL.md", StringComparison.OrdinalIgnoreCase) ||
+                             target.EndsWith("\\SKILL.md", StringComparison.OrdinalIgnoreCase);
+                chips.Add(new ReferenceChip
+                {
+                    Raw = match.Value,
+                    Label = label,
+                    Target = target,
+                    AbsolutePath = ResolveReferencePath(target),
+                    Skill = skill,
+                    Start = match.Index,
+                    Length = match.Length,
+                });
+                linkRanges.Add(new Vector2Int(match.Index, match.Index + match.Length));
+            }
+
+            foreach (Match match in BareSkillPattern.Matches(text))
+            {
+                bool insideLink = false;
+                foreach (Vector2Int range in linkRanges)
+                {
+                    if (match.Index >= range.x && match.Index < range.y)
+                    {
+                        insideLink = true;
+                        break;
+                    }
+                }
+
+                if (insideLink)
+                {
+                    continue;
+                }
+
+                string name = match.Groups[1].Value;
+                string skillPath = m_Workspace != null ? m_Workspace.SkillPath(name) : null;
+                chips.Add(new ReferenceChip
+                {
+                    Raw = match.Value,
+                    Label = "$" + name,
+                    Target = string.IsNullOrEmpty(skillPath) ? "skill://" + name : skillPath,
+                    AbsolutePath = skillPath,
+                    Skill = true,
+                    Start = match.Index,
+                    Length = match.Length,
+                });
+            }
+
+            chips.Sort((left, right) => left.Start.CompareTo(right.Start));
+            m_ReferenceChips.Clear();
+            m_ReferenceChips.AddRange(chips);
+            m_ReferenceChipStrip.Clear();
+            m_ReferenceChipStrip.style.display = chips.Count == 0
+                ? DisplayStyle.None
+                : DisplayStyle.Flex;
+
+            foreach (ReferenceChip chip in chips)
+            {
+                AddReferenceChip(chip);
+            }
+        }
+
+        void AddReferenceChip(ReferenceChip chip)
+        {
+            var pill = new VisualElement();
+            pill.style.flexDirection = FlexDirection.Row;
+            pill.style.alignItems = Align.Center;
+            pill.style.height = 22;
+            pill.style.marginRight = 4;
+            pill.style.marginBottom = 4;
+            pill.style.paddingLeft = 6;
+            pill.style.paddingRight = 3;
+            pill.style.borderTopWidth = 1;
+            pill.style.borderBottomWidth = 1;
+            pill.style.borderLeftWidth = 1;
+            pill.style.borderRightWidth = 1;
+            pill.style.borderTopColor = CodexPalette.PillBorder;
+            pill.style.borderBottomColor = CodexPalette.PillBorder;
+            pill.style.borderLeftColor = CodexPalette.PillBorder;
+            pill.style.borderRightColor = CodexPalette.PillBorder;
+            pill.style.borderTopLeftRadius = 11;
+            pill.style.borderTopRightRadius = 11;
+            pill.style.borderBottomLeftRadius = 11;
+            pill.style.borderBottomRightRadius = 11;
+            pill.style.backgroundColor = CodexPalette.Pill;
+            pill.tooltip = chip.Target;
+
+            var content = new VisualElement();
+            content.style.flexDirection = FlexDirection.Row;
+            content.style.alignItems = Align.Center;
+            content.style.flexShrink = 1;
+            content.tooltip = string.IsNullOrEmpty(chip.AbsolutePath)
+                ? chip.Target
+                : chip.Target + "\nDrag to export";
+
+            var icon = new Label(chip.Skill ? "$" : "@");
+            icon.style.fontSize = 9;
+            icon.style.unityFontStyleAndWeight = FontStyle.Bold;
+            icon.style.color = CodexPalette.Accent;
+            icon.style.marginRight = 3;
+            content.Add(icon);
+
+            string display = chip.Skill ? chip.Label.TrimStart('$') : Path.GetFileName(chip.Label);
+            var label = new Label(display);
+            label.style.fontSize = 9;
+            label.style.color = CodexPalette.Text;
+            label.style.maxWidth = 160;
+            label.style.whiteSpace = WhiteSpace.NoWrap;
+            label.style.overflow = Overflow.Hidden;
+            label.style.textOverflow = TextOverflow.Ellipsis;
+            content.Add(label);
+            pill.Add(content);
+
+            var remove = new Button(() => RemoveReferenceChip(chip)) { text = "×" };
+            remove.style.width = 16;
+            remove.style.height = 16;
+            remove.style.minWidth = 0;
+            remove.style.marginLeft = 3;
+            remove.style.paddingLeft = 0;
+            remove.style.paddingRight = 0;
+            remove.style.paddingTop = 0;
+            remove.style.paddingBottom = 0;
+            remove.style.fontSize = 10;
+            remove.style.color = CodexPalette.TextDim;
+            remove.style.backgroundColor = Color.clear;
+            remove.style.borderTopWidth = 0;
+            remove.style.borderBottomWidth = 0;
+            remove.style.borderLeftWidth = 0;
+            remove.style.borderRightWidth = 0;
+            pill.Add(remove);
+
+            if (!string.IsNullOrEmpty(chip.AbsolutePath))
+            {
+                string path = chip.AbsolutePath;
+                string title = display;
+                content.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button == 0)
+                    {
+                        StartFileDrag(path, title);
+                    }
+                });
+            }
+
+            m_ReferenceChipStrip.Add(pill);
+        }
+
+        void RemoveReferenceChip(ReferenceChip chip)
+        {
+            if (m_Composer == null)
+            {
+                return;
+            }
+
+            string text = m_Composer.value ?? string.Empty;
+            if (chip.Start < 0 ||
+                chip.Start + chip.Length > text.Length ||
+                !string.Equals(text.Substring(chip.Start, chip.Length), chip.Raw, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            string updated = text.Remove(chip.Start, chip.Length);
+            m_Composer.SetValueWithoutNotify(updated);
+            UpdateComposer();
+            RebuildReferenceChips();
+            PlaceComposerCaretAtEnd();
+        }
+
+        static bool IsRemoteReference(string target)
+        {
+            return string.IsNullOrEmpty(target) ||
+                   target[0] == '#' ||
+                   target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                   target.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                   target.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) ||
+                   target.StartsWith("media://", StringComparison.OrdinalIgnoreCase);
+        }
+
+        string ResolveReferencePath(string target)
+        {
+            if (IsRemoteReference(target))
+            {
+                return null;
+            }
+
+            try
+            {
+                string baseDirectory = m_Workspace != null && !string.IsNullOrEmpty(m_Workspace.SelectedCwd)
+                    ? m_Workspace.SelectedCwd
+                    : ProjectRoot;
+                return Path.IsPathRooted(target)
+                    ? Path.GetFullPath(target)
+                    : Path.GetFullPath(Path.Combine(baseDirectory, target));
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        static void StartFileDrag(string path, string title)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return;
+            }
+
+            DragAndDrop.PrepareStartDrag();
+            DragAndDrop.paths = new[] { path };
+            string normalized = path.Replace('\\', '/');
+            int assetsIndex = normalized.IndexOf("/Assets/", StringComparison.OrdinalIgnoreCase);
+            if (assetsIndex >= 0)
+            {
+                UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(
+                    normalized.Substring(assetsIndex + 1));
+                DragAndDrop.objectReferences = asset != null
+                    ? new[] { asset }
+                    : new UnityEngine.Object[0];
+            }
+            else
+            {
+                DragAndDrop.objectReferences = new UnityEngine.Object[0];
+            }
+
+            DragAndDrop.StartDrag(string.IsNullOrEmpty(title) ? "reference" : title);
+        }
+
         void MaybeShowReferencePicker()
         {
             if (m_Composer == null || m_Popup != null || !m_Composer.enabledSelf)
@@ -2973,6 +3254,7 @@ namespace Minerva.Codex
                 PlaceComposerCaretAtEnd();
                 m_Composer.schedule.Execute(PlaceComposerCaretAtEnd);
                 UpdateComposer();
+                RebuildReferenceChips();
             });
         }
 
@@ -3340,6 +3622,14 @@ namespace Minerva.Codex
                 };
                 image.style.width = Length.Percent(100);
                 image.style.height = Length.Percent(100);
+                image.tooltip = "Drag to export";
+                image.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button == 0)
+                    {
+                        StartFileDrag(captured.Path, Path.GetFileName(captured.Path));
+                    }
+                });
                 chip.Add(image);
 
                 var remove = new Button(() => RemoveAttachment(captured)) { text = "×" };
@@ -3414,7 +3704,7 @@ namespace Minerva.Codex
 
         void OnComposerDragEnter(DragEnterEvent evt)
         {
-            List<string> paths = DraggedImagePaths();
+            List<string> paths = DraggedFilePaths();
             DragAndDrop.visualMode = paths.Count == 0
                 ? DragAndDropVisualMode.None
                 : DragAndDropVisualMode.Copy;
@@ -3426,7 +3716,7 @@ namespace Minerva.Codex
 
         void OnComposerDragUpdated(DragUpdatedEvent evt)
         {
-            List<string> paths = DraggedImagePaths();
+            List<string> paths = DraggedFilePaths();
             DragAndDrop.visualMode = paths.Count == 0
                 ? DragAndDropVisualMode.None
                 : DragAndDropVisualMode.Copy;
@@ -3434,10 +3724,59 @@ namespace Minerva.Codex
 
         void OnComposerDragPerform(DragPerformEvent evt)
         {
-            AddAttachmentPaths(DraggedImagePaths());
+            AddDroppedPaths(DraggedFilePaths());
             DragAndDrop.AcceptDrag();
             ResetComposerDragStyle();
             evt.StopPropagation();
+        }
+
+        void AddDroppedPaths(IEnumerable<string> paths)
+        {
+            var imagePaths = new List<string>();
+            var fileReferences = new List<string>();
+            foreach (string path in paths)
+            {
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                if (IsSupportedImagePath(path))
+                {
+                    imagePaths.Add(path);
+                }
+                else
+                {
+                    fileReferences.Add(FileReferenceToken(path));
+                }
+            }
+
+            AddAttachmentPaths(imagePaths);
+            if (fileReferences.Count > 0)
+            {
+                m_ReferenceTriggerIndex = -1;
+                InsertReference(string.Join(" ", fileReferences));
+            }
+        }
+
+        string FileReferenceToken(string path)
+        {
+            string target = path;
+            string root = m_Workspace != null ? m_Workspace.SelectedCwd : null;
+            if (!string.IsNullOrEmpty(root))
+            {
+                string fullRoot = Path.GetFullPath(root)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                    Path.DirectorySeparatorChar;
+                string fullPath = Path.GetFullPath(path);
+                if (fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    target = Path.GetRelativePath(root, fullPath);
+                }
+            }
+
+            target = target.Replace('\\', '/');
+            return "[" + Path.GetFileName(path) + "](" + target + ")";
         }
 
         void SetComposerDragStyle()
@@ -3456,23 +3795,31 @@ namespace Minerva.Codex
             m_ComposerCard.style.borderRightColor = CodexPalette.Border;
         }
 
-        static List<string> DraggedImagePaths()
+        static List<string> DraggedFilePaths()
         {
             var paths = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string path in DragAndDrop.paths)
             {
-                if (IsSupportedImagePath(path))
+                string absolute = ToAbsoluteReferencePath(path);
+                if ((File.Exists(absolute) || Directory.Exists(absolute)) && seen.Add(absolute))
                 {
-                    paths.Add(ToAbsoluteReferencePath(path));
+                    paths.Add(absolute);
                 }
             }
 
             foreach (UnityEngine.Object reference in DragAndDrop.objectReferences)
             {
                 string assetPath = AssetDatabase.GetAssetPath(reference);
-                if (!string.IsNullOrEmpty(assetPath) && IsSupportedImagePath(assetPath))
+                if (string.IsNullOrEmpty(assetPath))
                 {
-                    paths.Add(ToAbsoluteReferencePath(assetPath));
+                    continue;
+                }
+
+                string absolute = ToAbsoluteReferencePath(assetPath);
+                if ((File.Exists(absolute) || Directory.Exists(absolute)) && seen.Add(absolute))
+                {
+                    paths.Add(absolute);
                 }
             }
 
@@ -3556,6 +3903,7 @@ namespace Minerva.Codex
             m_FollowTranscript = true;
             m_Composer.SetValueWithoutNotify(string.Empty);
             ClearAttachments();
+            RebuildReferenceChips();
             UpdateComposer();
         }
 

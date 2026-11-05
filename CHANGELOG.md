@@ -45,6 +45,8 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- Any non-image file can be dragged into the composer as a reference; image and reference chips can be dragged
+  out to Project/Explorer. File and skill references also appear as removable chips below the input.
 - Resizable conversation sidebar and subagent rail, with persisted widths.
 - Code blocks preserve leading indentation and syntax colors; bare `$skill` tokens render as inline skill pills.
 - Reference popups support Up/Down selection and Enter confirmation while the search field stays focused;

@@ -34,7 +34,8 @@
   app-server forks by turn, not by item. The composer has `/`, `$` and `@` reference pickers for commands,
   skills and files, with clickable local links in the transcript, plus image attachments from files,
   drag/drop or a Play Mode Game view capture. Sidebar and subagent columns are resizable with persisted
-  widths; code blocks preserve indentation and raw `$skill` tokens render as inline pills.
+  widths; code blocks preserve indentation and raw `$skill` tokens render as inline pills. Any file can be
+  dropped in as a reference, file/skill chips sit below the composer, and images/reference chips drag out.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

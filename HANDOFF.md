@@ -155,6 +155,14 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   field with `TrickleDown`, so arrows wrap the selection, Enter invokes the selected item, and Escape closes
   before the text field consumes the key. Mouse hover updates the same selection. The composer remains a
   plain `TextField`; inline Markdown/chips inside the input would require a custom rich editor.
+- Drag in/out and reference chips: `DraggedFilePaths` accepts any file (and asset object references).
+  `AddDroppedPaths` attaches images and turns non-images into `[name](path)` references relative to the
+  selected cwd when possible. `m_ReferenceChipStrip` is derived from the composer text on every value change:
+  `ReferenceLinkPattern` finds local Markdown links, `BareSkillPattern` finds `$skill`, and each chip stores its
+  exact raw text plus start/length for removal. Chips are not a second source of truth; removing one splices
+  that range out of the composer. Empty or remote links are ignored. Dragging the image of an attachment or the
+  content of a file/skill chip calls `StartFileDrag`, which sets `DragAndDrop.paths` (and an AssetDatabase
+  object reference when applicable) so the item can be dropped into Project or Explorer.
 - Image attachments: `CodexImageAttachment.TryLoad` reads the source once, builds a max-128px thumbnail and
   owns its texture; the composer keeps at most four in `m_Attachments` and disposes them on removal, send or
   window disable. `+ Image` uses the file panel, the composer card accepts Unity/Explorer image drags through

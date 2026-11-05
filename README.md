@@ -79,6 +79,9 @@ tools are next.
 - Attach images from the same **+** menu, by dragging files onto the composer, or by capturing the Game view
   in Play Mode. Up to four thumbnails can be staged and removed before sending; messages send them as
   `localImage` inputs and render them inline on both sides.
+- Dragging any non-image file into the composer inserts a file reference. Images and file-reference chips can
+  be dragged back out to the Project window or Explorer. File and skill references also appear as removable
+  chips directly below the composer; the text field remains the source of truth.
 - Assistant replies stream into the transcript as Codex writes them; the completed turn is reloaded from
   history so the transcript matches the stored conversation.
 - The app-server runs as a localhost WebSocket listener per CODEX_HOME instead of a stdio child. A domain

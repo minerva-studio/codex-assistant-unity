@@ -455,6 +455,28 @@ namespace Minerva.Codex
             }
         }
 
+        /// <summary>
+        /// Resolves a loaded skill name to its SKILL.md path. Returns null until
+        /// <see cref="LoadSkills"/> has populated the current cwd cache.
+        /// </summary>
+        public string SkillPath(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return null;
+            }
+
+            foreach (CodexSkillInfo skill in m_Skills)
+            {
+                if (string.Equals(skill.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return skill.Path;
+                }
+            }
+
+            return null;
+        }
+
         public void RefreshThreads()
         {
             CancelSearchDebounce();
