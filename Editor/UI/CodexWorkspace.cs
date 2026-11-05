@@ -51,6 +51,7 @@ namespace Minerva.Codex
         public string Activity;
         public string Model;
         public string Effort;
+        public bool Live;
 
         public bool IsRunning => Status == "running" || Status == "pending";
     }
@@ -95,6 +96,7 @@ namespace Minerva.Codex
             new Dictionary<string, CodexContextUsage>();
         readonly Dictionary<string, JArray> m_ReasoningSummaries =
             new Dictionary<string, JArray>();
+        readonly HashSet<string> m_ArchivedThreadIds = new HashSet<string>();
         readonly StringBuilder m_Stderr = new StringBuilder();
 
         CodexConnection m_Connection;
@@ -355,7 +357,15 @@ namespace Minerva.Codex
         {
             m_Client.ArchiveThread(
                 threadId,
-                () => OnThreadRemoved(threadId, "Conversation archived"),
+                () =>
+                {
+                    m_ArchivedThreadIds.Add(threadId);
+                    OnThreadRemoved(threadId, "Conversation archived");
+                    // Invalidate any list request that started before the archive,
+                    // then reload so an archived thread cannot reappear from stale data.
+                    m_ThreadListGeneration++;
+                    RequestThreads();
+                },
                 OnFailed);
         }
 
@@ -1571,9 +1581,13 @@ namespace Minerva.Codex
                     OnTurnCompleted(parameters);
                     break;
                 case "thread/archived":
-                    OnThreadRemoved(
-                        parameters["threadId"]?.Value<string>(),
-                        "Conversation archived");
+                    string archivedThreadId = parameters["threadId"]?.Value<string>();
+                    if (!string.IsNullOrEmpty(archivedThreadId))
+                    {
+                        m_ArchivedThreadIds.Add(archivedThreadId);
+                    }
+
+                    OnThreadRemoved(archivedThreadId, "Conversation archived");
                     break;
                 case "thread/deleted":
                     OnThreadRemoved(
@@ -1581,6 +1595,12 @@ namespace Minerva.Codex
                         "Conversation removed");
                     break;
                 case "thread/unarchived":
+                    string unarchivedThreadId = parameters["threadId"]?.Value<string>();
+                    if (!string.IsNullOrEmpty(unarchivedThreadId))
+                    {
+                        m_ArchivedThreadIds.Remove(unarchivedThreadId);
+                    }
+
                     RefreshThreads();
                     break;
                 case "thread/name/updated":
@@ -2260,7 +2280,8 @@ namespace Minerva.Codex
                     }
 
                     CodexThreadInfo info = Parse(searchThread);
-                    if (!string.IsNullOrEmpty(info.ParentThreadId) ||
+                    if (m_ArchivedThreadIds.Contains(info.Id) ||
+                        !string.IsNullOrEmpty(info.ParentThreadId) ||
                         (!m_ShowAllProjects && !IsInCurrentProject(info.Cwd)))
                     {
                         continue;
@@ -2272,7 +2293,8 @@ namespace Minerva.Codex
                 else
                 {
                     CodexThreadInfo info = Parse(result);
-                    if (string.IsNullOrEmpty(info.ParentThreadId))
+                    if (!m_ArchivedThreadIds.Contains(info.Id) &&
+                        string.IsNullOrEmpty(info.ParentThreadId))
                     {
                         m_Threads.Add(info);
                     }
@@ -2471,10 +2493,21 @@ namespace Minerva.Codex
             var map = new Dictionary<string, CodexSubagentInfo>(StringComparer.Ordinal);
             for (int index = m_Turns.Count - 1; index >= 0; index--)
             {
-                CollectSubagents(m_Turns[index], map);
+                CollectSubagents(m_Turns[index], map, false);
             }
 
-            CollectSubagents(m_LiveTurn, map);
+            CollectSubagents(m_LiveTurn, map, IsRunning);
+
+            foreach (CodexSubagentInfo info in map.Values)
+            {
+                if (!info.Live && (info.Status == "running" || info.Status == "pending"))
+                {
+                    info.Status = "idle";
+                    info.Activity = string.IsNullOrEmpty(info.Activity)
+                        ? "not running"
+                        : "last: " + info.Activity;
+                }
+            }
 
             var result = new List<CodexSubagentInfo>(map.Values);
             result.Sort((left, right) =>
@@ -2492,7 +2525,8 @@ namespace Minerva.Codex
 
         static void CollectSubagents(
             JObject turn,
-            Dictionary<string, CodexSubagentInfo> map)
+            Dictionary<string, CodexSubagentInfo> map,
+            bool live)
         {
             if (turn?["items"] is not JArray items)
             {
@@ -2509,18 +2543,19 @@ namespace Minerva.Codex
                 string type = item["type"]?.Value<string>();
                 if (type == "collabAgentToolCall")
                 {
-                    CollectCollabAgents(item, map);
+                    CollectCollabAgents(item, map, live);
                 }
                 else if (type == "subAgentActivity")
                 {
-                    CollectSubagentActivity(item, map);
+                    CollectSubagentActivity(item, map, live);
                 }
             }
         }
 
         static void CollectCollabAgents(
             JObject item,
-            Dictionary<string, CodexSubagentInfo> map)
+            Dictionary<string, CodexSubagentInfo> map,
+            bool live)
         {
             string model = item["model"]?.Value<string>();
             string effort = item["reasoningEffort"]?.Value<string>();
@@ -2534,6 +2569,11 @@ namespace Minerva.Codex
                     if (info == null)
                     {
                         continue;
+                    }
+
+                    if (live)
+                    {
+                        info.Live = true;
                     }
 
                     string status = NormalizeSubagentStatus(
@@ -2563,6 +2603,11 @@ namespace Minerva.Codex
                         continue;
                     }
 
+                    if (live)
+                    {
+                        info.Live = true;
+                    }
+
                     if (string.IsNullOrEmpty(info.Status))
                     {
                         info.Status = "pending";
@@ -2580,13 +2625,19 @@ namespace Minerva.Codex
 
         static void CollectSubagentActivity(
             JObject item,
-            Dictionary<string, CodexSubagentInfo> map)
+            Dictionary<string, CodexSubagentInfo> map,
+            bool live)
         {
             string threadId = item["agentThreadId"]?.Value<string>();
             CodexSubagentInfo info = GetSubagent(map, threadId);
             if (info == null)
             {
                 return;
+            }
+
+            if (live)
+            {
+                info.Live = true;
             }
 
             string path = item["agentPath"]?.Value<string>();
@@ -2832,6 +2883,7 @@ namespace Minerva.Codex
             m_Threads.Clear();
             m_ContextUsage.Clear();
             m_ReasoningSummaries.Clear();
+            m_ArchivedThreadIds.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;
@@ -2859,6 +2911,7 @@ namespace Minerva.Codex
             m_Efforts.Clear();
             m_ContextUsage.Clear();
             m_ReasoningSummaries.Clear();
+            m_ArchivedThreadIds.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;

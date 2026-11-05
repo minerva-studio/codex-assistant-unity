@@ -24,7 +24,10 @@ All notable changes to this package are documented here.
 - Subagent activity and collaboration tool calls render as Subagent sections with Open buttons; subagent
   threads stay out of the sidebar and the header provides **← Parent** navigation.
 - A minimal right-side Subagents rail shows agent status/model/activity and opens a row's conversation.
-- Pulsing indicators mark the running turn in the toolbar/sidebar and running subagent rows.
+- Pulsing indicators mark the running turn in the toolbar/sidebar and running subagent rows; stale historical
+  running states are shown as idle instead of animated.
+- Archive now refreshes the thread list and filters the archived id, preventing stale list responses from
+  restoring the conversation.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image
   attachments are decoded instead of printed as base64.
 - Historical Process groups render their hidden tool rows lazily, keeping long-thread rebuilds responsive.

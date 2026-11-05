@@ -24,7 +24,8 @@ tools are next.
 
 - Lists non-archived threads Codex already knows about, including ones created by the CLI.
 - Sidebar search across thread content, a **This project / All projects** scope filter, thread titles, and
-  an **Archive** action for the selected thread. Archived threads stay hidden.
+  an **Archive** action for the selected thread. Archiving reloads the list and keeps the archived id
+  filtered, so a stale list response cannot bring the conversation back.
 - **New conversation** starts a thread on the first message without creating a zero-turn thread. After the
   first turn it generates a short title, using the conversation model or a separate title model from Settings.
 - **Fork** copies the selected conversation into a new thread and opens it. The source conversation is
@@ -36,6 +37,8 @@ tools are next.
   current activity. Click a row to open that agent; the toolbar **Agents N** button hides/shows the rail.
 - Running work has a pulsing hint: a dot in the toolbar, a dot on the active sidebar conversation, and
   pulsing dots on running subagent rows. Static green/yellow/red dots mark completed/failed agents.
+  A historical subagent with a stale “running” state is shown as **idle** unless it appears in the current
+  live turn, so an old agent is never animated as if it were still working.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of

@@ -96,8 +96,13 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 - The minimal right rail is driven by `CodexWorkspace.Subagents`, computed from `collabAgentToolCall`
   (`agentsStates`, receiver IDs, prompt, model/effort) and `subAgentActivity` (`agentPath`, kind) across the
   loaded turns plus the live turn. `CodexAssistantWindow` renders it as 236 px `m_AgentsPanel`; the toolbar
-  **Agents N** button toggles it, and rows call `SelectThread` on the child. Completed/failed rows use static
-  colors; running rows use `CodexPulseDot`.
+  **Agents N** button toggles it, and rows call `SelectThread` on the child. Only agents observed in the live
+  turn while `IsRunning` keep a running/pending status; historical stale running/pending states are rewritten
+  to **idle** (`last: …` activity) and get a static muted dot. Completed/failed rows are static; live running
+  rows use `CodexPulseDot`.
+- Archive: on success `m_ArchivedThreadIds` records the id, `OnThreadRemoved` clears the selection, the list
+  generation is invalidated, and `RequestThreads` reloads from the server. Both list and search results skip
+  ids in `m_ArchivedThreadIds`, so an in-flight stale list cannot resurrect an archived conversation.
 - `CodexPulseDot` is the shared animation primitive: a scheduled opacity pulse. It is used by the toolbar
   working dot, the selected running thread row, and running agent rows. The live composer/turn still shows
   the normal status text.
