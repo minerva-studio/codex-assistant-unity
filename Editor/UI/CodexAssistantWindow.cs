@@ -505,75 +505,28 @@ namespace Minerva.Codex
             filters.style.borderBottomWidth = 1;
             filters.style.borderBottomColor = CodexPalette.Border;
 
+            var header = new VisualElement();
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+            header.style.marginBottom = 8;
+
             var section = new Label("CONVERSATIONS");
             section.style.fontSize = 8;
             section.style.unityFontStyleAndWeight = FontStyle.Bold;
             section.style.color = CodexPalette.TextDim;
             section.style.marginLeft = 2;
-            section.style.marginBottom = 8;
-            filters.Add(section);
-
-            m_NewButton = new Button(NewConversation) { text = "+  New conversation", name = "codex-new" };
-            m_NewButton.style.height = 30;
-            m_NewButton.style.marginBottom = 8;
-            m_NewButton.style.paddingLeft = 10;
-            m_NewButton.style.paddingRight = 10;
-            m_NewButton.style.borderTopLeftRadius = 8;
-            m_NewButton.style.borderTopRightRadius = 8;
-            m_NewButton.style.borderBottomLeftRadius = 8;
-            m_NewButton.style.borderBottomRightRadius = 8;
-            m_NewButton.style.borderTopWidth = 0;
-            m_NewButton.style.borderBottomWidth = 0;
-            m_NewButton.style.borderLeftWidth = 0;
-            m_NewButton.style.borderRightWidth = 0;
-            m_NewButton.style.backgroundColor = CodexPalette.AccentSoft;
-            m_NewButton.style.color = CodexPalette.Accent;
-            m_NewButton.style.fontSize = 10;
-            m_NewButton.style.unityFontStyleAndWeight = FontStyle.Bold;
-            m_NewButton.style.unityTextAlign = TextAnchor.MiddleLeft;
-            m_NewButton.tooltip = "Start a new conversation on the next message";
-            m_NewButton.RegisterCallback<MouseEnterEvent>(_ =>
-            {
-                m_NewButton.style.backgroundColor = CodexPalette.Accent;
-                m_NewButton.style.color = Color.white;
-            });
-            m_NewButton.RegisterCallback<MouseLeaveEvent>(_ =>
-            {
-                m_NewButton.style.backgroundColor = CodexPalette.AccentSoft;
-                m_NewButton.style.color = CodexPalette.Accent;
-            });
-            filters.Add(m_NewButton);
-
-            m_SearchField = new TextField { name = "codex-thread-search" };
-            m_SearchField.style.height = 30;
-            m_SearchField.style.marginBottom = 6;
-            m_SearchField.textEdition.placeholder = "Search conversations...";
-            m_SearchField.textEdition.hidePlaceholderOnFocus = false;
-            StyleField(m_SearchField);
-            m_SearchField.RegisterValueChangedCallback(evt => m_Workspace?.SetSearchTerm(evt.newValue));
-            filters.Add(m_SearchField);
+            section.style.flexGrow = 1;
+            header.Add(section);
 
             m_ScopeField = new DropdownField { name = "codex-thread-scope" };
             m_ScopeField.choices = new List<string> { ScopeProject, ScopeAll, ScopeArchived };
             m_ScopeField.SetValueWithoutNotify(ScopeProject);
-            m_ScopeField.style.height = 30;
-            m_ScopeField.style.marginTop = 0;
-            m_ScopeField.style.backgroundColor = CodexPalette.Pill;
-            m_ScopeField.style.borderTopWidth = 1;
-            m_ScopeField.style.borderBottomWidth = 1;
-            m_ScopeField.style.borderLeftWidth = 1;
-            m_ScopeField.style.borderRightWidth = 1;
-            m_ScopeField.style.borderTopColor = CodexPalette.PillBorder;
-            m_ScopeField.style.borderBottomColor = CodexPalette.PillBorder;
-            m_ScopeField.style.borderLeftColor = CodexPalette.PillBorder;
-            m_ScopeField.style.borderRightColor = CodexPalette.PillBorder;
-            m_ScopeField.style.borderTopLeftRadius = 8;
-            m_ScopeField.style.borderTopRightRadius = 8;
-            m_ScopeField.style.borderBottomLeftRadius = 8;
-            m_ScopeField.style.borderBottomRightRadius = 8;
-            m_ScopeField.style.paddingLeft = 8;
+            m_ScopeField.style.width = 108;
+            m_ScopeField.style.height = 24;
+            m_ScopeField.style.marginRight = 6;
             m_ScopeField.style.color = CodexPalette.Text;
             m_ScopeField.tooltip = "Show conversations from this project, from every folder, or archived ones";
+            StylePopupField(m_ScopeField);
             m_ScopeField.RegisterValueChangedCallback(evt =>
             {
                 if (m_Workspace == null)
@@ -591,7 +544,49 @@ namespace Minerva.Codex
                     m_Workspace.SetShowAllProjects(evt.newValue == ScopeAll);
                 }
             });
-            filters.Add(m_ScopeField);
+            header.Add(m_ScopeField);
+
+            m_NewButton = new Button(NewConversation) { text = "+", name = "codex-new" };
+            m_NewButton.style.width = 22;
+            m_NewButton.style.height = 22;
+            m_NewButton.style.minWidth = 22;
+            m_NewButton.style.paddingLeft = 0;
+            m_NewButton.style.paddingRight = 0;
+            m_NewButton.style.paddingTop = 0;
+            m_NewButton.style.paddingBottom = 0;
+            m_NewButton.style.borderTopLeftRadius = 6;
+            m_NewButton.style.borderTopRightRadius = 6;
+            m_NewButton.style.borderBottomLeftRadius = 6;
+            m_NewButton.style.borderBottomRightRadius = 6;
+            m_NewButton.style.borderTopWidth = 0;
+            m_NewButton.style.borderBottomWidth = 0;
+            m_NewButton.style.borderLeftWidth = 0;
+            m_NewButton.style.borderRightWidth = 0;
+            m_NewButton.style.backgroundColor = CodexPalette.AccentSoft;
+            m_NewButton.style.color = CodexPalette.Accent;
+            m_NewButton.style.fontSize = 14;
+            m_NewButton.style.unityTextAlign = TextAnchor.MiddleCenter;
+            m_NewButton.tooltip = "New conversation";
+            m_NewButton.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                m_NewButton.style.backgroundColor = CodexPalette.Accent;
+                m_NewButton.style.color = Color.white;
+            });
+            m_NewButton.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                m_NewButton.style.backgroundColor = CodexPalette.AccentSoft;
+                m_NewButton.style.color = CodexPalette.Accent;
+            });
+            header.Add(m_NewButton);
+            filters.Add(header);
+
+            m_SearchField = new TextField { name = "codex-thread-search" };
+            m_SearchField.style.height = 28;
+            m_SearchField.textEdition.placeholder = "Search conversations...";
+            m_SearchField.textEdition.hidePlaceholderOnFocus = false;
+            StyleField(m_SearchField);
+            m_SearchField.RegisterValueChangedCallback(evt => m_Workspace?.SetSearchTerm(evt.newValue));
+            filters.Add(m_SearchField);
             sidebar.Add(filters);
 
             m_ThreadList = new ScrollView(ScrollViewMode.Vertical);
@@ -609,6 +604,43 @@ namespace Minerva.Codex
 
         static void StyleField(TextField field)
         {
+            StyleFieldShell(field);
+            field.style.paddingLeft = 0;
+            field.style.paddingRight = 0;
+
+            VisualElement input = field.Q(className: "unity-base-text-field__input");
+            if (input != null)
+            {
+                ClearFieldChrome(input);
+                input.style.paddingLeft = 8;
+                input.style.paddingRight = 6;
+            }
+        }
+
+        static void StylePopupField(DropdownField field)
+        {
+            StyleFieldShell(field);
+            field.style.paddingLeft = 0;
+            field.style.paddingRight = 0;
+
+            VisualElement input = field.Q(className: "unity-base-popup-field__input");
+            if (input != null)
+            {
+                ClearFieldChrome(input);
+                input.style.paddingLeft = 8;
+                input.style.paddingRight = 2;
+            }
+
+            VisualElement arrow = field.Q(className: "unity-base-popup-field__arrow");
+            if (arrow != null)
+            {
+                ClearFieldChrome(arrow);
+                arrow.style.marginRight = 4;
+            }
+        }
+
+        static void StyleFieldShell(VisualElement field)
+        {
             field.style.backgroundColor = CodexPalette.Pill;
             field.style.borderTopWidth = 1;
             field.style.borderBottomWidth = 1;
@@ -622,8 +654,22 @@ namespace Minerva.Codex
             field.style.borderTopRightRadius = 8;
             field.style.borderBottomLeftRadius = 8;
             field.style.borderBottomRightRadius = 8;
-            field.style.paddingLeft = 8;
-            field.style.paddingRight = 8;
+        }
+
+        // The shipped fields draw their own rounded box inside ours; that double
+        // chrome is what made the search box and the dropdown look heavy and
+        // mismatched.
+        static void ClearFieldChrome(VisualElement element)
+        {
+            element.style.backgroundColor = Color.clear;
+            element.style.borderTopWidth = 0;
+            element.style.borderBottomWidth = 0;
+            element.style.borderLeftWidth = 0;
+            element.style.borderRightWidth = 0;
+            element.style.borderTopLeftRadius = 0;
+            element.style.borderTopRightRadius = 0;
+            element.style.borderBottomLeftRadius = 0;
+            element.style.borderBottomRightRadius = 0;
         }
 
         VisualElement BuildContent()

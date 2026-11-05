@@ -50,6 +50,9 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- The sidebar header is two rows: the heading row carries the scope dropdown and a compact **+**
+  new-conversation button, and the search field takes the full width below. Search and dropdown now draw a
+  single custom shell instead of stacking the stock field chrome inside an outer box.
 - On Windows the Chinese IME candidate window is placed under the composer through IMM32
   (`ImmSetCandidateWindow` + `ImmSetCompositionWindow`), because UI Toolkit in 6000.3 reports the caret in
   element-local coordinates and leaves the candidate window at the top-left of the editor window.
