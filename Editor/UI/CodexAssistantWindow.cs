@@ -48,6 +48,7 @@ namespace Minerva.Codex
         VisualElement m_LiveContainer;
         VisualElement m_ComposerCard;
         VisualElement m_QueueStrip;
+        VisualElement m_QuestionPanel;
         VisualElement m_AgentsPanel;
         ScrollView m_AgentsList;
         Label m_AgentsCountLabel;
@@ -320,6 +321,11 @@ namespace Minerva.Codex
             m_Transcript.verticalScroller.valueChanged += _ =>
                 m_FollowTranscript = IsTranscriptAtBottom();
             content.Add(m_Transcript);
+
+            m_QuestionPanel = new VisualElement();
+            m_QuestionPanel.style.flexShrink = 0;
+            m_QuestionPanel.style.display = DisplayStyle.None;
+            content.Add(m_QuestionPanel);
 
             content.Add(BuildComposer());
 
@@ -1142,6 +1148,7 @@ namespace Minerva.Codex
             UpdateSettingsBar();
             UpdateComposer();
             RefreshQueueStrip();
+            RefreshQuestionPanel();
             RefreshAgentsPanel();
             UpdateContextIndicator();
 
@@ -1360,12 +1367,13 @@ namespace Minerva.Codex
             bool running = m_Workspace != null && m_Workspace.IsRunning;
             bool hasText = !string.IsNullOrWhiteSpace(m_Composer.value);
             bool settingsReady = m_Workspace != null && m_Workspace.SettingsLoaded;
+            bool waitingForAnswer = m_Workspace != null && m_Workspace.HasPendingQuestion;
 
-            m_Composer.SetEnabled(ready && settingsReady);
+            m_Composer.SetEnabled(ready && settingsReady && !waitingForAnswer);
 
             bool actionEnabled = running
                 ? m_Workspace != null && m_Workspace.CanStop
-                : ready && settingsReady && hasText;
+                : ready && settingsReady && hasText && !waitingForAnswer;
 
             m_ActionButton.text = running ? "Stop" : "Send";
             m_ActionButton.SetEnabled(actionEnabled);
@@ -1379,17 +1387,182 @@ namespace Minerva.Codex
             }
 
             string steerKey = Application.platform == RuntimePlatform.OSXEditor ? "Cmd+Enter" : "Ctrl+Enter";
-            string hint = running
-                ? $"Enter to queue  ·  {steerKey} to steer"
-                : "Enter to send  ·  Shift+Enter for a new line";
+            string hint = waitingForAnswer
+                ? "Answer Codex's question above"
+                : running
+                    ? $"Enter to queue  ·  {steerKey} to steer"
+                    : "Enter to send  ·  Shift+Enter for a new line";
             if (m_ComposerHint != null)
             {
                 m_ComposerHint.text = hint;
             }
 
-            m_Composer.tooltip = running
-                ? $"Enter queues for after this turn; {steerKey} steers the active turn"
-                : "Enter to send · Shift+Enter for a new line";
+            m_Composer.tooltip = waitingForAnswer
+                ? "Codex is waiting for an answer"
+                : running
+                    ? $"Enter queues for after this turn; {steerKey} steers the active turn"
+                    : "Enter to send · Shift+Enter for a new line";
+        }
+
+        void RefreshQuestionPanel()
+        {
+            if (m_QuestionPanel == null)
+            {
+                return;
+            }
+
+            m_QuestionPanel.Clear();
+            CodexQuestionRequest request = m_Workspace?.PendingQuestion;
+            CodexQuestion question = request?.CurrentQuestion;
+            if (request == null || question == null)
+            {
+                m_QuestionPanel.style.display = DisplayStyle.None;
+                return;
+            }
+
+            m_QuestionPanel.style.display = DisplayStyle.Flex;
+
+            var card = new VisualElement();
+            card.style.backgroundColor = CodexPalette.ComposerCard;
+            card.style.borderTopWidth = 1;
+            card.style.borderBottomWidth = 1;
+            card.style.borderLeftWidth = 1;
+            card.style.borderRightWidth = 1;
+            card.style.borderTopColor = CodexPalette.Warning;
+            card.style.borderBottomColor = CodexPalette.PillBorder;
+            card.style.borderLeftColor = CodexPalette.PillBorder;
+            card.style.borderRightColor = CodexPalette.PillBorder;
+            card.style.borderTopLeftRadius = 8;
+            card.style.borderTopRightRadius = 8;
+            card.style.borderBottomLeftRadius = 8;
+            card.style.borderBottomRightRadius = 8;
+            card.style.marginLeft = 12;
+            card.style.marginRight = 12;
+            card.style.marginTop = 8;
+            card.style.marginBottom = 4;
+            card.style.paddingLeft = 10;
+            card.style.paddingRight = 10;
+            card.style.paddingTop = 8;
+            card.style.paddingBottom = 9;
+            m_QuestionPanel.Add(card);
+
+            var top = new VisualElement();
+            top.style.flexDirection = FlexDirection.Row;
+            top.style.alignItems = Align.Center;
+
+            var badge = new Label("CODEX ASKED");
+            badge.style.fontSize = 9;
+            badge.style.unityFontStyleAndWeight = FontStyle.Bold;
+            badge.style.color = CodexPalette.Warning;
+            badge.style.flexGrow = 1;
+            top.Add(badge);
+
+            if (request.Questions.Count > 1)
+            {
+                var progress = new Label(
+                    $"{request.Questions.IndexOf(question) + 1} / {request.Questions.Count}");
+                progress.style.fontSize = 9;
+                progress.style.color = CodexPalette.Muted;
+                top.Add(progress);
+            }
+
+            card.Add(top);
+
+            string header = string.IsNullOrWhiteSpace(question.Header)
+                ? "Question"
+                : question.Header;
+            var title = new Label(header);
+            title.style.fontSize = 11;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = CodexPalette.Text;
+            title.style.whiteSpace = WhiteSpace.Normal;
+            title.style.marginTop = 4;
+            card.Add(title);
+
+            var prompt = new Label(question.Prompt);
+            prompt.style.fontSize = 11;
+            prompt.style.color = CodexPalette.Text;
+            prompt.style.whiteSpace = WhiteSpace.Normal;
+            prompt.style.marginTop = 3;
+            card.Add(prompt);
+
+            foreach (CodexQuestionOption option in question.Options)
+            {
+                var optionBlock = new VisualElement();
+                optionBlock.style.marginTop = 6;
+
+                string optionLabel = option.Label;
+                var button = new Button(() => m_Workspace.AnswerQuestion(request, optionLabel))
+                {
+                    text = optionLabel,
+                };
+                button.style.unityTextAlign = TextAnchor.MiddleLeft;
+                button.style.whiteSpace = WhiteSpace.Normal;
+                button.style.minHeight = 22;
+                button.style.paddingLeft = 8;
+                button.style.paddingRight = 8;
+                optionBlock.Add(button);
+
+                if (!string.IsNullOrWhiteSpace(option.Description))
+                {
+                    var description = new Label(option.Description);
+                    description.style.fontSize = 9;
+                    description.style.color = CodexPalette.Muted;
+                    description.style.whiteSpace = WhiteSpace.Normal;
+                    description.style.marginLeft = 8;
+                    description.style.marginTop = 2;
+                    optionBlock.Add(description);
+                }
+
+                card.Add(optionBlock);
+            }
+
+            if (question.IsOther || question.Options.Count == 0)
+            {
+                if (question.Options.Count > 0)
+                {
+                    var otherLabel = new Label("Other");
+                    otherLabel.style.fontSize = 9;
+                    otherLabel.style.color = CodexPalette.Muted;
+                    otherLabel.style.marginTop = 7;
+                    card.Add(otherLabel);
+                }
+
+                var answerRow = new VisualElement();
+                answerRow.style.flexDirection = FlexDirection.Row;
+                answerRow.style.alignItems = Align.Center;
+                answerRow.style.marginTop = 4;
+
+                var field = new TextField();
+                field.style.flexGrow = 1;
+                field.textEdition.placeholder = question.IsSecret ? "Secret answer" : "Type an answer...";
+                answerRow.Add(field);
+
+                var submit = new Button(() =>
+                {
+                    if (!string.IsNullOrWhiteSpace(field.value))
+                    {
+                        m_Workspace.AnswerQuestion(request, field.value);
+                    }
+                })
+                {
+                    text = "Answer",
+                };
+                submit.style.marginLeft = 6;
+                answerRow.Add(submit);
+
+                field.RegisterCallback<KeyDownEvent>(evt =>
+                {
+                    if ((evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter) &&
+                        !string.IsNullOrWhiteSpace(field.value))
+                    {
+                        m_Workspace.AnswerQuestion(request, field.value);
+                        evt.StopPropagation();
+                    }
+                });
+
+                card.Add(answerRow);
+            }
         }
 
         void RefreshQueueStrip()

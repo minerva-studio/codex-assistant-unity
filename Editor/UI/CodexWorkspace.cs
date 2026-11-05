@@ -97,6 +97,8 @@ namespace Minerva.Codex
         readonly Dictionary<string, JArray> m_ReasoningSummaries =
             new Dictionary<string, JArray>();
         readonly HashSet<string> m_ArchivedThreadIds = new HashSet<string>();
+        readonly List<CodexQuestionRequest> m_QuestionRequests = new List<CodexQuestionRequest>();
+        string m_ArchiveVerifyingThreadId;
         readonly StringBuilder m_Stderr = new StringBuilder();
 
         CodexConnection m_Connection;
@@ -171,6 +173,24 @@ namespace Minerva.Codex
 
         /// <summary>Subagents referenced by the selected conversation's turns.</summary>
         public IReadOnlyList<CodexSubagentInfo> Subagents => BuildSubagents();
+
+        public CodexQuestionRequest PendingQuestion
+        {
+            get
+            {
+                foreach (CodexQuestionRequest request in m_QuestionRequests)
+                {
+                    if (request.CurrentQuestion != null)
+                    {
+                        return request;
+                    }
+                }
+
+                return null;
+            }
+        }
+
+        public bool HasPendingQuestion => PendingQuestion != null;
         public IReadOnlyList<string> SandboxModes => s_SandboxModes;
         public bool SettingsLoaded => m_ConfigLoaded;
         public string SettingsError => m_SettingsError;
@@ -287,6 +307,7 @@ namespace Minerva.Codex
 
                 m_Connection.Disconnected += OnDisconnected;
                 m_Connection.Notification += OnNotification;
+                m_Connection.ServerRequest += OnServerRequest;
                 m_Client = new CodexClient(m_Connection);
                 m_Client.Initialize(OnInitialized, OnFailed);
             }
@@ -355,10 +376,64 @@ namespace Minerva.Codex
 
         void ArchiveThread(string threadId)
         {
+            CodexThreadInfo info = FindThread(threadId);
+            if (info == null && m_SelectedThreadInfo?.Id == threadId)
+            {
+                info = m_SelectedThreadInfo;
+            }
+
+            string cwd = info?.Cwd;
+            m_ArchiveVerifyingThreadId = threadId;
             m_Client.ArchiveThread(
                 threadId,
-                () =>
+                () => VerifyArchive(threadId, cwd),
+                message =>
                 {
+                    m_ArchiveVerifyingThreadId = null;
+                    OnFailed(message);
+                });
+        }
+
+        void VerifyArchive(string threadId, string cwd)
+        {
+            var query = new CodexThreadQuery
+            {
+                Limit = 100,
+                Cwd = cwd,
+                SourceKinds = SourceKinds,
+                IncludeArchived = false,
+            };
+
+            m_Client.ListThreads(
+                query,
+                threads =>
+                {
+                    bool stillListed = false;
+                    if (threads != null)
+                    {
+                        foreach (JToken token in threads)
+                        {
+                            if (token?["id"]?.Value<string>() == threadId)
+                            {
+                                stillListed = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    m_ArchiveVerifyingThreadId = null;
+                    if (stillListed)
+                    {
+                        m_ArchivedThreadIds.Remove(threadId);
+                        Status = "Archive not persisted";
+                        Error =
+                            "Codex still lists this conversation after thread/archive. Close it in Codex " +
+                            "Desktop or the CLI, then archive again; a loaded thread cannot be archived " +
+                            "by another app-server.";
+                        Changed?.Invoke();
+                        return;
+                    }
+
                     m_ArchivedThreadIds.Add(threadId);
                     OnThreadRemoved(threadId, "Conversation archived");
                     // Invalidate any list request that started before the archive,
@@ -366,7 +441,18 @@ namespace Minerva.Codex
                     m_ThreadListGeneration++;
                     RequestThreads();
                 },
-                OnFailed);
+                message =>
+                {
+                    // The archive RPC succeeded; verification itself failed. Keep the
+                    // conversation out of the way but say that we could not confirm it.
+                    m_ArchiveVerifyingThreadId = null;
+                    m_ArchivedThreadIds.Add(threadId);
+                    OnThreadRemoved(threadId, "Conversation archived");
+                    Error = $"Archived, but the thread list could not be verified: {message}";
+                    Changed?.Invoke();
+                    m_ThreadListGeneration++;
+                    RequestThreads();
+                });
         }
 
         void RequestThreads()
@@ -1582,6 +1668,12 @@ namespace Minerva.Codex
                     break;
                 case "thread/archived":
                     string archivedThreadId = parameters["threadId"]?.Value<string>();
+                    if (archivedThreadId == m_ArchiveVerifyingThreadId)
+                    {
+                        // VerifyArchive owns the decision while our request is in flight.
+                        break;
+                    }
+
                     if (!string.IsNullOrEmpty(archivedThreadId))
                     {
                         m_ArchivedThreadIds.Add(archivedThreadId);
@@ -2006,6 +2098,7 @@ namespace Minerva.Codex
                 return;
             }
 
+            m_QuestionRequests.RemoveAll(request => request.ThreadId == threadId);
             JObject turn = parameters["turn"] as JObject;
             if (turn != null)
             {
@@ -2427,6 +2520,109 @@ namespace Minerva.Codex
             MaybeStartAutoTitle(threadId, turns);
         }
 
+        void OnServerRequest(JObject request)
+        {
+            string method = request["method"]?.Value<string>();
+            if (method != "item/tool/requestUserInput" ||
+                request["params"] is not JObject parameters ||
+                request["params"]?["questions"] is not JArray questions)
+            {
+                return;
+            }
+
+            var pending = new CodexQuestionRequest
+            {
+                Id = request["id"],
+                ThreadId = parameters["threadId"]?.Value<string>(),
+                TurnId = parameters["turnId"]?.Value<string>(),
+                ItemId = parameters["itemId"]?.Value<string>(),
+                IsBlocking = parameters["isBlocking"]?.Value<bool>() ?? false,
+            };
+
+            foreach (JToken token in questions)
+            {
+                if (token is not JObject source)
+                {
+                    continue;
+                }
+
+                var question = new CodexQuestion
+                {
+                    Id = source["id"]?.Value<string>(),
+                    Header = source["header"]?.Value<string>(),
+                    Prompt = source["question"]?.Value<string>(),
+                    IsOther = source["isOther"]?.Value<bool>() ?? false,
+                    IsSecret = source["isSecret"]?.Value<bool>() ?? false,
+                };
+
+                if (source["options"] is JArray options)
+                {
+                    foreach (JToken optionToken in options)
+                    {
+                        if (optionToken is not JObject option)
+                        {
+                            continue;
+                        }
+
+                        question.Options.Add(new CodexQuestionOption
+                        {
+                            Label = option["label"]?.Value<string>(),
+                            Description = option["description"]?.Value<string>(),
+                        });
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(question.Id))
+                {
+                    pending.Questions.Add(question);
+                }
+            }
+
+            if (pending.Questions.Count == 0)
+            {
+                m_Connection?.RespondError(request["id"], -32602, "No supported questions");
+                return;
+            }
+
+            m_QuestionRequests.Add(pending);
+            Error = null;
+            Status = "Codex is waiting for your answer";
+            Changed?.Invoke();
+        }
+
+        /// <summary>Stores one answer and sends the complete response once every question is answered.</summary>
+        public bool AnswerQuestion(CodexQuestionRequest request, string answer)
+        {
+            CodexQuestion question = request?.CurrentQuestion;
+            if (question == null || string.IsNullOrWhiteSpace(answer) || m_Connection == null)
+            {
+                return false;
+            }
+
+            question.Answer = answer.Trim();
+            if (request.CurrentQuestion != null)
+            {
+                Status = "Codex is waiting for your answer";
+                Changed?.Invoke();
+                return true;
+            }
+
+            var answers = new JObject();
+            foreach (CodexQuestion item in request.Questions)
+            {
+                answers[item.Id] = new JObject
+                {
+                    ["answers"] = new JArray(item.Answer),
+                };
+            }
+
+            m_Connection.Respond(request.Id, new JObject { ["answers"] = answers });
+            m_QuestionRequests.Remove(request);
+            Status = IsRunning ? "Codex is working..." : "Answer sent";
+            Changed?.Invoke();
+            return true;
+        }
+
         void OnDisconnected(string reason)
         {
             m_Ready = false;
@@ -2437,6 +2633,7 @@ namespace Minerva.Codex
             m_ActiveTurnId = null;
             m_LiveTurn = null;
             m_LiveThreadId = null;
+            m_QuestionRequests.Clear();
             ClearAutoTitle();
             StopStreamingUpdates();
             CancelSearchDebounce();
@@ -2454,6 +2651,7 @@ namespace Minerva.Codex
             m_ActiveTurnId = null;
             m_LiveTurn = null;
             m_LiveThreadId = null;
+            m_QuestionRequests.Clear();
             StopStreamingUpdates();
             OnFailed(message);
         }
@@ -2884,6 +3082,8 @@ namespace Minerva.Codex
             m_ContextUsage.Clear();
             m_ReasoningSummaries.Clear();
             m_ArchivedThreadIds.Clear();
+            m_ArchiveVerifyingThreadId = null;
+            m_QuestionRequests.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;
@@ -2912,6 +3112,8 @@ namespace Minerva.Codex
             m_ContextUsage.Clear();
             m_ReasoningSummaries.Clear();
             m_ArchivedThreadIds.Clear();
+            m_ArchiveVerifyingThreadId = null;
+            m_QuestionRequests.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;

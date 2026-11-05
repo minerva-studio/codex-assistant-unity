@@ -114,10 +114,74 @@ namespace Minerva.Codex
 
         static void RenderUserMessage(VisualElement parent, JObject item)
         {
-            string raw = CodexAnnotations.Clean(JoinUserContent(item["content"]));
+            string raw = JoinUserContent(item["content"]);
+            if (CodexQuestionReply.TryParse(raw, out List<CodexQuestionReply> replies, out string remainder))
+            {
+                foreach (CodexQuestionReply reply in replies)
+                {
+                    RenderQuestionReply(parent, reply);
+                }
+
+                if (!string.IsNullOrWhiteSpace(remainder))
+                {
+                    RenderUserBubble(parent, CodexAnnotations.Clean(remainder));
+                }
+
+                return;
+            }
+
+            RenderUserBubble(parent, CodexAnnotations.Clean(raw));
+        }
+
+        static void RenderUserBubble(VisualElement parent, string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
             VisualElement bubble = Bubble("YOU", CodexPalette.UserBubble);
-            bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(raw)));
+            bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
             parent.Add(bubble);
+        }
+
+        static void RenderQuestionReply(VisualElement parent, CodexQuestionReply reply)
+        {
+            var card = new VisualElement();
+            card.style.backgroundColor = CodexPalette.AgentBubble;
+            card.style.borderLeftWidth = 2;
+            card.style.borderLeftColor = CodexPalette.Warning;
+            card.style.borderTopLeftRadius = 6;
+            card.style.borderTopRightRadius = 6;
+            card.style.borderBottomLeftRadius = 6;
+            card.style.borderBottomRightRadius = 6;
+            card.style.paddingLeft = 10;
+            card.style.paddingRight = 10;
+            card.style.paddingTop = 7;
+            card.style.paddingBottom = 8;
+            card.style.marginLeft = 12;
+            card.style.marginRight = 12;
+            card.style.marginTop = 2;
+            card.style.marginBottom = 8;
+
+            var questionCaption = new Label("CODEX ASKED");
+            questionCaption.style.fontSize = 9;
+            questionCaption.style.unityFontStyleAndWeight = FontStyle.Bold;
+            questionCaption.style.color = CodexPalette.Warning;
+            questionCaption.style.marginBottom = 3;
+            card.Add(questionCaption);
+            card.Add(CodexMarkdown.Render(CodexMedia.Tokenize(reply.Question)));
+
+            var answerCaption = new Label("YOU ANSWERED");
+            answerCaption.style.fontSize = 9;
+            answerCaption.style.unityFontStyleAndWeight = FontStyle.Bold;
+            answerCaption.style.color = CodexPalette.Muted;
+            answerCaption.style.marginTop = 7;
+            answerCaption.style.marginBottom = 3;
+            card.Add(answerCaption);
+            card.Add(CodexMarkdown.Render(CodexMedia.Tokenize(reply.Answer)));
+
+            parent.Add(card);
         }
 
         static void RenderAgentMessage(VisualElement parent, JObject item)

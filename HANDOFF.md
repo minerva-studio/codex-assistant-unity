@@ -62,6 +62,17 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `gpt-6.1-sol` rollouts store reasoning as `encrypted_content` with `summary: []`, even with `auto` or
   `detailed`; those turns have no plaintext summary and cannot be backfilled. The code will display
   summaries when a model/backend actually emits them.
+- Questions: `m_Connection.ServerRequest` handles `item/tool/requestUserInput`. `CodexWorkspace` stores the
+  request id, thread/turn/item ids, questions, options, `isOther`/`isSecret`, and one answer per question.
+  `CodexAssistantWindow` shows the first unanswered question above the composer; option buttons or the free
+  text field call `AnswerQuestion`. After the last answer it responds with
+  `{ answers: { questionId: { answers: [text] } } }` on the original server-request id. The composer is
+  disabled while a question is pending. Pending requests are dropped on `turn/completed`, disconnect, send
+  failure and shutdown. Other server requests (approvals, MCP elicitation) still go unanswered.
+- Historical question replies are user messages wrapped as
+  `<send_user_message_question_reply>[{ "question": "...", "answer": "..." }]</...>`.
+  `CodexQuestionReply.TryParse` extracts every entry and renders a **CODEX ASKED / YOU ANSWERED** card; the
+  raw wrapper and JSON are not shown.
 - Historical Process groups are lazy: `FlushProcess` stores their items and renders them only on first
   expansion; live groups still render immediately. This dropped a 30-turn/71-tool thread from 1,864
   foldouts and ~1.2 s rebuild to ~35 foldouts and ~0.4 s. Do not eagerly build Process children again.
@@ -100,9 +111,11 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   turn while `IsRunning` keep a running/pending status; historical stale running/pending states are rewritten
   to **idle** (`last: …` activity) and get a static muted dot. Completed/failed rows are static; live running
   rows use `CodexPulseDot`.
-- Archive: on success `m_ArchivedThreadIds` records the id, `OnThreadRemoved` clears the selection, the list
-  generation is invalidated, and `RequestThreads` reloads from the server. Both list and search results skip
-  ids in `m_ArchivedThreadIds`, so an in-flight stale list cannot resurrect an archived conversation.
+- Archive: after `thread/archive` succeeds, `VerifyArchive` requests `thread/list` for the thread's cwd and
+  only then records `m_ArchivedThreadIds`, clears the selection, invalidates the list generation, and
+  reloads. If the thread is still listed, the UI keeps it and shows an actionable error: close it in Codex
+  Desktop/CLI and retry, because another app-server still holds it. Both list and search results skip
+  successfully archived ids, so an in-flight stale list cannot resurrect the conversation.
 - `CodexPulseDot` is the shared animation primitive: a scheduled opacity pulse. It is used by the toolbar
   working dot, the selected running thread row, and running agent rows. The live composer/turn still shows
   the normal status text.

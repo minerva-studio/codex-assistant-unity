@@ -26,8 +26,10 @@ All notable changes to this package are documented here.
 - A minimal right-side Subagents rail shows agent status/model/activity and opens a row's conversation.
 - Pulsing indicators mark the running turn in the toolbar/sidebar and running subagent rows; stale historical
   running states are shown as idle instead of animated.
-- Archive now refreshes the thread list and filters the archived id, preventing stale list responses from
-  restoring the conversation.
+- `request_user_input` questions render as an answer card above the composer and are sent back as a proper
+  app-server response. Stored question/answer wrappers render as question/answer cards instead of raw JSON.
+- Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
+  filters the archived id; if another Codex client still holds it, the window keeps it and explains why.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image
   attachments are decoded instead of printed as base64.
 - Historical Process groups render their hidden tool rows lazily, keeping long-thread rebuilds responsive.

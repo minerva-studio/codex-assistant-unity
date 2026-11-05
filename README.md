@@ -24,8 +24,8 @@ tools are next.
 
 - Lists non-archived threads Codex already knows about, including ones created by the CLI.
 - Sidebar search across thread content, a **This project / All projects** scope filter, thread titles, and
-  an **Archive** action for the selected thread. Archiving reloads the list and keeps the archived id
-  filtered, so a stale list response cannot bring the conversation back.
+  an **Archive** action for the selected thread. Archiving reloads the list, verifies the thread is gone,
+  and keeps the archived id filtered, so a stale list response cannot bring the conversation back.
 - **New conversation** starts a thread on the first message without creating a zero-turn thread. After the
   first turn it generates a short title, using the conversation model or a separate title model from Settings.
 - **Fork** copies the selected conversation into a new thread and opens it. The source conversation is
@@ -39,6 +39,9 @@ tools are next.
   pulsing dots on running subagent rows. Static green/yellow/red dots mark completed/failed agents.
   A historical subagent with a stale “running” state is shown as **idle** unless it appears in the current
   live turn, so an old agent is never animated as if it were still working.
+- When Codex asks a `request_user_input` question, a card appears above the composer with its options and an
+  optional free-text answer. The composer waits until every question is answered, then sends one response.
+  Stored `send_user_message_question_reply` messages render as a question / answer card instead of raw JSON.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of
@@ -133,8 +136,8 @@ sends two real messages, one after creating a thread, and checks streaming and h
 - Subagent threads are not listed in the sidebar; open one from its parent's Subagent section, then use
   **← Parent** to return. The package does not add a manual "spawn subagent" button; the model decides when
   to delegate using the enabled `multi_agent` tools.
-- Approval requests are not handled yet. A turn that asks to run a command or change files will wait for a
-  decision the window cannot give.
+- `request_user_input` questions are handled. Command and file-change **approval** requests are not handled
+  yet; a turn that asks for approval will wait for a decision the window cannot give.
 - A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving
   between homes does not migrate conversations.
 - The context indicator needs a token-usage notification. It shows `ctx —` until the conversation has run a
