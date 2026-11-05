@@ -1392,6 +1392,18 @@ namespace Minerva.Codex
             {
                 search.RegisterValueChangedCallback(evt => FillPopupList(list, items, evt.newValue));
                 search.RegisterCallback<KeyDownEvent>(OnPopupKeyDown, TrickleDown.TrickleDown);
+                search.RegisterCallback<KeyDownEvent>(OnPopupKeyDown);
+                search.RegisterCallback<KeyUpEvent>(OnPopupKeyUp);
+                search.RegisterCallback<NavigationSubmitEvent>(_ => ActivatePopupSelection());
+                VisualElement input = search.Q(className: "unity-base-text-field__input")
+                                      ?? search.Q(className: "unity-text-input");
+                if (input != null)
+                {
+                    input.RegisterCallback<KeyDownEvent>(OnPopupKeyDown, TrickleDown.TrickleDown);
+                    input.RegisterCallback<KeyUpEvent>(OnPopupKeyUp);
+                    input.RegisterCallback<NavigationSubmitEvent>(_ => ActivatePopupSelection());
+                }
+
                 search.schedule.Execute(() => search.Focus());
             }
             else
@@ -1554,8 +1566,24 @@ namespace Minerva.Codex
             item.Action?.Invoke();
         }
 
+        void OnPopupKeyUp(KeyUpEvent evt)
+        {
+            if (IsPopupSubmit(evt.keyCode, evt.character))
+            {
+                ActivatePopupSelection();
+                evt.StopPropagation();
+            }
+        }
+
         void OnPopupKeyDown(KeyDownEvent evt)
         {
+            if (IsPopupSubmit(evt.keyCode, evt.character))
+            {
+                ActivatePopupSelection();
+                evt.StopPropagation();
+                return;
+            }
+
             switch (evt.keyCode)
             {
                 case KeyCode.Escape:
@@ -1570,12 +1598,15 @@ namespace Minerva.Codex
                     MovePopupSelection(1);
                     evt.StopPropagation();
                     break;
-                case KeyCode.Return:
-                case KeyCode.KeypadEnter:
-                    ActivatePopupSelection();
-                    evt.StopPropagation();
-                    break;
             }
+        }
+
+        static bool IsPopupSubmit(KeyCode keyCode, char character)
+        {
+            return keyCode == KeyCode.Return ||
+                   keyCode == KeyCode.KeypadEnter ||
+                   character == '\n' ||
+                   character == '\r';
         }
 
         void ClosePopup()
