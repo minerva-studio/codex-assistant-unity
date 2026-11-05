@@ -42,6 +42,9 @@ tools are next.
 - When Codex asks a `request_user_input` question, a card appears above the composer with its options and an
   optional free-text answer. The composer waits until every question is answered, then sends one response.
   Stored `send_user_message_question_reply` messages render as a question / answer card instead of raw JSON.
+- Command, file-change and permission approval requests, plus MCP form/URL elicitations, use the same
+  interaction card. The card shows the command/cwd, changed files or requested permissions and sends the
+  decision back to the app-server.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of
@@ -136,8 +139,9 @@ sends two real messages, one after creating a thread, and checks streaming and h
 - Subagent threads are not listed in the sidebar; open one from its parent's Subagent section, then use
   **← Parent** to return. The package does not add a manual "spawn subagent" button; the model decides when
   to delegate using the enabled `multi_agent` tools.
-- `request_user_input` questions are handled. Command and file-change **approval** requests are not handled
-  yet; a turn that asks for approval will wait for a decision the window cannot give.
+- `request_user_input`, command/file-change/permission approvals and standard MCP form/URL elicitations are
+  handled. Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard
+  OpenAI elicitation forms are not fully supported.
 - A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving
   between homes does not migrate conversations.
 - The context indicator needs a token-usage notification. It shows `ctx —` until the conversation has run a

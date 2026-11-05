@@ -98,6 +98,7 @@ namespace Minerva.Codex
             new Dictionary<string, JArray>();
         readonly HashSet<string> m_ArchivedThreadIds = new HashSet<string>();
         readonly List<CodexQuestionRequest> m_QuestionRequests = new List<CodexQuestionRequest>();
+        readonly List<CodexApprovalRequest> m_ApprovalRequests = new List<CodexApprovalRequest>();
         string m_ArchiveVerifyingThreadId;
         readonly StringBuilder m_Stderr = new StringBuilder();
 
@@ -191,6 +192,23 @@ namespace Minerva.Codex
         }
 
         public bool HasPendingQuestion => PendingQuestion != null;
+
+        public CodexApprovalRequest PendingApproval
+        {
+            get
+            {
+                foreach (CodexApprovalRequest request in m_ApprovalRequests)
+                {
+                    return request;
+                }
+
+                return null;
+            }
+        }
+
+        public bool HasPendingApproval => PendingApproval != null;
+
+        public bool HasPendingInteraction => HasPendingQuestion || HasPendingApproval;
         public IReadOnlyList<string> SandboxModes => s_SandboxModes;
         public bool SettingsLoaded => m_ConfigLoaded;
         public string SettingsError => m_SettingsError;
@@ -2099,6 +2117,7 @@ namespace Minerva.Codex
             }
 
             m_QuestionRequests.RemoveAll(request => request.ThreadId == threadId);
+            m_ApprovalRequests.RemoveAll(request => request.ThreadId == threadId);
             JObject turn = parameters["turn"] as JObject;
             if (turn != null)
             {
@@ -2523,9 +2542,81 @@ namespace Minerva.Codex
         void OnServerRequest(JObject request)
         {
             string method = request["method"]?.Value<string>();
-            if (method != "item/tool/requestUserInput" ||
-                request["params"] is not JObject parameters ||
-                request["params"]?["questions"] is not JArray questions)
+            if (request["params"] is not JObject parameters)
+            {
+                return;
+            }
+
+            switch (method)
+            {
+                case "item/tool/requestUserInput":
+                    AddQuestionRequest(request, parameters);
+                    break;
+                case "item/commandExecution/requestApproval":
+                    AddApproval(new CodexApprovalRequest
+                    {
+                        Id = request["id"],
+                        Kind = CodexApprovalKind.Command,
+                        ThreadId = parameters["threadId"]?.Value<string>(),
+                        TurnId = parameters["turnId"]?.Value<string>(),
+                        ItemId = parameters["itemId"]?.Value<string>(),
+                        Reason = parameters["reason"]?.Value<string>(),
+                        Command = parameters["command"]?.Value<string>(),
+                        Cwd = parameters["cwd"]?.Value<string>(),
+                        CommandKind = parameters["kind"]?.Value<string>(),
+                        AvailableDecisions = parameters["availableDecisions"] as JArray,
+                    });
+                    break;
+                case "item/fileChange/requestApproval":
+                    var fileApproval = new CodexApprovalRequest
+                    {
+                        Id = request["id"],
+                        Kind = CodexApprovalKind.FileChange,
+                        ThreadId = parameters["threadId"]?.Value<string>(),
+                        TurnId = parameters["turnId"]?.Value<string>(),
+                        ItemId = parameters["itemId"]?.Value<string>(),
+                        Reason = parameters["reason"]?.Value<string>(),
+                        Cwd = parameters["grantRoot"]?.Value<string>(),
+                    };
+                    CollectFileChanges(fileApproval.ItemId, fileApproval.Files);
+                    AddApproval(fileApproval);
+                    break;
+                case "item/permissions/requestApproval":
+                    AddApproval(new CodexApprovalRequest
+                    {
+                        Id = request["id"],
+                        Kind = CodexApprovalKind.Permissions,
+                        ThreadId = parameters["threadId"]?.Value<string>(),
+                        TurnId = parameters["turnId"]?.Value<string>(),
+                        ItemId = parameters["itemId"]?.Value<string>(),
+                        Reason = parameters["reason"]?.Value<string>(),
+                        Cwd = parameters["cwd"]?.Value<string>(),
+                        Permissions = parameters["permissions"] as JObject ?? new JObject(),
+                    });
+                    break;
+                case "mcpServer/elicitation/request":
+                    AddApproval(new CodexApprovalRequest
+                    {
+                        Id = request["id"],
+                        Kind = CodexApprovalKind.McpElicitation,
+                        ThreadId = parameters["threadId"]?.Value<string>(),
+                        TurnId = parameters["turnId"]?.Value<string>(),
+                        ServerName = parameters["serverName"]?.Value<string>(),
+                        McpMode = parameters["mode"]?.Value<string>(),
+                        McpMessage = parameters["message"]?.Value<string>(),
+                        McpTitle = parameters["title"]?.Value<string>(),
+                        McpDescription = parameters["description"]?.Value<string>(),
+                        McpUrl = parameters["url"]?.Value<string>(),
+                        McpChallenge = parameters["challenge"]?.Value<string>(),
+                        McpSchema = parameters["requestedSchema"] as JObject,
+                    });
+                    break;
+            }
+        }
+
+        void AddQuestionRequest(JObject request, JObject parameters)
+        {
+            if (parameters["questions"] is not JArray questions)
             {
                 return;
             }
@@ -2590,6 +2681,59 @@ namespace Minerva.Codex
             Changed?.Invoke();
         }
 
+        void AddApproval(CodexApprovalRequest request)
+        {
+            m_ApprovalRequests.Add(request);
+            Error = null;
+            Status = HasPendingQuestion
+                ? "Codex is waiting for your answer"
+                : "Codex is waiting for your approval";
+            Changed?.Invoke();
+        }
+
+        void CollectFileChanges(string itemId, List<string> files)
+        {
+            if (string.IsNullOrEmpty(itemId))
+            {
+                return;
+            }
+
+            for (int turnIndex = m_Turns.Count - 1; turnIndex >= 0; turnIndex--)
+            {
+                CollectFileChanges(m_Turns[turnIndex], itemId, files);
+            }
+
+            CollectFileChanges(m_LiveTurn, itemId, files);
+        }
+
+        static void CollectFileChanges(JObject turn, string itemId, List<string> files)
+        {
+            if (turn?["items"] is not JArray items)
+            {
+                return;
+            }
+
+            foreach (JToken token in items)
+            {
+                if (token is not JObject item ||
+                    item["id"]?.Value<string>() != itemId ||
+                    item["type"]?.Value<string>() != "fileChange" ||
+                    item["changes"] is not JArray changes)
+                {
+                    continue;
+                }
+
+                foreach (JToken change in changes)
+                {
+                    string path = change["path"]?.Value<string>();
+                    if (!string.IsNullOrEmpty(path) && !files.Contains(path))
+                    {
+                        files.Add(path);
+                    }
+                }
+            }
+        }
+
         /// <summary>Stores one answer and sends the complete response once every question is answered.</summary>
         public bool AnswerQuestion(CodexQuestionRequest request, string answer)
         {
@@ -2618,7 +2762,62 @@ namespace Minerva.Codex
 
             m_Connection.Respond(request.Id, new JObject { ["answers"] = answers });
             m_QuestionRequests.Remove(request);
-            Status = IsRunning ? "Codex is working..." : "Answer sent";
+            Status = HasPendingApproval
+                ? "Codex is waiting for your approval"
+                : IsRunning ? "Codex is working..." : "Answer sent";
+            Changed?.Invoke();
+            return true;
+        }
+
+        /// <summary>Answers a command/file/permission approval or an MCP elicitation.</summary>
+        public bool RespondApproval(
+            CodexApprovalRequest request,
+            string action,
+            JObject content = null)
+        {
+            if (request == null || string.IsNullOrEmpty(action) || m_Connection == null)
+            {
+                return false;
+            }
+
+            JObject result;
+            switch (request.Kind)
+            {
+                case CodexApprovalKind.Command:
+                case CodexApprovalKind.FileChange:
+                    result = new JObject { ["decision"] = action };
+                    break;
+                case CodexApprovalKind.Permissions:
+                    bool grant = action == "grant_turn" || action == "grant_session";
+                    result = new JObject
+                    {
+                        ["permissions"] = grant
+                            ? request.Permissions?.DeepClone() ?? new JObject()
+                            : new JObject(),
+                    };
+                    if (grant)
+                    {
+                        result["scope"] = action == "grant_session" ? "session" : "turn";
+                    }
+
+                    break;
+                default:
+                    result = new JObject { ["action"] = action };
+                    if (action == "accept" && content != null)
+                    {
+                        result["content"] = content;
+                    }
+
+                    break;
+            }
+
+            m_Connection.Respond(request.Id, result);
+            m_ApprovalRequests.Remove(request);
+            Status = HasPendingQuestion
+                ? "Codex is waiting for your answer"
+                : HasPendingApproval
+                    ? "Codex is waiting for your approval"
+                    : IsRunning ? "Codex is working..." : "Response sent";
             Changed?.Invoke();
             return true;
         }
@@ -2634,6 +2833,7 @@ namespace Minerva.Codex
             m_LiveTurn = null;
             m_LiveThreadId = null;
             m_QuestionRequests.Clear();
+            m_ApprovalRequests.Clear();
             ClearAutoTitle();
             StopStreamingUpdates();
             CancelSearchDebounce();
@@ -2652,6 +2852,7 @@ namespace Minerva.Codex
             m_LiveTurn = null;
             m_LiveThreadId = null;
             m_QuestionRequests.Clear();
+            m_ApprovalRequests.Clear();
             StopStreamingUpdates();
             OnFailed(message);
         }
@@ -3084,6 +3285,7 @@ namespace Minerva.Codex
             m_ArchivedThreadIds.Clear();
             m_ArchiveVerifyingThreadId = null;
             m_QuestionRequests.Clear();
+            m_ApprovalRequests.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;
@@ -3114,6 +3316,7 @@ namespace Minerva.Codex
             m_ArchivedThreadIds.Clear();
             m_ArchiveVerifyingThreadId = null;
             m_QuestionRequests.Clear();
+            m_ApprovalRequests.Clear();
             m_Queued.Clear();
             m_QueueGeneration++;
             m_AutoTitleThreadId = null;

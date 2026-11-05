@@ -68,7 +68,21 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   text field call `AnswerQuestion`. After the last answer it responds with
   `{ answers: { questionId: { answers: [text] } } }` on the original server-request id. The composer is
   disabled while a question is pending. Pending requests are dropped on `turn/completed`, disconnect, send
-  failure and shutdown. Other server requests (approvals, MCP elicitation) still go unanswered.
+  failure and shutdown.
+- Approvals: `OnServerRequest` also handles `item/commandExecution/requestApproval`,
+  `item/fileChange/requestApproval`, `item/permissions/requestApproval` and
+  `mcpServer/elicitation/request`. `CodexApprovalRequest` stores the request id, kind, thread/turn/item ids,
+  command/cwd/reason, available decisions, permission profile, file paths (looked up from the matching
+  `fileChange` item), or MCP schema details. `CodexAssistantWindow` shows one interaction at a time:
+  question first, then approval. Command/file responses are `{decision: accept|acceptForSession|decline|cancel}`;
+  permissions grant `{permissions: requestedProfile, scope: turn|session}` and deny `{permissions: {}}`;
+  MCP responses are `{action: accept|decline|cancel, content?}`.
+  The composer is disabled while any question or approval is pending. Pending approvals are cleared on
+  `turn/completed`, disconnect, send failure and shutdown.
+- MCP elicitation forms support the standard `form` schema (string/number/boolean/enum/array fields, required
+  fields) and `url` mode. `openai/userVerification` is shown but can only be declined/cancelled from the
+  window; non-standard OpenAI form schemas fall back to a decline card. Legacy approval methods are not
+  registered because `turn/start` uses the newer request methods.
 - Historical question replies are user messages wrapped as
   `<send_user_message_question_reply>[{ "question": "...", "answer": "..." }]</...>`.
   `CodexQuestionReply.TryParse` extracts every entry and renders a **CODEX ASKED / YOU ANSWERED** card; the

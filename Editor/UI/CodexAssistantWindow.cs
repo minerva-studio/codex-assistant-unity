@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -1148,7 +1149,7 @@ namespace Minerva.Codex
             UpdateSettingsBar();
             UpdateComposer();
             RefreshQueueStrip();
-            RefreshQuestionPanel();
+            RefreshInteractionPanel();
             RefreshAgentsPanel();
             UpdateContextIndicator();
 
@@ -1367,13 +1368,13 @@ namespace Minerva.Codex
             bool running = m_Workspace != null && m_Workspace.IsRunning;
             bool hasText = !string.IsNullOrWhiteSpace(m_Composer.value);
             bool settingsReady = m_Workspace != null && m_Workspace.SettingsLoaded;
-            bool waitingForAnswer = m_Workspace != null && m_Workspace.HasPendingQuestion;
+            bool waitingForInteraction = m_Workspace != null && m_Workspace.HasPendingInteraction;
 
-            m_Composer.SetEnabled(ready && settingsReady && !waitingForAnswer);
+            m_Composer.SetEnabled(ready && settingsReady && !waitingForInteraction);
 
             bool actionEnabled = running
                 ? m_Workspace != null && m_Workspace.CanStop
-                : ready && settingsReady && hasText && !waitingForAnswer;
+                : ready && settingsReady && hasText && !waitingForInteraction;
 
             m_ActionButton.text = running ? "Stop" : "Send";
             m_ActionButton.SetEnabled(actionEnabled);
@@ -1387,8 +1388,8 @@ namespace Minerva.Codex
             }
 
             string steerKey = Application.platform == RuntimePlatform.OSXEditor ? "Cmd+Enter" : "Ctrl+Enter";
-            string hint = waitingForAnswer
-                ? "Answer Codex's question above"
+            string hint = waitingForInteraction
+                ? "Resolve Codex's request above"
                 : running
                     ? $"Enter to queue  ·  {steerKey} to steer"
                     : "Enter to send  ·  Shift+Enter for a new line";
@@ -1397,11 +1398,34 @@ namespace Minerva.Codex
                 m_ComposerHint.text = hint;
             }
 
-            m_Composer.tooltip = waitingForAnswer
-                ? "Codex is waiting for an answer"
+            m_Composer.tooltip = waitingForInteraction
+                ? "Codex is waiting for your response"
                 : running
                     ? $"Enter queues for after this turn; {steerKey} steers the active turn"
                     : "Enter to send · Shift+Enter for a new line";
+        }
+
+        void RefreshInteractionPanel()
+        {
+            if (m_QuestionPanel == null)
+            {
+                return;
+            }
+
+            if (m_Workspace?.PendingQuestion != null)
+            {
+                RefreshQuestionPanel();
+                return;
+            }
+
+            if (m_Workspace?.PendingApproval != null)
+            {
+                RefreshApprovalPanel();
+                return;
+            }
+
+            m_QuestionPanel.Clear();
+            m_QuestionPanel.style.display = DisplayStyle.None;
         }
 
         void RefreshQuestionPanel()
@@ -1563,6 +1587,653 @@ namespace Minerva.Codex
 
                 card.Add(answerRow);
             }
+        }
+
+        void RefreshApprovalPanel()
+        {
+            m_QuestionPanel.Clear();
+            CodexApprovalRequest approval = m_Workspace?.PendingApproval;
+            if (approval == null)
+            {
+                m_QuestionPanel.style.display = DisplayStyle.None;
+                return;
+            }
+
+            m_QuestionPanel.style.display = DisplayStyle.Flex;
+            VisualElement card = CreateInteractionCard(CodexPalette.SendAction);
+            m_QuestionPanel.Add(card);
+
+            switch (approval.Kind)
+            {
+                case CodexApprovalKind.Command:
+                    AddApprovalHeader(
+                        card,
+                        "COMMAND APPROVAL",
+                        approval.CommandKind == "writeStdin" ? "Send terminal input" : "Run command",
+                        approval.Reason);
+                    AddCodeBlock(card, string.IsNullOrEmpty(approval.Command) ? "(no command text)" : approval.Command);
+                    if (!string.IsNullOrWhiteSpace(approval.Cwd))
+                    {
+                        AddWrappedLabel(card, $"Working directory  {approval.Cwd}", 9, CodexPalette.Muted);
+                    }
+
+                    AddApprovalDecisionButtons(card, approval);
+                    break;
+                case CodexApprovalKind.FileChange:
+                    AddApprovalHeader(card, "FILE CHANGE", "Apply file changes", approval.Reason);
+                    if (approval.Files.Count == 0)
+                    {
+                        AddWrappedLabel(
+                            card,
+                            string.IsNullOrEmpty(approval.ItemId)
+                                ? "The change details are not available."
+                                : $"Change item {approval.ItemId}",
+                            9,
+                            CodexPalette.Muted);
+                    }
+                    else
+                    {
+                        foreach (string path in approval.Files)
+                        {
+                            AddWrappedLabel(card, path, 10, CodexPalette.Text, 4);
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(approval.Cwd))
+                    {
+                        AddWrappedLabel(card, $"Root  {approval.Cwd}", 9, CodexPalette.Muted);
+                    }
+
+                    AddApprovalDecisionButtons(card, approval);
+                    break;
+                case CodexApprovalKind.Permissions:
+                    AddApprovalHeader(card, "PERMISSION REQUEST", "Grant additional permissions", approval.Reason);
+                    AddCodeBlock(
+                        card,
+                        approval.Permissions == null || !approval.Permissions.HasValues
+                            ? "(no permission details)"
+                            : approval.Permissions.ToString(Formatting.Indented));
+                    if (!string.IsNullOrWhiteSpace(approval.Cwd))
+                    {
+                        AddWrappedLabel(card, $"Working directory  {approval.Cwd}", 9, CodexPalette.Muted);
+                    }
+
+                    VisualElement permissionActions = AddActionRow(card);
+                    AddApprovalButton(
+                        permissionActions,
+                        "Allow for turn",
+                        true,
+                        () => m_Workspace.RespondApproval(approval, "grant_turn"));
+                    AddApprovalButton(
+                        permissionActions,
+                        "Allow for session",
+                        false,
+                        () => m_Workspace.RespondApproval(approval, "grant_session"));
+                    AddApprovalButton(
+                        permissionActions,
+                        "Deny",
+                        false,
+                        () => m_Workspace.RespondApproval(approval, "deny"));
+                    break;
+                case CodexApprovalKind.McpElicitation:
+                    AddMcpApproval(card, approval);
+                    break;
+            }
+        }
+
+        static VisualElement CreateInteractionCard(Color accent)
+        {
+            var card = new VisualElement();
+            card.style.backgroundColor = CodexPalette.ComposerCard;
+            card.style.borderTopWidth = 1;
+            card.style.borderBottomWidth = 1;
+            card.style.borderLeftWidth = 1;
+            card.style.borderRightWidth = 1;
+            card.style.borderTopColor = accent;
+            card.style.borderBottomColor = CodexPalette.PillBorder;
+            card.style.borderLeftColor = CodexPalette.PillBorder;
+            card.style.borderRightColor = CodexPalette.PillBorder;
+            card.style.borderTopLeftRadius = 10;
+            card.style.borderTopRightRadius = 10;
+            card.style.borderBottomLeftRadius = 10;
+            card.style.borderBottomRightRadius = 10;
+            card.style.marginLeft = 12;
+            card.style.marginRight = 12;
+            card.style.marginTop = 8;
+            card.style.marginBottom = 4;
+            card.style.paddingLeft = 12;
+            card.style.paddingRight = 12;
+            card.style.paddingTop = 9;
+            card.style.paddingBottom = 10;
+            return card;
+        }
+
+        static void AddApprovalHeader(
+            VisualElement card,
+            string badge,
+            string title,
+            string subtitle)
+        {
+            var badgeLabel = new Label(badge);
+            badgeLabel.style.fontSize = 9;
+            badgeLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            badgeLabel.style.color = CodexPalette.SendAction;
+            card.Add(badgeLabel);
+
+            var titleLabel = new Label(title);
+            titleLabel.style.fontSize = 13;
+            titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            titleLabel.style.color = CodexPalette.Text;
+            titleLabel.style.whiteSpace = WhiteSpace.Normal;
+            titleLabel.style.marginTop = 3;
+            card.Add(titleLabel);
+
+            if (!string.IsNullOrWhiteSpace(subtitle))
+            {
+                AddWrappedLabel(card, subtitle, 10, CodexPalette.Muted, 3);
+            }
+        }
+
+        static void AddWrappedLabel(
+            VisualElement card,
+            string text,
+            int fontSize,
+            Color color,
+            int marginTop = 0)
+        {
+            var label = new Label(text);
+            label.style.fontSize = fontSize;
+            label.style.color = color;
+            label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.marginTop = marginTop;
+            card.Add(label);
+        }
+
+        static void AddCodeBlock(VisualElement card, string text)
+        {
+            var block = new Label(text);
+            block.style.backgroundColor = CodexPalette.CodeBackground;
+            block.style.color = CodexPalette.Text;
+            block.style.whiteSpace = WhiteSpace.Normal;
+            block.style.paddingLeft = 8;
+            block.style.paddingRight = 8;
+            block.style.paddingTop = 6;
+            block.style.paddingBottom = 6;
+            block.style.marginTop = 6;
+            block.style.borderTopLeftRadius = 6;
+            block.style.borderTopRightRadius = 6;
+            block.style.borderBottomLeftRadius = 6;
+            block.style.borderBottomRightRadius = 6;
+            card.Add(block);
+        }
+
+        static VisualElement AddActionRow(VisualElement card)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.flexWrap = Wrap.Wrap;
+            row.style.alignItems = Align.Center;
+            row.style.marginTop = 4;
+            card.Add(row);
+            return row;
+        }
+
+        static Button AddApprovalButton(
+            VisualElement row,
+            string text,
+            bool primary,
+            Action action)
+        {
+            var button = new Button(action) { text = text };
+            button.style.height = 26;
+            button.style.minWidth = 70;
+            button.style.paddingLeft = 10;
+            button.style.paddingRight = 10;
+            button.style.marginRight = 6;
+            button.style.marginTop = 6;
+            button.style.borderTopLeftRadius = 6;
+            button.style.borderTopRightRadius = 6;
+            button.style.borderBottomLeftRadius = 6;
+            button.style.borderBottomRightRadius = 6;
+            button.style.borderTopWidth = 1;
+            button.style.borderBottomWidth = 1;
+            button.style.borderLeftWidth = 1;
+            button.style.borderRightWidth = 1;
+            button.style.borderTopColor = primary ? Color.clear : CodexPalette.PillBorder;
+            button.style.borderBottomColor = primary ? Color.clear : CodexPalette.PillBorder;
+            button.style.borderLeftColor = primary ? Color.clear : CodexPalette.PillBorder;
+            button.style.borderRightColor = primary ? Color.clear : CodexPalette.PillBorder;
+            button.style.backgroundColor = primary ? CodexPalette.SendAction : CodexPalette.Pill;
+            button.style.color = primary ? Color.white : CodexPalette.Text;
+            row.Add(button);
+            return button;
+        }
+
+        void AddApprovalDecisionButtons(
+            VisualElement card,
+            CodexApprovalRequest approval)
+        {
+            bool hasStringDecisions = false;
+            if (approval.AvailableDecisions != null)
+            {
+                foreach (JToken decision in approval.AvailableDecisions)
+                {
+                    if (decision.Type == JTokenType.String)
+                    {
+                        hasStringDecisions = true;
+                        break;
+                    }
+                }
+            }
+
+            bool Allowed(string decision)
+            {
+                if (!hasStringDecisions || approval.AvailableDecisions == null)
+                {
+                    return true;
+                }
+
+                foreach (JToken token in approval.AvailableDecisions)
+                {
+                    if (token.Type == JTokenType.String && token.Value<string>() == decision)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            VisualElement actions = AddActionRow(card);
+            if (Allowed("accept"))
+            {
+                AddApprovalButton(
+                    actions,
+                    "Allow once",
+                    true,
+                    () => m_Workspace.RespondApproval(approval, "accept"));
+            }
+
+            if (Allowed("acceptForSession"))
+            {
+                AddApprovalButton(
+                    actions,
+                    "Allow for session",
+                    false,
+                    () => m_Workspace.RespondApproval(approval, "acceptForSession"));
+            }
+
+            if (Allowed("decline"))
+            {
+                AddApprovalButton(
+                    actions,
+                    "Decline",
+                    false,
+                    () => m_Workspace.RespondApproval(approval, "decline"));
+            }
+
+            if (Allowed("cancel"))
+            {
+                AddApprovalButton(
+                    actions,
+                    "Cancel turn",
+                    false,
+                    () => m_Workspace.RespondApproval(approval, "cancel"));
+            }
+        }
+
+        void AddMcpApproval(VisualElement card, CodexApprovalRequest approval)
+        {
+            string server = string.IsNullOrEmpty(approval.ServerName) ? "MCP server" : approval.ServerName;
+            AddApprovalHeader(card, "MCP REQUEST", server, approval.McpMessage);
+
+            if (approval.McpMode == "url")
+            {
+                AddCodeBlock(card, string.IsNullOrEmpty(approval.McpUrl) ? "(no URL)" : approval.McpUrl);
+                VisualElement urlActions = AddActionRow(card);
+                AddApprovalButton(
+                    urlActions,
+                    "Open link",
+                    false,
+                    () =>
+                    {
+                        if (!string.IsNullOrEmpty(approval.McpUrl))
+                        {
+                            Application.OpenURL(approval.McpUrl);
+                        }
+                    });
+                AddApprovalButton(
+                    urlActions,
+                    "I've completed",
+                    true,
+                    () => m_Workspace.RespondApproval(approval, "accept"));
+                AddApprovalButton(
+                    urlActions,
+                    "Decline",
+                    false,
+                    () => m_Workspace.RespondApproval(approval, "decline"));
+                return;
+            }
+
+            if (approval.IsMcpUserVerification)
+            {
+                AddWrappedLabel(
+                    card,
+                    string.IsNullOrEmpty(approval.McpTitle) ? "Verification required" : approval.McpTitle,
+                    11,
+                    CodexPalette.Text,
+                    5);
+                AddWrappedLabel(
+                    card,
+                    string.IsNullOrEmpty(approval.McpDescription)
+                        ? "Open the verification flow in your browser, then retry the tool."
+                        : approval.McpDescription,
+                    10,
+                    CodexPalette.Muted,
+                    3);
+                AddWrappedLabel(
+                    card,
+                    "Device verification cannot be completed inside this window yet.",
+                    9,
+                    CodexPalette.Warning,
+                    5);
+                VisualElement verifyActions = AddActionRow(card);
+                AddApprovalButton(
+                    verifyActions,
+                    "Decline",
+                    false,
+                    () => m_Workspace.RespondApproval(approval, "decline"));
+                AddApprovalButton(
+                    verifyActions,
+                    "Cancel",
+                    false,
+                    () => m_Workspace.RespondApproval(approval, "cancel"));
+                return;
+            }
+
+            if (approval.McpSchema?["properties"] is JObject properties)
+            {
+                AddMcpForm(card, approval, properties);
+                return;
+            }
+
+            AddWrappedLabel(
+                card,
+                "This elicitation has no supported form fields.",
+                10,
+                CodexPalette.Muted,
+                5);
+            VisualElement fallbackActions = AddActionRow(card);
+            AddApprovalButton(
+                fallbackActions,
+                "Decline",
+                false,
+                () => m_Workspace.RespondApproval(approval, "decline"));
+            AddApprovalButton(
+                fallbackActions,
+                "Cancel",
+                false,
+                () => m_Workspace.RespondApproval(approval, "cancel"));
+        }
+
+        void AddMcpForm(
+            VisualElement card,
+            CodexApprovalRequest approval,
+            JObject properties)
+        {
+            var requiredNames = new HashSet<string>();
+            if (approval.McpSchema?["required"] is JArray required)
+            {
+                foreach (JToken name in required)
+                {
+                    string value = name.Value<string>();
+                    if (!string.IsNullOrEmpty(value))
+                    {
+                        requiredNames.Add(value);
+                    }
+                }
+            }
+
+            var fields = new List<McpFormField>();
+            foreach (JProperty property in properties.Properties())
+            {
+                if (property.Value is not JObject schema)
+                {
+                    continue;
+                }
+
+                string title = schema["title"]?.Value<string>();
+                if (string.IsNullOrWhiteSpace(title))
+                {
+                    title = property.Name;
+                }
+
+                bool isRequired = requiredNames.Contains(property.Name);
+                var label = new Label(isRequired ? $"{title} *" : title);
+                label.style.fontSize = 10;
+                label.style.unityFontStyleAndWeight = FontStyle.Bold;
+                label.style.color = CodexPalette.Text;
+                label.style.marginTop = 7;
+                card.Add(label);
+
+                string description = schema["description"]?.Value<string>();
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    AddWrappedLabel(card, description, 9, CodexPalette.Muted, 2);
+                }
+
+                JArray enumValues = schema["enum"] as JArray;
+                if (enumValues != null && enumValues.Count > 0)
+                {
+                    var labels = new List<string>();
+                    var values = new List<JToken>();
+                    foreach (JToken value in enumValues)
+                    {
+                        labels.Add(value.ToString());
+                        values.Add(value.DeepClone());
+                    }
+
+                    var dropdown = new DropdownField(labels, 0);
+                    dropdown.style.marginTop = 3;
+                    card.Add(dropdown);
+                    fields.Add(new McpFormField
+                    {
+                        Key = property.Name,
+                        Required = isRequired,
+                        Read = () => values.Count == 0
+                            ? null
+                            : values[Mathf.Clamp(dropdown.index, 0, values.Count - 1)].DeepClone(),
+                    });
+                    continue;
+                }
+
+                if (schema["oneOf"] is JArray oneOf && oneOf.Count > 0)
+                {
+                    var labels = new List<string>();
+                    var values = new List<JToken>();
+                    foreach (JToken option in oneOf)
+                    {
+                        if (option is not JObject optionObject)
+                        {
+                            continue;
+                        }
+
+                        JToken value = optionObject["const"];
+                        if (value == null)
+                        {
+                            continue;
+                        }
+
+                        string optionTitle = optionObject["title"]?.Value<string>();
+                        labels.Add(string.IsNullOrEmpty(optionTitle) ? value.ToString() : optionTitle);
+                        values.Add(value.DeepClone());
+                    }
+
+                    if (labels.Count > 0)
+                    {
+                        var dropdown = new DropdownField(labels, 0);
+                        dropdown.style.marginTop = 3;
+                        card.Add(dropdown);
+                        fields.Add(new McpFormField
+                        {
+                            Key = property.Name,
+                            Required = isRequired,
+                            Read = () => values[Mathf.Clamp(dropdown.index, 0, values.Count - 1)].DeepClone(),
+                        });
+                        continue;
+                    }
+                }
+
+                string type = schema["type"]?.Value<string>();
+                if (type == "boolean")
+                {
+                    var toggle = new Toggle();
+                    toggle.style.marginTop = 3;
+                    if (schema["default"]?.Value<bool>() == true)
+                    {
+                        toggle.value = true;
+                    }
+
+                    card.Add(toggle);
+                    fields.Add(new McpFormField
+                    {
+                        Key = property.Name,
+                        Required = isRequired,
+                        Read = () => new JValue(toggle.value),
+                    });
+                    continue;
+                }
+
+                if (type == "array")
+                {
+                    var arrayField = new TextField();
+                    arrayField.style.marginTop = 3;
+                    arrayField.textEdition.placeholder = "Comma-separated values";
+                    card.Add(arrayField);
+                    fields.Add(new McpFormField
+                    {
+                        Key = property.Name,
+                        Required = isRequired,
+                        Read = () =>
+                        {
+                            string text = arrayField.value;
+                            if (string.IsNullOrWhiteSpace(text))
+                            {
+                                return null;
+                            }
+
+                            var array = new JArray();
+                            foreach (string part in text.Split(','))
+                            {
+                                if (!string.IsNullOrWhiteSpace(part))
+                                {
+                                    array.Add(part.Trim());
+                                }
+                            }
+
+                            return array.Count == 0 ? null : array;
+                        },
+                    });
+                    continue;
+                }
+
+                bool numeric = type == "number" || type == "integer";
+                var input = new TextField();
+                input.style.marginTop = 3;
+                input.textEdition.placeholder = numeric ? "Number" : "Text";
+                string defaultValue = schema["default"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(defaultValue))
+                {
+                    input.value = defaultValue;
+                }
+
+                card.Add(input);
+                fields.Add(new McpFormField
+                {
+                    Key = property.Name,
+                    Required = isRequired,
+                    Read = () =>
+                    {
+                        string text = input.value;
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            return null;
+                        }
+
+                        if (type == "integer" && long.TryParse(text, out long integer))
+                        {
+                            return new JValue(integer);
+                        }
+
+                        if (type == "number" && double.TryParse(text, out double number))
+                        {
+                            return new JValue(number);
+                        }
+
+                        return new JValue(text);
+                    },
+                });
+            }
+
+            var error = new Label(string.Empty);
+            error.style.display = DisplayStyle.None;
+            error.style.fontSize = 9;
+            error.style.color = CodexPalette.Error;
+            error.style.marginTop = 4;
+            card.Add(error);
+
+            VisualElement actions = AddActionRow(card);
+            AddApprovalButton(
+                actions,
+                "Submit",
+                true,
+                () =>
+                {
+                    var content = new JObject();
+                    bool missing = false;
+                    foreach (McpFormField field in fields)
+                    {
+                        JToken value = field.Read();
+                        if (value == null ||
+                            (value.Type == JTokenType.String && string.IsNullOrWhiteSpace(value.Value<string>())))
+                        {
+                            if (field.Required)
+                            {
+                                missing = true;
+                            }
+
+                            continue;
+                        }
+
+                        content[field.Key] = value;
+                    }
+
+                    if (missing)
+                    {
+                        error.text = "Fill the required fields.";
+                        error.style.display = DisplayStyle.Flex;
+                        return;
+                    }
+
+                    m_Workspace.RespondApproval(approval, "accept", content);
+                });
+            AddApprovalButton(
+                actions,
+                "Decline",
+                false,
+                () => m_Workspace.RespondApproval(approval, "decline"));
+            AddApprovalButton(
+                actions,
+                "Cancel",
+                false,
+                () => m_Workspace.RespondApproval(approval, "cancel"));
+        }
+
+        sealed class McpFormField
+        {
+            public string Key;
+            public bool Required;
+            public Func<JToken> Read;
         }
 
         void RefreshQueueStrip()

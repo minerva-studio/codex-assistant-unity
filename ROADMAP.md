@@ -21,7 +21,9 @@
   `collabAgentToolCall` and `subAgentActivity` render as Subagent sections with Open and Parent navigation.
   A minimal right rail shows agent status/model/activity, with pulsing dots for running work.
 - `request_user_input` questions with option/free-text answers, plus question/answer cards for stored
-  `send_user_message_question_reply` messages; command/file approvals remain on the Next list.
+  `send_user_message_question_reply` messages.
+- Command, file-change and permission approvals with allow-once/session/deny, plus standard MCP form/URL
+  elicitations in the same interaction card.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.
@@ -33,7 +35,9 @@
 
 ## Next
 
-- Approvals: command execution and file change requests, with accept/decline and session scope.
+- Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard OpenAI
+  elicitation forms.
+- A broader visual refresh of the window: denser toolbar/sidebar, updated palette and message spacing.
 - Thread management: rename, paginated history, unarchive.
 
 ## Later
