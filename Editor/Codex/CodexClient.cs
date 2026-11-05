@@ -79,6 +79,30 @@ namespace Minerva.Codex
                 onError);
         }
 
+        /// <summary>
+        /// Reads one page of threads and returns the whole response so the caller
+        /// can read <c>nextCursor</c>. An empty cursor starts from the newest page.
+        /// </summary>
+        public void ListThreads(
+            CodexThreadQuery query,
+            string cursor,
+            Action<JObject> onResult,
+            Action<string> onError)
+        {
+            var parameters = BuildThreadParameters(query);
+            if (!string.IsNullOrEmpty(query.Cwd))
+            {
+                parameters["cwd"] = query.Cwd;
+            }
+
+            if (!string.IsNullOrEmpty(cursor))
+            {
+                parameters["cursor"] = cursor;
+            }
+
+            Request("thread/list", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
         public void SearchThreads(CodexThreadQuery query, Action<JArray> onResult, Action<string> onError)
         {
             if (string.IsNullOrWhiteSpace(query.SearchTerm))

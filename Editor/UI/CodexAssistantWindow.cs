@@ -4312,6 +4312,30 @@ namespace Minerva.Codex
             {
                 m_ThreadList.Add(BuildThreadRow(thread));
             }
+
+            if (m_Workspace.HasMoreThreads || m_Workspace.IsLoadingMoreThreads)
+            {
+                var more = new Button(() => m_Workspace.LoadMoreThreads())
+                {
+                    text = m_Workspace.IsLoadingMoreThreads ? "Loading..." : "Load more",
+                };
+                more.SetEnabled(!m_Workspace.IsLoadingMoreThreads);
+                more.style.height = 26;
+                more.style.marginTop = 4;
+                more.style.marginBottom = 8;
+                more.style.backgroundColor = CodexPalette.Pill;
+                more.style.color = CodexPalette.Muted;
+                more.style.fontSize = 10;
+                more.style.borderTopWidth = 0;
+                more.style.borderBottomWidth = 0;
+                more.style.borderLeftWidth = 0;
+                more.style.borderRightWidth = 0;
+                more.style.borderTopLeftRadius = 8;
+                more.style.borderTopRightRadius = 8;
+                more.style.borderBottomLeftRadius = 8;
+                more.style.borderBottomRightRadius = 8;
+                m_ThreadList.Add(more);
+            }
         }
 
         VisualElement BuildThreadRow(CodexThreadInfo thread)

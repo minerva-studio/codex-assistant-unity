@@ -46,12 +46,12 @@
   catalog. **Reconnect** reloads config/providers/models without changing the home.
 - Turn pagination (**Load earlier turns**) and an **Archived** sidebar view with restore; the sidebar header
   is two rows (scope dropdown + `+` new conversation, search below).
+- Thread-list pagination: the sidebar loads 50 threads and appends older pages with **Load more**.
 - Composer wrapping, caret sync after a reference insertion, and Windows IME candidate-window placement via
   IMM32 (the workaround compiles out from 6000.6 on).
 
 ## Next
 
-- Thread-list paging: `thread/list` also returns a cursor; the sidebar still loads one page of 50.
 - Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard OpenAI
   elicitation forms.
 - Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.

@@ -50,6 +50,11 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- The sidebar loads 50 threads and appends older pages with **Load more** (`thread/list` cursor); the
+  archived view pages the same way, and searching stays unpaged.
+- JSON responses keep date-like strings verbatim (`DateParseHandling.None`). Newtonsoft was parsing
+  `thread/list` cursors into `DateTime` and re-formatting them in the current culture, which the server
+  rejected as an invalid cursor.
 - The sidebar header is two rows: the heading row carries the scope dropdown and a compact **+**
   new-conversation button, and the search field takes the full width below. Search and dropdown now draw a
   single custom shell instead of stacking the stock field chrome inside an outer box.

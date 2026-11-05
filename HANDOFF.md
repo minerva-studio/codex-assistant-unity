@@ -138,6 +138,11 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   (`m_TurnGeneration` changed) is dropped. The button renders only while `HasMoreTurns`; after an append the
   scroll offset is shifted by the height the new page added so the reader stays on the same message. Every
   `m_Turns.Clear()` must be paired with `ResetTurnPaging()`.
+- Thread-list paging: the sidebar requests `thread/list` with `limit: 50` and keeps `nextCursor`;
+  **Load more** at the bottom of the list calls `LoadMoreThreads`, which appends the next page, skips ids
+  already listed, and drops a page whose `ThreadListGeneration` changed. Searching is not paged (the search
+  endpoint returns its own full result), so `LoadMoreThreads` refuses while `IsSearching`. The archived view
+  pages the same way. `ResetThreadPaging()` runs at the start of every `RequestThreads`.
 - Archived view: the sidebar scope dropdown has a third choice, **Archived**. It lists
   `thread/list { archived: true }` (that flag returns only archived threads) across every project, disables
   the search box, and never auto-selects. Clicking a row calls `SelectArchivedThread`, which sets the
@@ -393,6 +398,11 @@ unity command --project-path <proj> capture editor_window --window 'Codex Assist
   on, so merge by turn id, and stop paging when a page adds nothing.
 - `thread/list { archived: true }` returns **only** archived threads; false/null returns only active ones.
   Do not `thread/resume` an archived thread: select it without resume and call `thread/unarchive` first.
+- Cursors from `thread/list` and `thread/turns/list` are opaque, date-like strings. `JObject.Parse` with
+  Newtonsoft's default `DateParseHandling` turns them into `DateTime`, and `Value<string>()` then re-formats
+  them in the current culture ("11/05/2026 09:18:40"), which the server rejects with `invalid cursor`.
+  `CodexConnection` now parses every message with `DateParseHandling.None`; do not put `JObject.Parse` back
+  in `HandleLine`.
 - The `codex-assistant-unity-dev` project pins `dev.helight.umarkdown` to the upstream `helightdev` repo, while
   this package depends on the `minerva-studio` fork (`HeadingScale`, `MarkdownCodeTheme`). Batchmode compile of
   that dev project reports `CS0117` in `CodexMarkdown.cs` before reaching newer code. Compile

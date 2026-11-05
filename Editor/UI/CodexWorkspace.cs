@@ -128,6 +128,9 @@ namespace Minerva.Codex
         string m_SelectedArchivedThreadId;
         bool m_InitialSelectionDone;
         int m_ThreadListGeneration;
+        string m_ThreadsCursor;
+        bool m_HasMoreThreads;
+        bool m_LoadingMoreThreads;
         bool m_SearchDebounceSubscribed;
         bool m_SearchPending;
         double m_SearchDeadline;
@@ -173,6 +176,8 @@ namespace Minerva.Codex
         public string SearchTerm => m_SearchTerm;
         public bool ShowAllProjects => m_ShowAllProjects;
         public bool ShowArchived => m_ShowArchived;
+        public bool HasMoreThreads => m_HasMoreThreads;
+        public bool IsLoadingMoreThreads => m_LoadingMoreThreads;
         public bool IsSearching => !string.IsNullOrWhiteSpace(m_SearchTerm);
         public string SelectedThreadId { get; private set; }
         public string SelectedCwd { get; private set; }
@@ -737,6 +742,7 @@ namespace Minerva.Codex
 
             int generation = ++m_ThreadListGeneration;
             bool searching = IsSearching && !m_ShowArchived;
+            ResetThreadPaging();
             Status = searching
                 ? "Searching conversations..."
                 : m_ShowArchived ? "Loading archived conversations..." : "Loading conversations...";
@@ -769,7 +775,8 @@ namespace Minerva.Codex
             {
                 m_Client.ListThreads(
                     query,
-                    results => OnThreadsLoaded(results, generation, false),
+                    null,
+                    result => OnThreadPageLoaded(result, generation, false),
                     message =>
                     {
                         if (generation == m_ThreadListGeneration)
@@ -778,6 +785,50 @@ namespace Minerva.Codex
                         }
                     });
             }
+        }
+
+        void ResetThreadPaging()
+        {
+            m_ThreadsCursor = null;
+            m_HasMoreThreads = false;
+            m_LoadingMoreThreads = false;
+        }
+
+        /// <summary>
+        /// Appends the next page from <c>thread/list</c>. Searching is not paged
+        /// (the search endpoint returns its own full result), so it is excluded.
+        /// </summary>
+        public bool LoadMoreThreads()
+        {
+            if (!m_Ready || IsSearching || m_LoadingMoreThreads || !m_HasMoreThreads)
+            {
+                return false;
+            }
+
+            m_LoadingMoreThreads = true;
+            Status = "Loading more conversations...";
+            Changed?.Invoke();
+
+            var query = new CodexThreadQuery
+            {
+                Limit = 50,
+                SourceKinds = SourceKinds,
+                Cwd = m_ShowAllProjects || m_ShowArchived ? null : m_ProjectRoot,
+                SearchTerm = string.Empty,
+                IncludeArchived = m_ShowArchived,
+            };
+
+            int generation = m_ThreadListGeneration;
+            m_Client.ListThreads(
+                query,
+                m_ThreadsCursor,
+                result => OnThreadPageLoaded(result, generation, true),
+                message =>
+                {
+                    m_LoadingMoreThreads = false;
+                    OnFailed(message);
+                });
+            return true;
         }
 
         void FlushSearch()
@@ -3120,6 +3171,70 @@ namespace Minerva.Codex
                 }
             }
 
+            FinishThreadList(false, true);
+        }
+
+        void OnThreadPageLoaded(JObject result, int generation, bool append)
+        {
+            if (generation != m_ThreadListGeneration)
+            {
+                m_LoadingMoreThreads = false;
+                return;
+            }
+
+            if (!append)
+            {
+                m_Threads.Clear();
+            }
+
+            int added = 0;
+            if (result?["data"] is JArray threads)
+            {
+                foreach (JToken token in threads)
+                {
+                    if (token is not JObject entry)
+                    {
+                        continue;
+                    }
+
+                    CodexThreadInfo info = Parse(entry);
+                    if (m_ShowArchived)
+                    {
+                        if (!string.IsNullOrEmpty(info.ParentThreadId))
+                        {
+                            continue;
+                        }
+                    }
+                    else if (m_ArchivedThreadIds.Contains(info.Id) ||
+                             !string.IsNullOrEmpty(info.ParentThreadId))
+                    {
+                        continue;
+                    }
+
+                    if (append && m_Threads.Exists(existing => existing.Id == info.Id))
+                    {
+                        continue;
+                    }
+
+                    m_Threads.Add(info);
+                    added++;
+                }
+            }
+
+            m_LoadingMoreThreads = false;
+            m_ThreadsCursor = result?["nextCursor"]?.Value<string>();
+            m_HasMoreThreads = !string.IsNullOrEmpty(m_ThreadsCursor);
+            if (append && added == 0)
+            {
+                // A cursor that keeps returning the same page must not loop.
+                m_HasMoreThreads = false;
+            }
+
+            FinishThreadList(append, false);
+        }
+
+        void FinishThreadList(bool append, bool isSearch)
+        {
             ThreadsLoaded = true;
             if (isSearch)
             {
@@ -3146,6 +3261,11 @@ namespace Minerva.Codex
             }
 
             Changed?.Invoke();
+
+            if (append)
+            {
+                return;
+            }
 
             // The archived view is a browsing surface; open a thread only when the
             // reader picks one, never automatically.

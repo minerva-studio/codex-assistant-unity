@@ -39,6 +39,15 @@ namespace Minerva.Codex
         readonly ConcurrentDictionary<long, Action<JToken, CodexRpcError>> m_Pending =
             new ConcurrentDictionary<long, Action<JToken, CodexRpcError>>();
 
+        // app-server cursors are opaque, date-like strings. Newtonsoft's default
+        // date parsing turns them into DateTime and Value<string>() re-formats them
+        // in the current culture, which the server then rejects as an invalid
+        // cursor. Keep every string verbatim.
+        static readonly JsonSerializerSettings s_JsonSettings = new JsonSerializerSettings
+        {
+            DateParseHandling = DateParseHandling.None,
+        };
+
         long m_LastId;
         int m_Failed;
         volatile bool m_Closed;
@@ -251,7 +260,7 @@ namespace Minerva.Codex
             JObject message;
             try
             {
-                message = JObject.Parse(line);
+                message = JsonConvert.DeserializeObject<JObject>(line, s_JsonSettings);
             }
             catch (JsonException exception)
             {
