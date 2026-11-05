@@ -28,7 +28,8 @@
   and `serverRequest/resolved` cleanup.
 - Modern visual pass: palette/surface hierarchy, compact toolbar/sidebar, card-based Process and interaction
   surfaces, roomier composer, empty state and stable active-thread indicator. Codex text is unbubbled; user
-  input keeps its bubble. Sidebar context menu handles rename/archive/copy/fork.
+  input keeps a compact right-aligned bubble. Process/tool folds show elapsed time. Sidebar context menu
+  handles rename/archive/copy/fork.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

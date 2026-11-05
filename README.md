@@ -47,8 +47,11 @@ tools are next.
   decision back to the app-server.
 - Live command/file output, MCP progress, plan steps and the turn diff update inside Process while the turn
   runs. A running command with a PTY process id gets an inline terminal input row.
-- Codex output is plain document text; only user input uses a bubble. Process and approval/question surfaces
-  remain cards because they are interaction containers.
+- Codex output is plain document text; only user input uses a compact, right-aligned bubble (max 68% of the
+  transcript width). Process and approval/question surfaces remain cards because they are interaction
+  containers.
+- Collapsed Process groups and tool foldouts show their elapsed time in the header, e.g.
+  `Process · 22 tools · 2 replies · 9m 55s` or `$ npm test · 4s`.
 - A modernized dark/light visual pass: compact toolbar and sidebar rows, accent selections, card-based
   Process/interaction surfaces, a roomier composer and a dedicated empty state. The active-thread indicator
   now uses a reserved leading slot, so it no longer drifts with wrapped titles.

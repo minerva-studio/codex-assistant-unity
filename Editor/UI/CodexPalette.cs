@@ -16,7 +16,7 @@ namespace Minerva.Codex
         public static Color Hover => Dark ? Hex(0x20252d) : Hex(0xeef1f6);
         public static Color Selected => Dark ? Hex(0x293446) : Hex(0xe1eafd);
 
-        public static Color UserBubble => Dark ? Hex(0x223247) : Hex(0xe7f0ff);
+        public static Color UserBubble => Dark ? Hex(0x2b2d32) : Hex(0xedf0f5);
         public static Color AgentBubble => Dark ? Hex(0x1d2127) : Hex(0xffffff);
         public static Color ToolBubble => Dark ? Hex(0x1a1e24) : Hex(0xf4f6f9);
         public static Color CodeBackground => Dark ? Hex(0x0e1013) : Hex(0xf0f2f6);

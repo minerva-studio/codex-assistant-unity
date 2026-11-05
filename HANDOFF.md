@@ -106,7 +106,13 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   get a centered brand state. The active-thread pulse dot is always in the reserved slot, not after the
   flexible title.
 - Codex `agentMessage` output renders as a plain text block with a small CODEX caption; only `userMessage`
-  uses a bubble. Process/approval/question content remains carded because it is an interaction surface.
+  uses a bubble. The user bubble is right-aligned, has a max width of 68%, no role caption, compact 9 px
+  vertical padding and the neutral `UserBubble` surface. Process/approval/question content remains carded
+  because it is an interaction surface.
+- Elapsed time: `CodexItemRenderer.FormatDuration` formats milliseconds as `ms`/`s`/`m s`/`h m`.
+  `AppendDuration` adds it to command/file/MCP foldout titles; live running items use `UtcNow`.
+  `ProcessDuration` takes the minimum item `startedAtMs` and maximum `completedAtMs` in a Process group; live
+  groups use now. `ProcessSummary` appends it, so collapsed history and live groups both show elapsed time.
 - Sidebar context menu: right-click calls `ShowThreadContextMenu(thread, mousePosition)`, which uses the
   `ShowPopup(..., Vector2? at)` overload. Actions are Open, Rename, Copy resume, Fork and Archive. Rename opens
   `CodexRenameWindow`, which calls `CodexWorkspace.RenameThread` -> `thread/name/set`. Archive uses

@@ -34,7 +34,8 @@ All notable changes to this package are documented here.
   running PTY commands accept terminal input.
 - Visual refresh of the window: palette, toolbar, compact sidebar rows, card surfaces, composer, empty state
   and a stable leading active-thread indicator.
-- Codex output is no longer wrapped in a bubble; user input keeps its bubble.
+- Codex output is no longer wrapped in a bubble; user input keeps a compact right-aligned bubble.
+- Collapsed Process and tool headers show elapsed time.
 - Sidebar context menu with Open, Rename, Copy resume, Fork and Archive.
 - Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
   filters the archived id; if another Codex client still holds it, the window keeps it and explains why.

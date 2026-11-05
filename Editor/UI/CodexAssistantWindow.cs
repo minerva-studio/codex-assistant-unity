@@ -2931,7 +2931,7 @@ namespace Minerva.Codex
             {
                 var foldout = new Foldout
                 {
-                    text = ProcessSummary(tools, thoughts, replies),
+                    text = ProcessSummary(tools, thoughts, replies, ProcessDuration(items, isLive)),
                     // Keep live work visible; history stays compact.
                     value = isLive,
                 };
@@ -3005,7 +3005,39 @@ namespace Minerva.Codex
             items.Clear();
         }
 
-        static string ProcessSummary(int tools, int thoughts, int replies)
+        static string ProcessDuration(List<JObject> items, bool live)
+        {
+            long start = 0;
+            long end = 0;
+            foreach (JObject item in items)
+            {
+                long itemStart = item["startedAtMs"]?.Value<long>() ?? 0;
+                long itemEnd = item["completedAtMs"]?.Value<long>() ?? 0;
+                if (itemStart > 0 && (start == 0 || itemStart < start))
+                {
+                    start = itemStart;
+                }
+
+                if (itemEnd > end)
+                {
+                    end = itemEnd;
+                }
+            }
+
+            if (start <= 0)
+            {
+                return string.Empty;
+            }
+
+            if (live || end <= start)
+            {
+                end = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            }
+
+            return CodexItemRenderer.FormatDuration(start, end);
+        }
+
+        static string ProcessSummary(int tools, int thoughts, int replies, string duration)
         {
             string text = "Process";
             if (tools > 0)
@@ -3021,6 +3053,11 @@ namespace Minerva.Codex
             if (replies > 0)
             {
                 text += replies == 1 ? "  ·  1 reply" : $"  ·  {replies} replies";
+            }
+
+            if (!string.IsNullOrEmpty(duration))
+            {
+                text += $"  ·  {duration}";
             }
 
             return text;

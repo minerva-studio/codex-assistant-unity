@@ -152,7 +152,7 @@ namespace Minerva.Codex
                 return;
             }
 
-            VisualElement bubble = Bubble("YOU", CodexPalette.UserBubble);
+            VisualElement bubble = Bubble(CodexPalette.UserBubble);
             bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
             parent.Add(bubble);
         }
@@ -530,6 +530,7 @@ namespace Minerva.Codex
         {
             string command = item["command"]?.Value<string>() ?? string.Empty;
             string title = string.IsNullOrEmpty(command) ? "Command" : $"$ {OneLine(command, 80)}";
+            title = AppendDuration(title, item);
             Foldout foldout = Section(parent, title);
             AddStatus(foldout, item);
             string status = item["status"]?.Value<string>() ?? string.Empty;
@@ -657,6 +658,59 @@ namespace Minerva.Codex
             AddCode(foldout, diff);
         }
 
+        static string AppendDuration(string title, JObject item)
+        {
+            long start = item["startedAtMs"]?.Value<long>() ?? 0;
+            long end = item["completedAtMs"]?.Value<long>() ?? 0;
+            if (end <= start && start > 0)
+            {
+                string status = item["status"]?.Value<string>() ?? string.Empty;
+                if (status.Equals("inProgress", StringComparison.OrdinalIgnoreCase) ||
+                    status.Equals("running", StringComparison.OrdinalIgnoreCase))
+                {
+                    end = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                }
+            }
+
+            string duration = FormatDuration(start, end);
+            return string.IsNullOrEmpty(duration) ? title : $"{title}  ·  {duration}";
+        }
+
+        internal static string FormatDuration(long startMs, long endMs)
+        {
+            if (startMs <= 0 || endMs <= startMs)
+            {
+                return string.Empty;
+            }
+
+            long elapsed = endMs - startMs;
+            if (elapsed < 1000)
+            {
+                return $"{elapsed}ms";
+            }
+
+            long seconds = (elapsed + 999) / 1000;
+            if (seconds < 60)
+            {
+                return $"{seconds}s";
+            }
+
+            long minutes = seconds / 60;
+            long remainingSeconds = seconds % 60;
+            if (minutes < 60)
+            {
+                return remainingSeconds == 0
+                    ? $"{minutes}m"
+                    : $"{minutes}m {remainingSeconds}s";
+            }
+
+            long hours = minutes / 60;
+            long remainingMinutes = minutes % 60;
+            return remainingMinutes == 0
+                ? $"{hours}h"
+                : $"{hours}h {remainingMinutes}m";
+        }
+
         static string PlanStatusMark(string status)
         {
             return status switch
@@ -690,6 +744,7 @@ namespace Minerva.Codex
                 _ => $"Edited {count} files",
             };
 
+            title = AppendDuration(title, item);
             Foldout foldout = Section(parent, title);
             AddStatus(foldout, item);
             string status = item["status"]?.Value<string>() ?? string.Empty;
@@ -734,7 +789,8 @@ namespace Minerva.Codex
         {
             string server = item["server"]?.Value<string>() ?? "mcp";
             string tool = item["tool"]?.Value<string>() ?? "tool";
-            Foldout foldout = Section(parent, $"MCP · {server}/{tool}");
+            string title = AppendDuration($"MCP · {server}/{tool}", item);
+            Foldout foldout = Section(parent, title);
             AddStatus(foldout, item);
             string status = item["status"]?.Value<string>() ?? string.Empty;
             if (status.Equals("inProgress", StringComparison.OrdinalIgnoreCase) ||
@@ -929,38 +985,33 @@ namespace Minerva.Codex
             return singleLine.Length <= length ? singleLine : singleLine.Substring(0, length) + "...";
         }
 
-        static VisualElement Bubble(string role, Color background)
+        static VisualElement Bubble(Color background)
         {
             var bubble = new VisualElement();
+            bubble.style.alignSelf = Align.FlexEnd;
+            bubble.style.maxWidth = Length.Percent(68);
+            bubble.style.flexShrink = 1;
             bubble.style.backgroundColor = background;
             bubble.style.borderTopWidth = 1;
             bubble.style.borderBottomWidth = 1;
             bubble.style.borderLeftWidth = 1;
             bubble.style.borderRightWidth = 1;
-            bubble.style.borderTopColor = CodexPalette.Border;
-            bubble.style.borderBottomColor = CodexPalette.Border;
-            bubble.style.borderLeftColor = CodexPalette.Border;
-            bubble.style.borderRightColor = CodexPalette.Border;
-            bubble.style.borderTopLeftRadius = 12;
-            bubble.style.borderTopRightRadius = 12;
-            bubble.style.borderBottomLeftRadius = 12;
-            bubble.style.borderBottomRightRadius = 12;
-            bubble.style.paddingLeft = 14;
-            bubble.style.paddingRight = 14;
-            bubble.style.paddingTop = 10;
-            bubble.style.paddingBottom = 12;
-            bubble.style.marginLeft = 18;
+            bubble.style.borderTopColor = CodexPalette.PillBorder;
+            bubble.style.borderBottomColor = CodexPalette.PillBorder;
+            bubble.style.borderLeftColor = CodexPalette.PillBorder;
+            bubble.style.borderRightColor = CodexPalette.PillBorder;
+            bubble.style.borderTopLeftRadius = 14;
+            bubble.style.borderTopRightRadius = 14;
+            bubble.style.borderBottomLeftRadius = 14;
+            bubble.style.borderBottomRightRadius = 14;
+            bubble.style.paddingLeft = 13;
+            bubble.style.paddingRight = 13;
+            bubble.style.paddingTop = 9;
+            bubble.style.paddingBottom = 9;
+            bubble.style.marginLeft = 64;
             bubble.style.marginRight = 18;
             bubble.style.marginTop = 4;
             bubble.style.marginBottom = 12;
-
-            var caption = new Label(role);
-            caption.style.fontSize = 8;
-            caption.style.unityFontStyleAndWeight = FontStyle.Bold;
-            caption.style.color = role == "YOU" ? CodexPalette.Accent : CodexPalette.TextDim;
-            caption.style.marginBottom = 5;
-            bubble.Add(caption);
-
             return bubble;
         }
 
