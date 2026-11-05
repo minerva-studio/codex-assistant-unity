@@ -398,6 +398,10 @@ unity command --project-path <proj> capture editor_window --window 'Codex Assist
   on, so merge by turn id, and stop paging when a page adds nothing.
 - `thread/list { archived: true }` returns **only** archived threads; false/null returns only active ones.
   Do not `thread/resume` an archived thread: select it without resume and call `thread/unarchive` first.
+- `token?.Value<long>()` does **not** survive a JSON `null` value. When the token exists but is null,
+  `Value<T>()` throws `InvalidCastException: Null object cannot be converted to a value type`; the `?.` only
+  guards a missing token. Live items are the usual source (`completedAtMs` is null until the item finishes).
+  Read optional scalars as `Value<long?>()` / `Value<bool?>()` / `Value<int?>()` and coalesce.
 - Cursors from `thread/list` and `thread/turns/list` are opaque, date-like strings. `JObject.Parse` with
   Newtonsoft's default `DateParseHandling` turns them into `DateTime`, and `Value<string>()` then re-formats
   them in the current culture ("11/05/2026 09:18:40"), which the server rejects with `invalid cursor`.

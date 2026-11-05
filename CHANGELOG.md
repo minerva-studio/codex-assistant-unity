@@ -50,6 +50,8 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- Optional JSON numbers are read as nullable (`Value<long?>()`), so a live item whose `completedAtMs` is
+  still null no longer throws `InvalidCastException` during rendering.
 - The sidebar loads 50 threads and appends older pages with **Load more** (`thread/list` cursor); the
   archived view pages the same way, and searching stays unpaged.
 - JSON responses keep date-like strings verbatim (`DateParseHandling.None`). Newtonsoft was parsing

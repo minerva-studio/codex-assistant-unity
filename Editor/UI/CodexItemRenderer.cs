@@ -156,8 +156,8 @@ namespace Minerva.Codex
             bool canFork,
             string linkRoot)
         {
-            long timestamp = item["startedAtMs"]?.Value<long>() ??
-                             item["completedAtMs"]?.Value<long>() ??
+            long timestamp = item["startedAtMs"]?.Value<long?>() ??
+                             item["completedAtMs"]?.Value<long?>() ??
                              turnTimestampMs;
             string raw = JoinUserContent(item["content"]);
             if (CodexQuestionReply.TryParse(raw, out List<CodexQuestionReply> replies, out string remainder))
@@ -284,8 +284,8 @@ namespace Minerva.Codex
                 return;
             }
 
-            long timestamp = item["completedAtMs"]?.Value<long>() ??
-                             item["startedAtMs"]?.Value<long>() ??
+            long timestamp = item["completedAtMs"]?.Value<long?>() ??
+                             item["startedAtMs"]?.Value<long?>() ??
                              turnTimestampMs;
 
             // Codex output is plain document text; only user input uses a bubble.
@@ -936,8 +936,8 @@ namespace Minerva.Codex
 
         static string AppendDuration(string title, JObject item)
         {
-            long start = item["startedAtMs"]?.Value<long>() ?? 0;
-            long end = item["completedAtMs"]?.Value<long>() ?? 0;
+            long start = item["startedAtMs"]?.Value<long?>() ?? 0;
+            long end = item["completedAtMs"]?.Value<long?>() ?? 0;
             if (end <= start && start > 0)
             {
                 string status = item["status"]?.Value<string>() ?? string.Empty;

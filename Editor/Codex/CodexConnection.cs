@@ -325,7 +325,7 @@ namespace Minerva.Codex
             {
                 rpcError = new CodexRpcError
                 {
-                    Code = error["code"]?.Value<int>() ?? 0,
+                    Code = error["code"]?.Value<int?>() ?? 0,
                     Message = error["message"]?.Value<string>() ?? "unknown app-server error",
                     Data = error["data"],
                 };

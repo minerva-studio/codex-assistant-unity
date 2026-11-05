@@ -2793,7 +2793,7 @@ namespace Minerva.Codex
                 {
                     var toggle = new Toggle();
                     toggle.style.marginTop = 3;
-                    if (schema["default"]?.Value<bool>() == true)
+                    if (schema["default"]?.Value<bool?>() == true)
                     {
                         toggle.value = true;
                     }
@@ -4557,8 +4557,8 @@ namespace Minerva.Codex
             }
 
             string turnId = turn["id"]?.Value<string>();
-            long turnTimestamp = turn["startedAtMs"]?.Value<long>() ??
-                                 turn["completedAtMs"]?.Value<long>() ??
+            long turnTimestamp = turn["startedAtMs"]?.Value<long?>() ??
+                                 turn["completedAtMs"]?.Value<long?>() ??
                                  0;
             int lastAgentIndex = -1;
             for (int index = 0; index < items.Count; index++)
@@ -4782,8 +4782,8 @@ namespace Minerva.Codex
             long end = 0;
             foreach (JObject item in items)
             {
-                long itemStart = item["startedAtMs"]?.Value<long>() ?? 0;
-                long itemEnd = item["completedAtMs"]?.Value<long>() ?? 0;
+                long itemStart = item["startedAtMs"]?.Value<long?>() ?? 0;
+                long itemEnd = item["completedAtMs"]?.Value<long?>() ?? 0;
                 if (itemStart > 0 && (start == 0 || itemStart < start))
                 {
                     start = itemStart;

@@ -434,7 +434,7 @@ namespace Minerva.Codex
 
                 foreach (JToken skillToken in skills)
                 {
-                    if (skillToken["enabled"]?.Value<bool>() == false)
+                    if (skillToken["enabled"]?.Value<bool?>() == false)
                     {
                         continue;
                     }
@@ -1418,8 +1418,8 @@ namespace Minerva.Codex
                         CatalogId = model["id"]?.Value<string>(),
                         DisplayName = model["displayName"]?.Value<string>(),
                         DefaultEffort = model["defaultReasoningEffort"]?.Value<string>(),
-                        Hidden = model["hidden"]?.Value<bool>() ?? false,
-                        IsDefault = model["isDefault"]?.Value<bool>() ?? false,
+                        Hidden = model["hidden"]?.Value<bool?>() ?? false,
+                        IsDefault = model["isDefault"]?.Value<bool?>() ?? false,
                     };
 
                     if (string.IsNullOrEmpty(info.DisplayName))
@@ -2456,7 +2456,7 @@ namespace Minerva.Codex
             }
 
             string itemId = parameters["itemId"]?.Value<string>();
-            int summaryIndex = parameters["summaryIndex"]?.Value<int>() ?? 0;
+            int summaryIndex = parameters["summaryIndex"]?.Value<int?>() ?? 0;
             if (string.IsNullOrEmpty(itemId) || summaryIndex < 0)
             {
                 return;
@@ -2485,7 +2485,7 @@ namespace Minerva.Codex
 
             string itemId = parameters["itemId"]?.Value<string>();
             string delta = parameters["delta"]?.Value<string>();
-            int summaryIndex = parameters["summaryIndex"]?.Value<int>() ?? 0;
+            int summaryIndex = parameters["summaryIndex"]?.Value<int?>() ?? 0;
             if (string.IsNullOrEmpty(itemId) || string.IsNullOrEmpty(delta) || summaryIndex < 0)
             {
                 return;
@@ -3505,7 +3505,7 @@ namespace Minerva.Codex
                 ThreadId = parameters["threadId"]?.Value<string>(),
                 TurnId = parameters["turnId"]?.Value<string>(),
                 ItemId = parameters["itemId"]?.Value<string>(),
-                IsBlocking = parameters["isBlocking"]?.Value<bool>() ?? false,
+                IsBlocking = parameters["isBlocking"]?.Value<bool?>() ?? false,
             };
 
             foreach (JToken token in questions)
@@ -3520,8 +3520,8 @@ namespace Minerva.Codex
                     Id = source["id"]?.Value<string>(),
                     Header = source["header"]?.Value<string>(),
                     Prompt = source["question"]?.Value<string>(),
-                    IsOther = source["isOther"]?.Value<bool>() ?? false,
-                    IsSecret = source["isSecret"]?.Value<bool>() ?? false,
+                    IsOther = source["isOther"]?.Value<bool?>() ?? false,
+                    IsSecret = source["isSecret"]?.Value<bool?>() ?? false,
                 };
 
                 if (source["options"] is JArray options)
@@ -4062,7 +4062,7 @@ namespace Minerva.Codex
                           ?? "(untitled)",
                 Cwd = thread["cwd"]?.Value<string>(),
                 ParentThreadId = thread["parentThreadId"]?.Value<string>(),
-                UpdatedAt = thread["updatedAt"]?.Value<long>() ?? 0,
+                UpdatedAt = thread["updatedAt"]?.Value<long?>() ?? 0,
             };
         }
 
