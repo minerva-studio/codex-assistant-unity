@@ -1232,15 +1232,32 @@ namespace Minerva.Codex
                 textElement.style.unityTextGenerator = TextGeneratorType.Standard;
             }
 
-            VisualElement input = m_Composer.Q(className: "unity-base-text-field__input")
-                                  ?? m_Composer.Q(className: "unity-text-input");
+            // The multiline input must wrap and be measured against the card's
+            // width. Without this the field lays the text out on one 1400px line:
+            // the composer never grows, long Chinese sentences are clipped, and
+            // the IME caret is computed far outside the visible input.
+            m_Composer.AddToClassList("unity-text-field--multiline");
+            TextElement input = m_Composer.Q<TextElement>(
+                                    className: "unity-text-element--inner-input-field-component") ??
+                                m_Composer.Q<TextElement>();
             if (input != null)
             {
-                input.style.backgroundColor = Color.clear;
-                input.style.borderTopWidth = 0;
-                input.style.borderBottomWidth = 0;
-                input.style.borderLeftWidth = 0;
-                input.style.borderRightWidth = 0;
+                input.style.whiteSpace = WhiteSpace.Normal;
+                if (input.parent != null)
+                {
+                    input.parent.style.width = Length.Percent(100);
+                }
+            }
+
+            VisualElement inputArea = m_Composer.Q(className: "unity-base-text-field__input")
+                                  ?? m_Composer.Q(className: "unity-text-input");
+            if (inputArea != null)
+            {
+                inputArea.style.backgroundColor = Color.clear;
+                inputArea.style.borderTopWidth = 0;
+                inputArea.style.borderBottomWidth = 0;
+                inputArea.style.borderLeftWidth = 0;
+                inputArea.style.borderRightWidth = 0;
             }
 
             m_Composer.style.backgroundColor = Color.clear;

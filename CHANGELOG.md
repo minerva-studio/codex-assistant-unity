@@ -50,6 +50,10 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- The composer wraps long text and grows with it again: the multiline field now keeps
+  `white-space: normal`, constrains its multiline container to the card width and carries the
+  `unity-text-field--multiline` class, so long Chinese sentences no longer stay on one clipped line and the
+  IME caret is computed inside the visible input.
 - Composer caret after a reference insertion is now moved through `TextField.SelectRange` plus the
   text-editing utilities' unvalidated indices; the previous reflection path silently did nothing, leaving
   the keyboard/IME cursor at the old position and throwing on the next insert.

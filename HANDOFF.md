@@ -162,6 +162,13 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `Minerva.Codex.AgentsWidth`; the right handle is hidden whenever the subagent rail is hidden.
 - IME positioning: the composer opts out of UI Toolkit's Advanced Text Generator
   (`TextGeneratorType.Standard`) because ATG has caret/composition-coordinate defects.
+- Composer wrapping: a multiline `TextField` created from code does not wrap by itself in 6000.3. Its inner
+  `TextElement` resolves to `white-space: nowrap` and `unity-base-text-field__multiline-container` is laid
+  out at the text's full measured width (1406px for a 162-character Chinese line), so the field never grows
+  and the IME caret is computed far outside the visible input. `StyleComposerInput` now adds
+  `unity-text-field--multiline`, sets `WhiteSpace.Normal` on the inner
+  `unity-text-element--inner-input-field-component` and gives its parent `width: 100%`. Verified: 240 CJK
+  characters grow the field to 81.6px; before, it stayed at 53.6px.
 - Composer caret after a reference insertion: `PlaceComposerCaretAtEnd` now finds the composer's
   `TextElement` (`m_Composer.Q<TextElement>()`) and calls `m_Composer.SelectRange(end, end)`, then writes
   `cursorIndexNoValidation`/`selectIndexNoValidation`. The previous version could never work: it read
@@ -321,13 +328,12 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 2. Legacy `execCommandApproval` / `applyPatchApproval`, MCP device verification and non-standard OpenAI
    elicitation forms.
 3. Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
-4. IME candidate-window placement: the composer caret now moves with the text after a reference
-   insertion, so the candidate window should follow it. If it is still misplaced, record how it is
-   misplaced: a fixed offset from the caret (or a fixed corner of the window) means the panel/world
-   position handed to `TextEditingUtilities.SetImeWindowPosition(Vector2 worldPosition)` is missing the
-   EditorWindow screen offset; a per-character drift means the glyph-index mapping is stale. Either way the
-   next step is to compute the caret world position ourselves and call that method during composition,
-   instead of guessing again.
+4. IME candidate-window placement: verify after the wrapping fix. The field used to lay the text out on a
+   single 1406px line, so the caret world position was outside the visible input and the candidate window
+   followed it out of place. With wrapping, the window should sit under the caret. If it is still offset,
+   record whether it is a fixed offset (missing EditorWindow screen offset) or drifts per character (stale
+   glyph index), then compute the caret world position and call
+   `TextEditingUtilities.SetImeWindowPosition(Vector2 worldPosition)` ourselves during composition.
 
 ## Workflow that works on this machine
 
