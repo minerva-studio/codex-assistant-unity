@@ -373,26 +373,70 @@ namespace Minerva.Codex
             RequestThreads();
         }
 
-        public bool ArchiveSelectedThread()
+        public bool RenameThread(string threadId, string title)
         {
-            if (!m_Ready || IsRunning || string.IsNullOrEmpty(SelectedThreadId))
+            if (!m_Ready || !IsConnected || string.IsNullOrEmpty(threadId) ||
+                string.IsNullOrWhiteSpace(title))
             {
                 return false;
             }
 
-            string threadId = SelectedThreadId;
+            string trimmed = title.Trim();
+            Status = "Renaming conversation...";
+            Changed?.Invoke();
+            m_Client.SetThreadName(
+                threadId,
+                trimmed,
+                () =>
+                {
+                    CodexThreadInfo info = FindThread(threadId);
+                    if (info != null)
+                    {
+                        info.Title = trimmed;
+                    }
+
+                    if (m_SelectedThreadInfo != null && m_SelectedThreadInfo.Id == threadId)
+                    {
+                        m_SelectedThreadInfo.Title = trimmed;
+                    }
+
+                    Error = null;
+                    Status = "Conversation renamed";
+                    Changed?.Invoke();
+                },
+                OnFailed);
+            return true;
+        }
+
+        public bool ArchiveSelectedThread()
+        {
+            return !string.IsNullOrEmpty(SelectedThreadId) && BeginArchive(SelectedThreadId);
+        }
+
+        public bool ArchiveThreadById(string threadId)
+        {
+            return !string.IsNullOrEmpty(threadId) && BeginArchive(threadId);
+        }
+
+        bool BeginArchive(string threadId)
+        {
+            if (!m_Ready || IsRunning || string.IsNullOrEmpty(threadId))
+            {
+                return false;
+            }
+
             Status = "Archiving conversation...";
             Changed?.Invoke();
 
             // A loaded thread cannot be archived persistently; unload it first.
             m_Client.UnsubscribeThread(
                 threadId,
-                () => ArchiveThread(threadId),
-                _ => ArchiveThread(threadId));
+                () => ArchiveThreadNow(threadId),
+                _ => ArchiveThreadNow(threadId));
             return true;
         }
 
-        void ArchiveThread(string threadId)
+        void ArchiveThreadNow(string threadId)
         {
             CodexThreadInfo info = FindThread(threadId);
             if (info == null && m_SelectedThreadInfo?.Id == threadId)
@@ -1265,13 +1309,17 @@ namespace Minerva.Codex
         /// </summary>
         public bool ForkSelectedThread()
         {
-            if (!m_Ready || IsRunning || IsForking || string.IsNullOrEmpty(SelectedThreadId))
+            return !string.IsNullOrEmpty(SelectedThreadId) && ForkThread(SelectedThreadId);
+        }
+
+        public bool ForkThread(string source)
+        {
+            if (!m_Ready || IsRunning || IsForking || string.IsNullOrEmpty(source))
             {
                 return false;
             }
 
             IsForking = true;
-            string source = SelectedThreadId;
             Status = "Forking conversation...";
             Changed?.Invoke();
             m_Client.ForkThread(

@@ -204,9 +204,23 @@ namespace Minerva.Codex
                 return;
             }
 
-            VisualElement bubble = Bubble("CODEX", CodexPalette.AgentBubble);
-            bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
-            parent.Add(bubble);
+            // Codex output is plain document text; only user input uses a bubble.
+            var block = new VisualElement();
+            block.style.marginLeft = 18;
+            block.style.marginRight = 18;
+            block.style.marginTop = 4;
+            block.style.marginBottom = 12;
+            block.style.paddingLeft = 2;
+            block.style.paddingRight = 2;
+
+            var caption = new Label("CODEX");
+            caption.style.fontSize = 8;
+            caption.style.unityFontStyleAndWeight = FontStyle.Bold;
+            caption.style.color = CodexPalette.TextDim;
+            caption.style.marginBottom = 5;
+            block.Add(caption);
+            block.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
+            parent.Add(block);
         }
 
         internal static bool HasReasoningText(JObject item)

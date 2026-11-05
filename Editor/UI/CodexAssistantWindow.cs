@@ -1076,10 +1076,16 @@ namespace Minerva.Codex
             ShowPopup(m_SandboxButton, "Sandbox", 240, items, false);
         }
 
-        void ShowPopup(VisualElement anchor, string title, float width, List<PopupItem> items, bool searchable)
+        void ShowPopup(
+            VisualElement anchor,
+            string title,
+            float width,
+            List<PopupItem> items,
+            bool searchable,
+            Vector2? at = null)
         {
             ClosePopup();
-            if (anchor == null)
+            if (anchor == null && !at.HasValue)
             {
                 return;
             }
@@ -1161,13 +1167,25 @@ namespace Minerva.Codex
             float popupHeight = 8 + 16 + 4 + (searchable ? 28 : 0) + listHeight + 8;
             m_Popup.style.height = popupHeight;
 
-            Rect anchorBounds = anchor.worldBound;
             Rect rootBounds = rootVisualElement.worldBound;
-            float left = anchorBounds.x - rootBounds.x;
+            float left;
+            float top;
+            if (at.HasValue)
+            {
+                left = at.Value.x - rootBounds.x + 2f;
+                top = at.Value.y - rootBounds.y + 2f;
+            }
+            else
+            {
+                Rect anchorBounds = anchor.worldBound;
+                left = anchorBounds.x - rootBounds.x;
+                top = anchorBounds.y - rootBounds.y - popupHeight - 6f;
+            }
+
             left = Mathf.Clamp(left, 8f, Mathf.Max(8f, rootVisualElement.layout.width - width - 8f));
-            float top = anchorBounds.y - rootBounds.y - popupHeight - 6f;
+            top = Mathf.Clamp(top, 8f, Mathf.Max(8f, rootVisualElement.layout.height - popupHeight - 8f));
             m_Popup.style.left = left;
-            m_Popup.style.top = Mathf.Max(8f, top);
+            m_Popup.style.top = top;
         }
 
         void FillPopupList(ScrollView list, List<PopupItem> items, string query)
@@ -2722,6 +2740,11 @@ namespace Minerva.Codex
 
             string id = thread.Id;
             row.RegisterCallback<ClickEvent>(_ => m_Workspace.SelectThread(id));
+            row.RegisterCallback<ContextClickEvent>(evt =>
+            {
+                evt.StopPropagation();
+                ShowThreadContextMenu(thread, evt.mousePosition);
+            });
             row.RegisterCallback<MouseEnterEvent>(_ =>
             {
                 if (id != m_Workspace.SelectedThreadId)
@@ -3129,6 +3152,84 @@ namespace Minerva.Codex
             }
 
             EditorGUIUtility.systemCopyBuffer = $"codex resume {threadId}";
+        }
+
+        void ShowThreadContextMenu(CodexThreadInfo thread, Vector2 position)
+        {
+            if (thread == null || m_Workspace == null)
+            {
+                return;
+            }
+
+            var items = new List<PopupItem>
+            {
+                new PopupItem
+                {
+                    Label = "Open",
+                    Action = () => m_Workspace.SelectThread(thread.Id),
+                },
+                new PopupItem
+                {
+                    Label = "Rename...",
+                    Action = () => CodexRenameWindow.Open(
+                        thread.Id,
+                        DisplayTitle(thread),
+                        (id, title) => m_Workspace.RenameThread(id, title)),
+                },
+                new PopupItem
+                {
+                    Label = "Copy resume",
+                    Action = () => EditorGUIUtility.systemCopyBuffer = $"codex resume {thread.Id}",
+                },
+                new PopupItem
+                {
+                    Label = "Fork",
+                    Action = () =>
+                    {
+                        if (thread.Id == m_Workspace.SelectedThreadId)
+                        {
+                            ForkConversation();
+                        }
+                        else
+                        {
+                            m_Workspace.ForkThread(thread.Id);
+                        }
+                    },
+                },
+                new PopupItem
+                {
+                    Label = "Archive...",
+                    Action = () => ArchiveThreadFromMenu(thread),
+                },
+            };
+
+            ShowPopup(null, "CONVERSATION", 210, items, false, position);
+        }
+
+        void ArchiveThreadFromMenu(CodexThreadInfo thread)
+        {
+            if (m_Workspace == null || !m_Workspace.IsConnected || m_Workspace.IsRunning)
+            {
+                return;
+            }
+
+            if (thread.Id == m_Workspace.SelectedThreadId)
+            {
+                ArchiveSelectedThread();
+                return;
+            }
+
+            if (!Application.isBatchMode &&
+                !EditorUtility.DisplayDialog(
+                    "Archive conversation",
+                    $"Archive \"{DisplayTitle(thread)}\"?\n\nIt will be hidden from the conversation list.",
+                    "Archive",
+                    "Cancel"))
+            {
+                return;
+            }
+
+            m_Workspace.ArchiveThreadById(thread.Id);
         }
 
         static string DisplayTitle(CodexThreadInfo thread)

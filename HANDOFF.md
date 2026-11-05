@@ -105,6 +105,13 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   Process/interaction cards share the raised surface; the composer has a 14 px radius; empty conversations
   get a centered brand state. The active-thread pulse dot is always in the reserved slot, not after the
   flexible title.
+- Codex `agentMessage` output renders as a plain text block with a small CODEX caption; only `userMessage`
+  uses a bubble. Process/approval/question content remains carded because it is an interaction surface.
+- Sidebar context menu: right-click calls `ShowThreadContextMenu(thread, mousePosition)`, which uses the
+  `ShowPopup(..., Vector2? at)` overload. Actions are Open, Rename, Copy resume, Fork and Archive. Rename opens
+  `CodexRenameWindow`, which calls `CodexWorkspace.RenameThread` -> `thread/name/set`. Archive uses
+  `ArchiveThreadById`; selected-thread archive keeps the confirmation dialog. `ShowPopup` clamps mouse-
+  anchored menus to the window bounds.
 - `BuildAgentsPanel` resets `m_AgentsSignature`; otherwise a UI rebuild can reuse the old signature while
   the new `m_AgentsList` is empty, leaving the rail blank.
 - Historical question replies are user messages wrapped as

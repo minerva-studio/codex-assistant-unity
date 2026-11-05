@@ -47,9 +47,12 @@ tools are next.
   decision back to the app-server.
 - Live command/file output, MCP progress, plan steps and the turn diff update inside Process while the turn
   runs. A running command with a PTY process id gets an inline terminal input row.
+- Codex output is plain document text; only user input uses a bubble. Process and approval/question surfaces
+  remain cards because they are interaction containers.
 - A modernized dark/light visual pass: compact toolbar and sidebar rows, accent selections, card-based
   Process/interaction surfaces, a roomier composer and a dedicated empty state. The active-thread indicator
   now uses a reserved leading slot, so it no longer drifts with wrapped titles.
+- Right-click a sidebar conversation for **Open**, **Rename...**, **Copy resume**, **Fork** and **Archive...**.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of

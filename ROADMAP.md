@@ -27,7 +27,8 @@
 - P1 live updates: command/file output, MCP progress, plan steps, turn diff, terminal input for PTY commands
   and `serverRequest/resolved` cleanup.
 - Modern visual pass: palette/surface hierarchy, compact toolbar/sidebar, card-based Process and interaction
-  surfaces, roomier composer, empty state and stable active-thread indicator.
+  surfaces, roomier composer, empty state and stable active-thread indicator. Codex text is unbubbled; user
+  input keeps its bubble. Sidebar context menu handles rename/archive/copy/fork.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.
