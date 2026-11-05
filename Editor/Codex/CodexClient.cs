@@ -412,6 +412,29 @@ namespace Minerva.Codex
             Request("thread/queue/delete", parameters, _ => onResult?.Invoke(), onError);
         }
 
+        /// <summary>
+        /// Lists skills discoverable by the app-server for <paramref name="cwd"/>.
+        /// The response is the raw <c>data</c> array; callers own flattening and
+        /// caching because the list is UI state, not connection state.
+        /// </summary>
+        public void ListSkills(
+            string cwd,
+            Action<JArray> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["cwds"] = new JArray(string.IsNullOrEmpty(cwd) ? string.Empty : cwd),
+                ["forceReload"] = false,
+            };
+
+            Request(
+                "skills/list",
+                parameters,
+                result => onResult?.Invoke(result?["data"] as JArray),
+                onError);
+        }
+
         static JArray TextInput(string text)
         {
             return new JArray(new JObject

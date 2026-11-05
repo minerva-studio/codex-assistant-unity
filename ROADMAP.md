@@ -31,7 +31,8 @@
   input keeps a compact right-aligned bubble. Process/tool folds show elapsed time. Sidebar context menu
   handles rename/archive/copy/fork; each message has a footer with local time, copy and a per-message
   read-only selection field. Fork is limited to the final Codex message of a completed turn because the
-  app-server forks by turn, not by item.
+  app-server forks by turn, not by item. The composer has `/`, `$` and `@` reference pickers for commands,
+  skills and files, with clickable local links in the transcript.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.

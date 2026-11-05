@@ -131,6 +131,15 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   with `focusable = true`, so the footer's Select button reveals a read-only multiline `TextField` inside
   that one message. It copies the message's raw text and keeps the field selection local to that message;
   Done restores the rich Markdown content. There is no global plain-text transcript mode.
+- Reference composer: `/`, `$` and `@` at a token boundary open command, skill and file pickers; the small
+  reference row above the text field opens the same pickers without typing. Insertion uses Codex's serialized
+  mention text: `/review`, `[$skill](absolute/SKILL.md)` and `[file.name](relative/path)`. This matches the
+  current Codex desktop main path, which sends one `text` UserInput rather than separate skill/mention inputs.
+  Skills come from `skills/list` (`CodexWorkspace.LoadSkills`, cached by cwd); files come from the selected
+  thread's cwd, bounded to 600 entries with Library/Temp/.git and similar directories skipped.
+  `CodexMarkdown` forwards the selected cwd to `PointerDownLinkTagEvent`; local links open an AssetDatabase
+  asset or fall back to `EditorUtility.OpenWithDefaultApp`, while http(s)/mailto links use `Application.OpenURL`.
+  `JoinUserContent` also renders structured `skill` and `mention` inputs for history written by other clients.
 - `BuildAgentsPanel` resets `m_AgentsSignature`; otherwise a UI rebuild can reuse the old signature while
   the new `m_AgentsList` is empty, leaving the rail blank.
 - Historical question replies are user messages wrapped as

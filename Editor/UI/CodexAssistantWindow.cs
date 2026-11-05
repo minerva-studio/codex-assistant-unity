@@ -38,6 +38,10 @@ namespace Minerva.Codex
         DropdownField m_ScopeField;
         TextField m_Composer;
         Button m_ActionButton;
+        Button m_FileReferenceButton;
+        Button m_SkillReferenceButton;
+        Button m_CommandReferenceButton;
+        int m_ReferenceTriggerIndex = -1;
         Button m_ModelButton;
         Button m_EffortButton;
         Button m_SandboxButton;
@@ -758,6 +762,39 @@ namespace Minerva.Codex
 
             composer.Add(m_ComposerCard);
 
+            var references = new VisualElement { name = "codex-references" };
+            references.style.flexDirection = FlexDirection.Row;
+            references.style.alignItems = Align.Center;
+            references.style.marginBottom = 5;
+
+            m_FileReferenceButton = ReferenceButton("@ File", () =>
+            {
+                m_ReferenceTriggerIndex = -1;
+                ShowFileReferenceMenu();
+            });
+            m_FileReferenceButton.name = "codex-ref-file";
+            m_FileReferenceButton.tooltip = "Insert a file reference";
+            references.Add(m_FileReferenceButton);
+
+            m_SkillReferenceButton = ReferenceButton("$ Skill", () =>
+            {
+                m_ReferenceTriggerIndex = -1;
+                ShowSkillReferenceMenu();
+            });
+            m_SkillReferenceButton.name = "codex-ref-skill";
+            m_SkillReferenceButton.tooltip = "Insert a skill reference";
+            references.Add(m_SkillReferenceButton);
+
+            m_CommandReferenceButton = ReferenceButton("/ Command", () =>
+            {
+                m_ReferenceTriggerIndex = -1;
+                ShowCommandReferenceMenu();
+            });
+            m_CommandReferenceButton.name = "codex-ref-command";
+            m_CommandReferenceButton.tooltip = "Insert a slash-command reference";
+            references.Add(m_CommandReferenceButton);
+            m_ComposerCard.Add(references);
+
             m_Composer = new TextField { multiline = true, name = "codex-composer" };
             m_Composer.style.flexGrow = 1;
             m_Composer.style.minHeight = 54;
@@ -771,9 +808,13 @@ namespace Minerva.Codex
             m_Composer.style.marginRight = 2;
             m_Composer.textEdition.placeholder = "Message Codex...";
             m_Composer.textEdition.hidePlaceholderOnFocus = true;
-            m_Composer.tooltip = "Enter to send · Shift+Enter for a new line";
+            m_Composer.tooltip = "Enter to send · Shift+Enter for a new line · @, $ or / for references";
             m_Composer.RegisterCallback<KeyDownEvent>(OnComposerKeyDown, TrickleDown.TrickleDown);
-            m_Composer.RegisterValueChangedCallback(_ => UpdateComposer());
+            m_Composer.RegisterValueChangedCallback(_ =>
+            {
+                UpdateComposer();
+                MaybeShowReferencePicker();
+            });
             m_Composer.RegisterCallback<FocusInEvent>(_ => SetComposerFocus(true));
             m_Composer.RegisterCallback<FocusOutEvent>(_ => SetComposerFocus(false));
             m_Composer.RegisterCallback<AttachToPanelEvent>(_ => StyleComposerInput());
@@ -2481,6 +2522,276 @@ namespace Minerva.Codex
             }
         }
 
+        static Button ReferenceButton(string text, Action action)
+        {
+            var button = new Button(action) { text = text };
+            button.style.height = 20;
+            button.style.minWidth = 0;
+            button.style.marginRight = 2;
+            button.style.paddingLeft = 5;
+            button.style.paddingRight = 5;
+            button.style.borderTopWidth = 0;
+            button.style.borderBottomWidth = 0;
+            button.style.borderLeftWidth = 0;
+            button.style.borderRightWidth = 0;
+            button.style.borderTopLeftRadius = 4;
+            button.style.borderTopRightRadius = 4;
+            button.style.borderBottomLeftRadius = 4;
+            button.style.borderBottomRightRadius = 4;
+            button.style.backgroundColor = Color.clear;
+            button.style.color = CodexPalette.TextDim;
+            button.style.fontSize = 9;
+            button.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                button.style.backgroundColor = CodexPalette.Hover;
+                button.style.color = CodexPalette.Text;
+            });
+            button.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                button.style.backgroundColor = Color.clear;
+                button.style.color = CodexPalette.TextDim;
+            });
+            return button;
+        }
+
+        void MaybeShowReferencePicker()
+        {
+            if (m_Composer == null || m_Popup != null || !m_Composer.enabledSelf)
+            {
+                return;
+            }
+
+            string value = m_Composer.value ?? string.Empty;
+            if (value.Length == 0)
+            {
+                return;
+            }
+
+            char trigger = value[value.Length - 1];
+            if (trigger != '@' && trigger != '$' && trigger != '/')
+            {
+                return;
+            }
+
+            if (value.Length > 1 && !char.IsWhiteSpace(value[value.Length - 2]))
+            {
+                return;
+            }
+
+            m_ReferenceTriggerIndex = value.Length - 1;
+            switch (trigger)
+            {
+                case '@':
+                    ShowFileReferenceMenu();
+                    break;
+                case '$':
+                    ShowSkillReferenceMenu();
+                    break;
+                case '/':
+                    ShowCommandReferenceMenu();
+                    break;
+            }
+        }
+
+        void InsertReference(string token)
+        {
+            if (m_Composer == null || string.IsNullOrEmpty(token))
+            {
+                return;
+            }
+
+            string value = m_Composer.value ?? string.Empty;
+            if (m_ReferenceTriggerIndex >= 0 && m_ReferenceTriggerIndex < value.Length)
+            {
+                value = value.Substring(0, m_ReferenceTriggerIndex);
+            }
+
+            m_ReferenceTriggerIndex = -1;
+            if (value.Length > 0 && !char.IsWhiteSpace(value[value.Length - 1]))
+            {
+                value += " ";
+            }
+
+            m_Composer.value = value + token + " ";
+            m_Composer.Focus();
+        }
+
+        void ShowFileReferenceMenu()
+        {
+            string root = m_Workspace != null && !string.IsNullOrEmpty(m_Workspace.SelectedCwd)
+                ? m_Workspace.SelectedCwd
+                : Path.GetDirectoryName(Application.dataPath);
+            var files = new List<string>();
+            CollectReferenceFiles(root, root, files);
+            files.Sort(StringComparer.OrdinalIgnoreCase);
+
+            var items = new List<PopupItem>();
+            foreach (string relative in files)
+            {
+                string path = relative;
+                string fileName = Path.GetFileName(relative);
+                items.Add(new PopupItem
+                {
+                    Label = relative,
+                    Action = () => InsertReference($"[{fileName}]({path})"),
+                });
+            }
+
+            if (items.Count == 0)
+            {
+                items.Add(new PopupItem { Label = "No project files found" });
+            }
+
+            ShowPopup(m_FileReferenceButton, "FILES", 470, items, true);
+        }
+
+        static void CollectReferenceFiles(string root, string directory, List<string> files)
+        {
+            const int maxFiles = 600;
+            if (files.Count >= maxFiles || string.IsNullOrEmpty(directory))
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(directory))
+                {
+                    string extension = Path.GetExtension(file);
+                    if (extension == ".meta" || extension == ".tmp" || extension == ".lock")
+                    {
+                        continue;
+                    }
+
+                    string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+                    files.Add(relative);
+                    if (files.Count >= maxFiles)
+                    {
+                        return;
+                    }
+                }
+
+                foreach (string child in Directory.EnumerateDirectories(directory))
+                {
+                    string name = Path.GetFileName(child);
+                    if (IsIgnoredReferenceDirectory(name))
+                    {
+                        continue;
+                    }
+
+                    CollectReferenceFiles(root, child, files);
+                    if (files.Count >= maxFiles)
+                    {
+                        return;
+                    }
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        static bool IsIgnoredReferenceDirectory(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return true;
+            }
+
+            switch (name)
+            {
+                case ".git":
+                case ".vs":
+                case ".idea":
+                case "Library":
+                case "Temp":
+                case "Logs":
+                case "obj":
+                case "Build":
+                case "Builds":
+                case "UserSettings":
+                case "MemoryCaptures":
+                case "node_modules":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        void ShowSkillReferenceMenu()
+        {
+            if (m_Workspace == null)
+            {
+                return;
+            }
+
+            m_Workspace.LoadSkills(skills =>
+            {
+                if (m_SkillReferenceButton == null)
+                {
+                    return;
+                }
+
+                var items = new List<PopupItem>();
+                foreach (CodexSkillInfo skill in skills)
+                {
+                    string description = string.IsNullOrEmpty(skill.ShortDescription)
+                        ? skill.Description
+                        : skill.ShortDescription;
+                    if (description != null && description.Length > 90)
+                    {
+                        description = description.Substring(0, 87) + "...";
+                    }
+
+                    string suffix = string.IsNullOrEmpty(description) ? string.Empty : "  ·  " + description;
+                    string name = skill.Name;
+                    string path = skill.Path.Replace('\\', '/');
+                    items.Add(new PopupItem
+                    {
+                        Label = "$" + skill.Name + suffix,
+                        Action = () => InsertReference("[$" + name + "](" + path + ")"),
+                    });
+                }
+
+                if (items.Count == 0)
+                {
+                    items.Add(new PopupItem { Label = "No skills found for this project" });
+                }
+
+                ShowPopup(m_SkillReferenceButton, "SKILLS", 390, items, true);
+            });
+        }
+
+        void ShowCommandReferenceMenu()
+        {
+            var commands = new[]
+            {
+                ("/review", "Review the current changes"),
+                ("/compact", "Compact the current conversation"),
+                ("/init", "Create project instructions"),
+                ("/new", "Start a new conversation"),
+                ("/fork", "Fork the current conversation"),
+                ("/skills", "Reference a skill"),
+                ("/file", "Reference a file"),
+            };
+
+            var items = new List<PopupItem>();
+            foreach ((string token, string description) in commands)
+            {
+                string value = token;
+                items.Add(new PopupItem
+                {
+                    Label = token + "  ·  " + description,
+                    Action = () => InsertReference(value),
+                });
+            }
+
+            ShowPopup(m_CommandReferenceButton, "COMMAND REFERENCES", 390, items, true);
+        }
+
         void OnComposerAction()
         {
             if (m_Workspace != null && m_Workspace.IsRunning)
@@ -2867,7 +3178,13 @@ namespace Minerva.Codex
                 string type = item["type"]?.Value<string>();
                 if (type == "userMessage")
                 {
-                    FlushProcess(parent, process, isLive, turnId, turnTimestamp);
+                    FlushProcess(
+                        parent,
+                        process,
+                        isLive,
+                        turnId,
+                        turnTimestamp,
+                        m_Workspace.SelectedCwd);
                     CodexItemRenderer.Render(
                         parent,
                         item,
@@ -2879,11 +3196,18 @@ namespace Minerva.Codex
                         ForkFromTurn,
                         turnId,
                         turnTimestamp,
-                        false);
+                        false,
+                        m_Workspace.SelectedCwd);
                 }
                 else if (type == "agentMessage" && IsFinalAgentMessage(item, index, lastAgentIndex))
                 {
-                    FlushProcess(parent, process, isLive, turnId, turnTimestamp);
+                    FlushProcess(
+                        parent,
+                        process,
+                        isLive,
+                        turnId,
+                        turnTimestamp,
+                        m_Workspace.SelectedCwd);
                     CodexItemRenderer.Render(
                         parent,
                         item,
@@ -2895,7 +3219,8 @@ namespace Minerva.Codex
                         ForkFromTurn,
                         turnId,
                         turnTimestamp,
-                        !isLive);
+                        !isLive,
+                        m_Workspace.SelectedCwd);
                 }
                 else
                 {
@@ -2904,7 +3229,13 @@ namespace Minerva.Codex
                 }
             }
 
-            FlushProcess(parent, process, isLive, turnId, turnTimestamp);
+            FlushProcess(
+                parent,
+                process,
+                isLive,
+                turnId,
+                turnTimestamp,
+                m_Workspace.SelectedCwd);
         }
 
         static bool IsFinalAgentMessage(JObject item, int index, int lastAgentIndex)
@@ -2928,7 +3259,8 @@ namespace Minerva.Codex
             List<JObject> items,
             bool isLive,
             string turnId,
-            long turnTimestamp)
+            long turnTimestamp,
+            string linkRoot)
         {
             if (items.Count == 0)
             {
@@ -3016,7 +3348,8 @@ namespace Minerva.Codex
                             ForkFromTurn,
                             turnId,
                             turnTimestamp,
-                            false);
+                            false,
+                            linkRoot);
                     }
                 }
 

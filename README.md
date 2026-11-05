@@ -68,6 +68,10 @@ tools are next.
 - Composer at the bottom of the window: Enter sends while idle, Shift+Enter inserts a newline, and one button
   switches between Send and Stop. While a turn runs, Enter queues a follow-up and Ctrl+Enter steers the
   active turn. Queued messages appear above the composer and can be removed individually.
+- Typing **/**, **$** or **@** (or using the reference buttons above the composer) opens command, skill and
+  file pickers. They insert the same serialized references as Codex: `/review`, `[$skill](.../SKILL.md)` and
+  `[file.name](relative/path)`. Markdown file and skill links in messages open locally when clicked. The file
+  picker scans the selected conversation's cwd, not the Unity project.
 - Assistant replies stream into the transcript as Codex writes them; the completed turn is reloaded from
   history so the transcript matches the stored conversation.
 - The app-server runs as a localhost WebSocket listener per CODEX_HOME instead of a stdio child. A domain

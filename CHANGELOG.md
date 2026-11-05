@@ -40,6 +40,8 @@ All notable changes to this package are documented here.
 - Per-message footer with Select / Copy and local time; Select swaps only that message to a read-only
   selectable text field. Fork is shown only on a completed turn's final Codex message because
   `thread/fork` supports turn granularity, not mid-turn branching.
+- Command, skill and file references in the composer (`/`, `$`, `@` or the reference row), serialized as
+  Codex mention text; local file/skill links in messages open on click.
 - Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
   filters the archived id; if another Codex client still holds it, the window keeps it and explains why.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image

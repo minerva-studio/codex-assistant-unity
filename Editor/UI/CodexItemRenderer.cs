@@ -23,7 +23,8 @@ namespace Minerva.Codex
             Action<string> forkFromTurn = null,
             string turnId = null,
             long turnTimestampMs = 0,
-            bool canFork = false)
+            bool canFork = false,
+            string linkRoot = null)
         {
             string type = item["type"]?.Value<string>() ?? "unknown";
             switch (type)
@@ -36,7 +37,8 @@ namespace Minerva.Codex
                         copyMessage,
                         forkFromTurn,
                         turnTimestampMs,
-                        canFork);
+                        canFork,
+                        linkRoot);
                     break;
                 case "agentMessage":
                     RenderAgentMessage(
@@ -46,7 +48,8 @@ namespace Minerva.Codex
                         copyMessage,
                         forkFromTurn,
                         turnTimestampMs,
-                        canFork);
+                        canFork,
+                        linkRoot);
                     break;
                 case "reasoning":
                     if (showReasoning)
@@ -150,7 +153,8 @@ namespace Minerva.Codex
             Action<string> copyMessage,
             Action<string> forkFromTurn,
             long turnTimestampMs,
-            bool canFork)
+            bool canFork,
+            string linkRoot)
         {
             long timestamp = item["startedAtMs"]?.Value<long>() ??
                              item["completedAtMs"]?.Value<long>() ??
@@ -160,7 +164,7 @@ namespace Minerva.Codex
             {
                 foreach (CodexQuestionReply reply in replies)
                 {
-                    RenderQuestionReply(parent, reply);
+                    RenderQuestionReply(parent, reply, linkRoot);
                 }
 
                 if (!string.IsNullOrWhiteSpace(remainder))
@@ -172,7 +176,8 @@ namespace Minerva.Codex
                         copyMessage,
                         forkFromTurn,
                         timestamp,
-                        canFork);
+                        canFork,
+                        linkRoot);
                 }
 
                 return;
@@ -185,7 +190,8 @@ namespace Minerva.Codex
                 copyMessage,
                 forkFromTurn,
                 timestamp,
-                canFork);
+                canFork,
+                linkRoot);
         }
 
         static void RenderUserBubble(
@@ -195,7 +201,8 @@ namespace Minerva.Codex
             Action<string> copyMessage,
             Action<string> forkFromTurn,
             long timestampMs,
-            bool canFork)
+            bool canFork,
+            string linkRoot)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -205,7 +212,7 @@ namespace Minerva.Codex
             var wrapper = new VisualElement();
             wrapper.style.flexDirection = FlexDirection.Column;
             VisualElement bubble = Bubble(CodexPalette.UserBubble);
-            VisualElement content = CodexMarkdown.Render(CodexMedia.Tokenize(text));
+            VisualElement content = CodexMarkdown.Render(CodexMedia.Tokenize(text), linkRoot);
             bubble.Add(content);
             wrapper.Add(bubble);
             AddMessageFooter(
@@ -222,7 +229,7 @@ namespace Minerva.Codex
             parent.Add(wrapper);
         }
 
-        static void RenderQuestionReply(VisualElement parent, CodexQuestionReply reply)
+        static void RenderQuestionReply(VisualElement parent, CodexQuestionReply reply, string linkRoot)
         {
             var card = new VisualElement();
             card.style.backgroundColor = CodexPalette.AgentBubble;
@@ -247,7 +254,7 @@ namespace Minerva.Codex
             questionCaption.style.color = CodexPalette.Warning;
             questionCaption.style.marginBottom = 3;
             card.Add(questionCaption);
-            card.Add(CodexMarkdown.Render(CodexMedia.Tokenize(reply.Question)));
+            card.Add(CodexMarkdown.Render(CodexMedia.Tokenize(reply.Question), linkRoot));
 
             var answerCaption = new Label("YOU ANSWERED");
             answerCaption.style.fontSize = 9;
@@ -256,7 +263,7 @@ namespace Minerva.Codex
             answerCaption.style.marginTop = 7;
             answerCaption.style.marginBottom = 3;
             card.Add(answerCaption);
-            card.Add(CodexMarkdown.Render(CodexMedia.Tokenize(reply.Answer)));
+            card.Add(CodexMarkdown.Render(CodexMedia.Tokenize(reply.Answer), linkRoot));
 
             parent.Add(card);
         }
@@ -268,7 +275,8 @@ namespace Minerva.Codex
             Action<string> copyMessage,
             Action<string> forkFromTurn,
             long turnTimestampMs,
-            bool canFork)
+            bool canFork,
+            string linkRoot)
         {
             string text = item["text"]?.Value<string>();
             if (string.IsNullOrEmpty(text))
@@ -295,7 +303,7 @@ namespace Minerva.Codex
             caption.style.color = CodexPalette.TextDim;
             caption.style.marginBottom = 5;
             block.Add(caption);
-            VisualElement content = CodexMarkdown.Render(CodexMedia.Tokenize(text));
+            VisualElement content = CodexMarkdown.Render(CodexMedia.Tokenize(text), linkRoot);
             block.Add(content);
             AddMessageFooter(
                 block,
@@ -1360,6 +1368,12 @@ namespace Minerva.Codex
                     case "image":
                     case "localImage":
                         builder.AppendLine($"[Attached image \"image\" is saved at: {part["path"] ?? part["url"]}]");
+                        break;
+                    case "skill":
+                        builder.AppendLine("$" + part["name"]?.Value<string>());
+                        break;
+                    case "mention":
+                        builder.AppendLine("@" + (part["path"] ?? part["name"]));
                         break;
                     default:
                         builder.AppendLine($"[{kind}]");

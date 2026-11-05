@@ -99,6 +99,11 @@ namespace Minerva.Codex
         readonly HashSet<string> m_ArchivedThreadIds = new HashSet<string>();
         readonly List<CodexQuestionRequest> m_QuestionRequests = new List<CodexQuestionRequest>();
         readonly List<CodexApprovalRequest> m_ApprovalRequests = new List<CodexApprovalRequest>();
+        readonly List<CodexSkillInfo> m_Skills = new List<CodexSkillInfo>();
+        readonly List<Action<IReadOnlyList<CodexSkillInfo>>> m_SkillWaiters =
+            new List<Action<IReadOnlyList<CodexSkillInfo>>>();
+        string m_SkillsLoadedFor;
+        bool m_SkillsLoading;
         string m_ArchiveVerifyingThreadId;
         readonly StringBuilder m_Stderr = new StringBuilder();
 
@@ -332,6 +337,121 @@ namespace Minerva.Codex
             catch (Exception exception)
             {
                 OnFailed(exception.Message);
+            }
+        }
+
+        /// <summary>
+        /// Loads enabled skills for the current project and invokes
+        /// <paramref name="onReady"/> exactly once per caller. The list is cached
+        /// by cwd; callers use the returned entries to insert <c>$name</c>
+        /// references and to resolve their paths.
+        /// </summary>
+        public void LoadSkills(Action<IReadOnlyList<CodexSkillInfo>> onReady)
+        {
+            string cwd = string.IsNullOrEmpty(SelectedCwd) ? m_ProjectRoot : SelectedCwd;
+            if (m_SkillsLoadedFor == cwd && !m_SkillsLoading)
+            {
+                onReady?.Invoke(m_Skills);
+                return;
+            }
+
+            if (m_SkillsLoading)
+            {
+                if (onReady != null)
+                {
+                    m_SkillWaiters.Add(onReady);
+                }
+
+                return;
+            }
+
+            if (m_Client == null || !m_Ready)
+            {
+                onReady?.Invoke(Array.Empty<CodexSkillInfo>());
+                return;
+            }
+
+            m_SkillsLoading = true;
+            m_SkillsLoadedFor = cwd;
+            m_Skills.Clear();
+
+            m_Client.ListSkills(
+                cwd,
+                data =>
+                {
+                    ParseSkills(data);
+                    CompleteSkillLoad();
+                },
+                error =>
+                {
+                    Error = error;
+                    m_SkillsLoadedFor = null;
+                    CompleteSkillLoad();
+                });
+        }
+
+        void ParseSkills(JArray data)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            foreach (JToken entryToken in data)
+            {
+                if (entryToken["skills"] is not JArray skills)
+                {
+                    continue;
+                }
+
+                foreach (JToken skillToken in skills)
+                {
+                    if (skillToken["enabled"]?.Value<bool>() == false)
+                    {
+                        continue;
+                    }
+
+                    string name = skillToken["name"]?.Value<string>();
+                    string path = skillToken["path"]?.Value<string>();
+                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path))
+                    {
+                        continue;
+                    }
+
+                    JToken interfaceToken = skillToken["interface"];
+                    string description =
+                        interfaceToken?["shortDescription"]?.Value<string>() ??
+                        skillToken["shortDescription"]?.Value<string>() ??
+                        skillToken["description"]?.Value<string>() ??
+                        string.Empty;
+
+                    m_Skills.Add(new CodexSkillInfo
+                    {
+                        Name = name,
+                        Path = path,
+                        Description = skillToken["description"]?.Value<string>() ?? description,
+                        ShortDescription = description,
+                    });
+                }
+            }
+
+            m_Skills.Sort((left, right) =>
+                string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        void CompleteSkillLoad()
+        {
+            m_SkillsLoading = false;
+            var waiters = m_SkillWaiters.ToArray();
+            m_SkillWaiters.Clear();
+            foreach (Action<IReadOnlyList<CodexSkillInfo>> waiter in waiters)
+            {
+                waiter(m_Skills);
+            }
+
+            if (!string.IsNullOrEmpty(Error))
+            {
+                Changed?.Invoke();
             }
         }
 
