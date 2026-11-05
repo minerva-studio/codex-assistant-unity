@@ -50,6 +50,9 @@ All notable changes to this package are documented here.
   in messages open on click.
 - Image attachments: file picker, drag/drop, Play Mode Game view capture, thumbnail removal, and `localImage`
   sending (including image-only messages).
+- On Windows the Chinese IME candidate window is placed under the composer through IMM32
+  (`ImmSetCandidateWindow` + `ImmSetCompositionWindow`), because UI Toolkit in 6000.3 reports the caret in
+  element-local coordinates and leaves the candidate window at the top-left of the editor window.
 - The composer wraps long text and grows with it again: the multiline field now keeps
   `white-space: normal`, constrains its multiline container to the card width and carries the
   `unity-text-field--multiline` class, so long Chinese sentences no longer stay on one clipped line and the

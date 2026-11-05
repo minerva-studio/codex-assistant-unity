@@ -160,21 +160,21 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   Pointer capture drives `m_SidebarWidth`/`m_AgentsWidth`; `ClampSidebarWidth`/`ClampAgentsWidth` keep at least
   320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and
   `Minerva.Codex.AgentsWidth`; the right handle is hidden whenever the subagent rail is hidden.
-- IME positioning: **do not retry IME fixes inside the package on 6000.3.** The candidate window lands at the
-  top-left of the screen, and four approaches were tried and measured:
+- IME positioning (Windows): UI Toolkit's own placement in 6000.3 hands the platform a caret position in
+  element-local coordinates, so the candidate window lands at the top-left of the editor window. The working
+  fix is `PlaceComposerImeWindow` in `CodexAssistantWindow`: while the window and the composer have focus, an
+  `EditorApplication.update` hook calls IMM32 `ImmSetCandidateWindow` **and** `ImmSetCompositionWindow` with
+  the composer's client-area position, using `GetForegroundWindow` for the IME context (`GetFocus` returns a
+  child window and the call silently does nothing). The IMM32 block no-ops on non-Windows editors.
+  Approaches that were measured and do **not** work:
   1. UI Toolkit default (ATG): candidate window misplaced, and Chinese composition throws
      `ArgumentOutOfRangeException` in `TextEditingUtilities.UpdateImeState -> ReplaceSelection`.
-  2. `TextGeneratorType.Standard`: no exception, but the candidate window stays at the screen corner.
-  3. Calling `TextEditingUtilities.SetImeWindowPosition(Vector2)` every frame while composing, with world
-     coordinates and with world + window origin: both ignored by the editor's IME.
-  4. IMGUI `GUITextArea` inside an `IMGUIContainer`: key input and IME are swallowed (the editor drops back to
-     English input).
-  5. Direct IMM32 `ImmSetCandidateWindow` with the client-area position: call succeeds, candidate window
-     unchanged.
-  The IME state is owned by the editor, not the panel. The only known fix is a newer editor: UUM-143713
-  ("IME event to be dispatched to the element having focus") is fixed in 6000.6.0a7. A package-local workaround
-  has not been found; treat this as an editor-version issue and verify in the Unity Hierarchy search box
-  before touching the composer again.
+  2. `TextGeneratorType.Standard`: no exception, but the candidate window stays wrong.
+  3. `TextEditingUtilities.SetImeWindowPosition(Vector2)` from a frame hook: ignored by the editor's IME.
+  4. IMGUI `GUITextArea` inside an `IMGUIContainer`: key input and IME are swallowed (falls back to English).
+  5. IMM32 with `GetFocus` and only `ImmSetCandidateWindow`: call succeeds, window stays put.
+  Do not go back to 3 or 4. UUM-143713 (IME event dispatch) is fixed in 6000.6.0a7, which would remove the
+  need for this workaround entirely.
 - Composer wrapping: a multiline `TextField` created from code does not wrap by itself in 6000.3. Its inner
   `TextElement` resolves to `white-space: nowrap` and `unity-base-text-field__multiline-container` is laid
   out at the text's full measured width (1406px for a 162-character Chinese line), so the field never grows
@@ -341,9 +341,8 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 2. Legacy `execCommandApproval` / `applyPatchApproval`, MCP device verification and non-standard OpenAI
    elicitation forms.
 3. Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
-4. IME candidate-window placement is an editor-level defect in 6000.3; see the IME entry under **What works**
-   for the five approaches that were measured and rejected. Verify against the Unity Hierarchy search box and
-   move to 6000.6.0a7+ (UUM-143713) instead of modifying the composer.
+4. Remove the IMM32 IME workaround after moving to 6000.6.0a7+ (UUM-143713), and check IME placement on
+   macOS, where the workaround is a no-op.
 
 ## Workflow that works on this machine
 

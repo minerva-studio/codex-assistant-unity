@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -156,6 +157,7 @@ namespace Minerva.Codex
                 MaxAgentsWidth);
             CodexPreferences.Changed += OnPreferencesChanged;
             CodexPreferences.ReloadRequested += OnBackendReloadRequested;
+            EditorApplication.update += PlaceComposerImeWindow;
 
             if (m_Workspace == null)
             {
@@ -175,6 +177,7 @@ namespace Minerva.Codex
         {
             ClosePopup();
             ClearAttachments();
+            EditorApplication.update -= PlaceComposerImeWindow;
             CodexPreferences.Changed -= OnPreferencesChanged;
             CodexPreferences.ReloadRequested -= OnBackendReloadRequested;
 
@@ -2989,6 +2992,131 @@ namespace Minerva.Codex
             {
                 // The caret is cosmetic; never fail the reference insertion because
                 // this Unity build hides the text-editing utilities.
+            }
+        }
+
+        void PlaceComposerImeWindow()
+        {
+            if (Application.platform != RuntimePlatform.WindowsEditor)
+            {
+                return;
+            }
+
+            if (m_Composer == null || m_Composer.panel == null || EditorWindow.focusedWindow != this)
+            {
+                return;
+            }
+
+            VisualElement focused = m_Composer.panel.focusController?.focusedElement as VisualElement;
+            if (focused == null || !(focused == m_Composer || m_Composer.Contains(focused)))
+            {
+                return;
+            }
+
+            try
+            {
+                Rect world = m_Composer.worldBound;
+                CodexIme.Place(world.x + 4f, world.y + 18f);
+            }
+            catch (Exception)
+            {
+                // Best effort; the platform IME is outside our control.
+            }
+        }
+
+        static class CodexIme
+        {
+            const int CFS_CANDIDATEPOS = 0x0040;
+            const int CFS_EXCLUDE = 0x0080;
+
+            [StructLayout(LayoutKind.Sequential)]
+            struct POINT
+            {
+                public int X;
+                public int Y;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            struct RECT
+            {
+                public int Left;
+                public int Top;
+                public int Right;
+                public int Bottom;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            struct CANDIDATEFORM
+            {
+                public int Index;
+                public int Style;
+                public POINT CurrentPos;
+                public RECT Area;
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            struct COMPOSITIONFORM
+            {
+                public int Style;
+                public POINT CurrentPos;
+                public RECT Area;
+            }
+
+            [DllImport("imm32.dll")]
+            static extern IntPtr ImmGetContext(IntPtr hWnd);
+
+            [DllImport("imm32.dll")]
+            static extern bool ImmSetCandidateWindow(IntPtr hIMC, ref CANDIDATEFORM candidate);
+
+            [DllImport("imm32.dll")]
+            static extern bool ImmSetCompositionWindow(IntPtr hIMC, ref COMPOSITIONFORM composition);
+
+            [DllImport("imm32.dll")]
+            static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+
+            [DllImport("user32.dll")]
+            static extern IntPtr GetForegroundWindow();
+
+            public static void Place(float x, float y)
+            {
+                IntPtr hwnd = GetForegroundWindow();
+                if (hwnd == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                IntPtr context = ImmGetContext(hwnd);
+                if (context == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                try
+                {
+                    var position = new POINT { X = (int)x, Y = (int)y };
+                    var area = new RECT { Left = 0, Top = 0, Right = 0, Bottom = 0 };
+
+                    var candidate = new CANDIDATEFORM
+                    {
+                        Index = 0,
+                        Style = CFS_CANDIDATEPOS | CFS_EXCLUDE,
+                        CurrentPos = position,
+                        Area = area,
+                    };
+                    ImmSetCandidateWindow(context, ref candidate);
+
+                    var composition = new COMPOSITIONFORM
+                    {
+                        Style = CFS_CANDIDATEPOS,
+                        CurrentPos = position,
+                        Area = area,
+                    };
+                    ImmSetCompositionWindow(context, ref composition);
+                }
+                finally
+                {
+                    ImmReleaseContext(hwnd, context);
+                }
             }
         }
 
