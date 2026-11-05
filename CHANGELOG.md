@@ -37,8 +37,8 @@ All notable changes to this package are documented here.
 - Codex output is no longer wrapped in a bubble; user input keeps a compact right-aligned bubble.
 - Collapsed Process and tool headers show elapsed time.
 - Sidebar context menu with Open, Rename, Copy resume, Fork and Archive.
-- Hover message actions: Copy and Fork from here, with fork using the message's turn as `lastTurnId`.
-- Select text mode: a read-only plain-text transcript with normal text selection and copy shortcuts.
+- Per-message footer with Select / Copy / Fork and local time; fork uses the message's turn as
+  `lastTurnId`. Select swaps only that message to a read-only selectable text field.
 - Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
   filters the archived id; if another Codex client still holds it, the window keeps it and explains why.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image

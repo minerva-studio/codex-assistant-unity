@@ -21,16 +21,29 @@ namespace Minerva.Codex
             Action<string, string> sendTerminalInput = null,
             Action<string> copyMessage = null,
             Action<string> forkFromTurn = null,
-            string turnId = null)
+            string turnId = null,
+            long turnTimestampMs = 0)
         {
             string type = item["type"]?.Value<string>() ?? "unknown";
             switch (type)
             {
                 case "userMessage":
-                    RenderUserMessage(parent, item, turnId, copyMessage, forkFromTurn);
+                    RenderUserMessage(
+                        parent,
+                        item,
+                        turnId,
+                        copyMessage,
+                        forkFromTurn,
+                        turnTimestampMs);
                     break;
                 case "agentMessage":
-                    RenderAgentMessage(parent, item, turnId, copyMessage, forkFromTurn);
+                    RenderAgentMessage(
+                        parent,
+                        item,
+                        turnId,
+                        copyMessage,
+                        forkFromTurn,
+                        turnTimestampMs);
                     break;
                 case "reasoning":
                     if (showReasoning)
@@ -132,8 +145,12 @@ namespace Minerva.Codex
             JObject item,
             string turnId,
             Action<string> copyMessage,
-            Action<string> forkFromTurn)
+            Action<string> forkFromTurn,
+            long turnTimestampMs)
         {
+            long timestamp = item["startedAtMs"]?.Value<long>() ??
+                             item["completedAtMs"]?.Value<long>() ??
+                             turnTimestampMs;
             string raw = JoinUserContent(item["content"]);
             if (CodexQuestionReply.TryParse(raw, out List<CodexQuestionReply> replies, out string remainder))
             {
@@ -149,7 +166,8 @@ namespace Minerva.Codex
                         CodexAnnotations.Clean(remainder),
                         turnId,
                         copyMessage,
-                        forkFromTurn);
+                        forkFromTurn,
+                        timestamp);
                 }
 
                 return;
@@ -160,7 +178,8 @@ namespace Minerva.Codex
                 CodexAnnotations.Clean(raw),
                 turnId,
                 copyMessage,
-                forkFromTurn);
+                forkFromTurn,
+                timestamp);
         }
 
         static void RenderUserBubble(
@@ -168,7 +187,8 @@ namespace Minerva.Codex
             string text,
             string turnId,
             Action<string> copyMessage,
-            Action<string> forkFromTurn)
+            Action<string> forkFromTurn,
+            long timestampMs)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -178,9 +198,19 @@ namespace Minerva.Codex
             var wrapper = new VisualElement();
             wrapper.style.flexDirection = FlexDirection.Column;
             VisualElement bubble = Bubble(CodexPalette.UserBubble);
-            bubble.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
-            AddMessageActions(wrapper, text, turnId, copyMessage, forkFromTurn, true);
+            VisualElement content = CodexMarkdown.Render(CodexMedia.Tokenize(text));
+            bubble.Add(content);
             wrapper.Add(bubble);
+            AddMessageFooter(
+                wrapper,
+                bubble,
+                content,
+                text,
+                turnId,
+                timestampMs,
+                copyMessage,
+                forkFromTurn,
+                true);
             parent.Add(wrapper);
         }
 
@@ -228,13 +258,18 @@ namespace Minerva.Codex
             JObject item,
             string turnId,
             Action<string> copyMessage,
-            Action<string> forkFromTurn)
+            Action<string> forkFromTurn,
+            long turnTimestampMs)
         {
             string text = item["text"]?.Value<string>();
             if (string.IsNullOrEmpty(text))
             {
                 return;
             }
+
+            long timestamp = item["completedAtMs"]?.Value<long>() ??
+                             item["startedAtMs"]?.Value<long>() ??
+                             turnTimestampMs;
 
             // Codex output is plain document text; only user input uses a bubble.
             var block = new VisualElement();
@@ -251,83 +286,164 @@ namespace Minerva.Codex
             caption.style.color = CodexPalette.TextDim;
             caption.style.marginBottom = 5;
             block.Add(caption);
-            block.Add(CodexMarkdown.Render(CodexMedia.Tokenize(text)));
-            AddMessageActions(block, text, turnId, copyMessage, forkFromTurn, false);
+            VisualElement content = CodexMarkdown.Render(CodexMedia.Tokenize(text));
+            block.Add(content);
+            AddMessageFooter(
+                block,
+                block,
+                content,
+                text,
+                turnId,
+                timestamp,
+                copyMessage,
+                forkFromTurn,
+                false);
             parent.Add(block);
         }
 
-        static void AddMessageActions(
+        static void AddMessageFooter(
             VisualElement container,
+            VisualElement host,
+            VisualElement richContent,
             string text,
             string turnId,
+            long timestampMs,
             Action<string> copyMessage,
             Action<string> forkFromTurn,
             bool userMessage)
         {
-            if (copyMessage == null && forkFromTurn == null)
+            if (copyMessage == null && forkFromTurn == null && string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            var actions = new VisualElement { name = "codex-message-actions" };
-            actions.style.position = Position.Absolute;
+            var footer = new VisualElement { name = "codex-message-footer" };
+            footer.style.flexDirection = FlexDirection.Row;
+            footer.style.alignItems = Align.Center;
+            footer.style.marginTop = 6;
             if (userMessage)
             {
-                actions.style.top = 5;
-                actions.style.left = 18;
+                footer.style.alignSelf = Align.FlexEnd;
+                footer.style.marginRight = 18;
             }
             else
             {
-                actions.style.top = 1;
-                actions.style.right = 2;
+                footer.style.alignSelf = Align.FlexStart;
             }
 
-            actions.style.flexDirection = FlexDirection.Row;
-            actions.style.backgroundColor = CodexPalette.Popover;
-            actions.style.borderTopWidth = 1;
-            actions.style.borderBottomWidth = 1;
-            actions.style.borderLeftWidth = 1;
-            actions.style.borderRightWidth = 1;
-            actions.style.borderTopColor = CodexPalette.PillBorder;
-            actions.style.borderBottomColor = CodexPalette.PillBorder;
-            actions.style.borderLeftColor = CodexPalette.PillBorder;
-            actions.style.borderRightColor = CodexPalette.PillBorder;
-            actions.style.borderTopLeftRadius = 6;
-            actions.style.borderTopRightRadius = 6;
-            actions.style.borderBottomLeftRadius = 6;
-            actions.style.borderBottomRightRadius = 6;
-            actions.style.paddingLeft = 2;
-            actions.style.paddingRight = 2;
-            actions.style.display = DisplayStyle.None;
-            container.Add(actions);
+            container.Add(footer);
+
+            TextField selectable = null;
+            bool selecting = false;
+            Button selectButton = null;
+
+            void StyleSelectable()
+            {
+                if (selectable == null)
+                {
+                    return;
+                }
+
+                selectable.style.backgroundColor = Color.clear;
+                selectable.style.borderTopWidth = 0;
+                selectable.style.borderBottomWidth = 0;
+                selectable.style.borderLeftWidth = 0;
+                selectable.style.borderRightWidth = 0;
+                selectable.style.color = CodexPalette.Text;
+                selectable.style.fontSize = 11;
+                VisualElement input = selectable.Q(className: "unity-base-text-field__input")
+                                      ?? selectable.Q(className: "unity-text-input");
+                if (input != null)
+                {
+                    input.style.backgroundColor = Color.clear;
+                    input.style.color = CodexPalette.Text;
+                    input.style.borderTopWidth = 0;
+                    input.style.borderBottomWidth = 0;
+                    input.style.borderLeftWidth = 0;
+                    input.style.borderRightWidth = 0;
+                }
+            }
+
+            void ToggleSelect()
+            {
+                selecting = !selecting;
+                if (selecting)
+                {
+                    if (selectable == null)
+                    {
+                        selectable = new TextField
+                        {
+                            name = "codex-message-select",
+                            multiline = true,
+                            isReadOnly = true,
+                            value = text,
+                        };
+                        selectable.style.minHeight = 36;
+                        selectable.style.maxHeight = 360;
+                        selectable.style.marginTop = 4;
+                        selectable.RegisterCallback<AttachToPanelEvent>(_ => StyleSelectable());
+                        selectable.schedule.Execute(StyleSelectable);
+                        host.Insert(host.IndexOf(richContent) + 1, selectable);
+                    }
+
+                    richContent.style.display = DisplayStyle.None;
+                    selectable.style.display = DisplayStyle.Flex;
+                    selectButton.text = "Done";
+                    selectButton.tooltip = "Return to formatted text";
+                    selectable.schedule.Execute(() => selectable.Focus());
+                }
+                else
+                {
+                    if (selectable != null)
+                    {
+                        selectable.style.display = DisplayStyle.None;
+                    }
+
+                    richContent.style.display = DisplayStyle.Flex;
+                    selectButton.text = "Select";
+                    selectButton.tooltip = "Show selectable message text";
+                }
+            }
+
+            selectButton = FooterButton("Select", ToggleSelect);
+            selectButton.name = "codex-select-message-button";
+            selectButton.tooltip = "Show selectable message text";
+            footer.Add(selectButton);
 
             if (copyMessage != null)
             {
-                var copy = ActionButton("Copy", () => copyMessage(text));
+                var copy = FooterButton("Copy", () => copyMessage(text));
                 copy.tooltip = "Copy this message";
-                actions.Add(copy);
+                footer.Add(copy);
             }
 
             if (forkFromTurn != null && !string.IsNullOrEmpty(turnId))
             {
-                var fork = ActionButton("Fork from here", () => forkFromTurn(turnId));
+                var fork = FooterButton("Fork", () => forkFromTurn(turnId));
                 fork.tooltip = "Fork the conversation through this turn";
-                actions.Add(fork);
+                footer.Add(fork);
             }
 
-            container.RegisterCallback<MouseEnterEvent>(_ => actions.style.display = DisplayStyle.Flex);
-            container.RegisterCallback<MouseLeaveEvent>(_ => actions.style.display = DisplayStyle.None);
+            string time = FormatMessageTime(timestampMs);
+            if (!string.IsNullOrEmpty(time))
+            {
+                var timestamp = new Label(time);
+                timestamp.style.fontSize = 9;
+                timestamp.style.color = CodexPalette.TextDim;
+                timestamp.style.marginLeft = 6;
+                footer.Add(timestamp);
+            }
         }
 
-        static Button ActionButton(string text, Action action)
+        static Button FooterButton(string text, Action action)
         {
             var button = new Button(action) { text = text };
-            button.style.height = 18;
+            button.style.height = 20;
             button.style.minWidth = 0;
-            button.style.marginLeft = 1;
+            button.style.marginLeft = 0;
             button.style.marginRight = 1;
-            button.style.paddingLeft = 5;
-            button.style.paddingRight = 5;
+            button.style.paddingLeft = 4;
+            button.style.paddingRight = 4;
             button.style.borderTopWidth = 0;
             button.style.borderBottomWidth = 0;
             button.style.borderLeftWidth = 0;
@@ -337,11 +453,31 @@ namespace Minerva.Codex
             button.style.borderBottomLeftRadius = 4;
             button.style.borderBottomRightRadius = 4;
             button.style.backgroundColor = Color.clear;
-            button.style.color = CodexPalette.Muted;
+            button.style.color = CodexPalette.TextDim;
             button.style.fontSize = 9;
-            button.RegisterCallback<MouseEnterEvent>(_ => button.style.backgroundColor = CodexPalette.Hover);
-            button.RegisterCallback<MouseLeaveEvent>(_ => button.style.backgroundColor = Color.clear);
+            button.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                button.style.backgroundColor = CodexPalette.Hover;
+                button.style.color = CodexPalette.Text;
+            });
+            button.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                button.style.backgroundColor = Color.clear;
+                button.style.color = CodexPalette.TextDim;
+            });
             return button;
+        }
+
+        static string FormatMessageTime(long timestampMs)
+        {
+            if (timestampMs <= 0)
+            {
+                return string.Empty;
+            }
+
+            return DateTimeOffset.FromUnixTimeMilliseconds(timestampMs)
+                .ToLocalTime()
+                .ToString("h:mm tt");
         }
 
         internal static bool HasReasoningText(JObject item)
