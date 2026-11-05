@@ -358,7 +358,11 @@ unity command --project-path <proj> console status
 unity command --project-path <proj> console get --level error --tail 5
 unity command --project-path <proj> script eval "<C# statements>"
 unity command --project-path <proj> package resolve
+unity command --project-path <proj> capture editor_window --window 'Codex Assistant' --output-path <png>
 ```
+
+- `capture editor_window --window 'Codex Assistant'` renders the window as a PNG without the user having to
+  screenshot it; it does not include OS windows, so the IME candidate popup never appears in it.
 
 - `script eval` takes the code as a positional argument; `--code` fails with "Give either code or file".
 - Changing files in a `file:` package does not always trigger a recompile; call

@@ -514,33 +514,39 @@ namespace Minerva.Codex
             filters.Add(section);
 
             m_NewButton = new Button(NewConversation) { text = "+  New conversation", name = "codex-new" };
-            m_NewButton.style.height = 34;
-            m_NewButton.style.marginBottom = 10;
-            m_NewButton.style.paddingLeft = 12;
-            m_NewButton.style.paddingRight = 12;
-            m_NewButton.style.borderTopLeftRadius = 9;
-            m_NewButton.style.borderTopRightRadius = 9;
-            m_NewButton.style.borderBottomLeftRadius = 9;
-            m_NewButton.style.borderBottomRightRadius = 9;
+            m_NewButton.style.height = 30;
+            m_NewButton.style.marginBottom = 8;
+            m_NewButton.style.paddingLeft = 10;
+            m_NewButton.style.paddingRight = 10;
+            m_NewButton.style.borderTopLeftRadius = 8;
+            m_NewButton.style.borderTopRightRadius = 8;
+            m_NewButton.style.borderBottomLeftRadius = 8;
+            m_NewButton.style.borderBottomRightRadius = 8;
             m_NewButton.style.borderTopWidth = 0;
             m_NewButton.style.borderBottomWidth = 0;
             m_NewButton.style.borderLeftWidth = 0;
             m_NewButton.style.borderRightWidth = 0;
-            m_NewButton.style.backgroundColor = CodexPalette.SendAction;
-            m_NewButton.style.color = Color.white;
-            m_NewButton.style.fontSize = 11;
+            m_NewButton.style.backgroundColor = CodexPalette.AccentSoft;
+            m_NewButton.style.color = CodexPalette.Accent;
+            m_NewButton.style.fontSize = 10;
             m_NewButton.style.unityFontStyleAndWeight = FontStyle.Bold;
             m_NewButton.style.unityTextAlign = TextAnchor.MiddleLeft;
             m_NewButton.tooltip = "Start a new conversation on the next message";
             m_NewButton.RegisterCallback<MouseEnterEvent>(_ =>
-                m_NewButton.style.backgroundColor = CodexPalette.Accent);
+            {
+                m_NewButton.style.backgroundColor = CodexPalette.Accent;
+                m_NewButton.style.color = Color.white;
+            });
             m_NewButton.RegisterCallback<MouseLeaveEvent>(_ =>
-                m_NewButton.style.backgroundColor = CodexPalette.SendAction);
+            {
+                m_NewButton.style.backgroundColor = CodexPalette.AccentSoft;
+                m_NewButton.style.color = CodexPalette.Accent;
+            });
             filters.Add(m_NewButton);
 
             m_SearchField = new TextField { name = "codex-thread-search" };
             m_SearchField.style.height = 30;
-            m_SearchField.style.marginBottom = 7;
+            m_SearchField.style.marginBottom = 6;
             m_SearchField.textEdition.placeholder = "Search conversations...";
             m_SearchField.textEdition.hidePlaceholderOnFocus = false;
             StyleField(m_SearchField);
@@ -550,15 +556,23 @@ namespace Minerva.Codex
             m_ScopeField = new DropdownField { name = "codex-thread-scope" };
             m_ScopeField.choices = new List<string> { ScopeProject, ScopeAll, ScopeArchived };
             m_ScopeField.SetValueWithoutNotify(ScopeProject);
-            m_ScopeField.style.height = 28;
+            m_ScopeField.style.height = 30;
             m_ScopeField.style.marginTop = 0;
             m_ScopeField.style.backgroundColor = CodexPalette.Pill;
-            m_ScopeField.style.borderTopLeftRadius = 7;
-            m_ScopeField.style.borderTopRightRadius = 7;
-            m_ScopeField.style.borderBottomLeftRadius = 7;
-            m_ScopeField.style.borderBottomRightRadius = 7;
+            m_ScopeField.style.borderTopWidth = 1;
+            m_ScopeField.style.borderBottomWidth = 1;
+            m_ScopeField.style.borderLeftWidth = 1;
+            m_ScopeField.style.borderRightWidth = 1;
+            m_ScopeField.style.borderTopColor = CodexPalette.PillBorder;
+            m_ScopeField.style.borderBottomColor = CodexPalette.PillBorder;
+            m_ScopeField.style.borderLeftColor = CodexPalette.PillBorder;
+            m_ScopeField.style.borderRightColor = CodexPalette.PillBorder;
+            m_ScopeField.style.borderTopLeftRadius = 8;
+            m_ScopeField.style.borderTopRightRadius = 8;
+            m_ScopeField.style.borderBottomLeftRadius = 8;
+            m_ScopeField.style.borderBottomRightRadius = 8;
             m_ScopeField.style.paddingLeft = 8;
-            m_ScopeField.style.color = CodexPalette.Muted;
+            m_ScopeField.style.color = CodexPalette.Text;
             m_ScopeField.tooltip = "Show conversations from this project, from every folder, or archived ones";
             m_ScopeField.RegisterValueChangedCallback(evt =>
             {
@@ -600,10 +614,10 @@ namespace Minerva.Codex
             field.style.borderBottomWidth = 1;
             field.style.borderLeftWidth = 1;
             field.style.borderRightWidth = 1;
-            field.style.borderTopColor = CodexPalette.Border;
-            field.style.borderBottomColor = CodexPalette.Border;
-            field.style.borderLeftColor = CodexPalette.Border;
-            field.style.borderRightColor = CodexPalette.Border;
+            field.style.borderTopColor = CodexPalette.PillBorder;
+            field.style.borderBottomColor = CodexPalette.PillBorder;
+            field.style.borderLeftColor = CodexPalette.PillBorder;
+            field.style.borderRightColor = CodexPalette.PillBorder;
             field.style.borderTopLeftRadius = 8;
             field.style.borderTopRightRadius = 8;
             field.style.borderBottomLeftRadius = 8;
