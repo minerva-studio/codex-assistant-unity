@@ -83,6 +83,30 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   fields) and `url` mode. `openai/userVerification` is shown but can only be declined/cancelled from the
   window; non-standard OpenAI form schemas fall back to a decline card. Legacy approval methods are not
   registered because `turn/start` uses the newer request methods.
+- P1 live handlers in `OnNotification`:
+  `item/commandExecution/outputDelta` appends `aggregatedOutput`;
+  `item/commandExecution/terminalInteraction` records `terminalInput`;
+  `item/fileChange/outputDelta` and `patchUpdated` update the file item;
+  `item/mcpToolCall/progress` records the latest progress;
+  `item/plan/delta` appends plan text;
+  `turn/plan/updated` creates the live `turnPlan` item;
+  `turn/diff/updated` creates the live `turnDiff` item;
+  `command/exec/outputDelta`/`process/outputDelta` decode base64 and match a live command by process id;
+  `process/exited` records the exit code. All go through `MarkTranscriptChanged`, so the existing 50 ms
+  live throttle refreshes the Process group.
+- The terminal input row is rendered by `RenderCommand` only when a running command has a `processId` and a
+  `sendTerminalInput` callback was supplied. The window calls `CodexClient.WriteCommandInput`, which sends
+  `command/exec/write { processId, deltaBase64 }`. This is for turn-level PTY commands, not a general
+  `process/spawn` console.
+- `serverRequest/resolved` removes the matching question/approval by request id; this handles another client
+  resolving the prompt and avoids a stale interaction card.
+- UI pass: `CodexPalette` now carries the dark/light surface hierarchy and accent colors. The toolbar uses a
+  brand row with ghost buttons; the sidebar uses compact one-line rows with a reserved leading indicator slot;
+  Process/interaction cards share the raised surface; the composer has a 14 px radius; empty conversations
+  get a centered brand state. The active-thread pulse dot is always in the reserved slot, not after the
+  flexible title.
+- `BuildAgentsPanel` resets `m_AgentsSignature`; otherwise a UI rebuild can reuse the old signature while
+  the new `m_AgentsList` is empty, leaving the rail blank.
 - Historical question replies are user messages wrapped as
   `<send_user_message_question_reply>[{ "question": "...", "answer": "..." }]</...>`.
   `CodexQuestionReply.TryParse` extracts every entry and renders a **CODEX ASKED / YOU ANSWERED** card; the

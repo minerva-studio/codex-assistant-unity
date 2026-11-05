@@ -45,6 +45,11 @@ tools are next.
 - Command, file-change and permission approval requests, plus MCP form/URL elicitations, use the same
   interaction card. The card shows the command/cwd, changed files or requested permissions and sends the
   decision back to the app-server.
+- Live command/file output, MCP progress, plan steps and the turn diff update inside Process while the turn
+  runs. A running command with a PTY process id gets an inline terminal input row.
+- A modernized dark/light visual pass: compact toolbar and sidebar rows, accent selections, card-based
+  Process/interaction surfaces, a roomier composer and a dedicated empty state. The active-thread indicator
+  now uses a reserved leading slot, so it no longer drifts with wrapped titles.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of
@@ -142,6 +147,9 @@ sends two real messages, one after creating a thread, and checks streaming and h
 - `request_user_input`, command/file-change/permission approvals and standard MCP form/URL elicitations are
   handled. Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard
   OpenAI elicitation forms are not fully supported.
+- Plan/diff cards are live-turn state; they are not persisted as separate history panels. Standalone
+  `command/exec` and `process/spawn` sessions are not exposed by the window; terminal input is available
+  when a running `commandExecution` item exposes a PTY `processId`.
 - A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving
   between homes does not migrate conversations.
 - The context indicator needs a token-usage notification. It shows `ctx —` until the conversation has run a

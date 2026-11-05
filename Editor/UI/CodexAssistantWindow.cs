@@ -153,39 +153,57 @@ namespace Minerva.Codex
             var toolbar = new VisualElement();
             toolbar.style.flexDirection = FlexDirection.Row;
             toolbar.style.alignItems = Align.Center;
-            toolbar.style.height = 28;
-            toolbar.style.paddingLeft = 8;
-            toolbar.style.paddingRight = 8;
+            toolbar.style.height = 48;
+            toolbar.style.paddingLeft = 16;
+            toolbar.style.paddingRight = 14;
+            toolbar.style.backgroundColor = CodexPalette.Panel;
             toolbar.style.borderBottomWidth = 1;
             toolbar.style.borderBottomColor = CodexPalette.Border;
 
+            var brandMark = new Label("◆");
+            brandMark.style.fontSize = 16;
+            brandMark.style.color = CodexPalette.Accent;
+            brandMark.style.marginRight = 7;
+            toolbar.Add(brandMark);
+
             var title = new Label("Codex");
+            title.style.fontSize = 13;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = CodexPalette.Text;
             toolbar.Add(title);
 
-            m_RefreshButton = new Button(RefreshOrReconnect) { text = "Refresh" };
-            m_RefreshButton.style.marginLeft = 12;
-            toolbar.Add(m_RefreshButton);
-
-            m_SettingsButton = new Button(CodexAssistantSettingsWindow.Open) { text = "Settings" };
-            m_SettingsButton.style.marginLeft = 6;
-            m_SettingsButton.tooltip = "Display and composer preferences";
-            toolbar.Add(m_SettingsButton);
+            var subtitle = new Label("ASSISTANT");
+            subtitle.style.fontSize = 8;
+            subtitle.style.color = CodexPalette.TextDim;
+            subtitle.style.marginLeft = 7;
+            subtitle.style.marginTop = 2;
+            toolbar.Add(subtitle);
 
             m_WorkingDot = new CodexPulseDot(CodexPalette.Warning);
-            m_WorkingDot.style.marginLeft = 10;
+            m_WorkingDot.style.marginLeft = 14;
             m_WorkingDot.style.marginRight = 5;
             m_WorkingDot.style.display = DisplayStyle.None;
             toolbar.Add(m_WorkingDot);
 
             m_StatusLabel = new Label("Starting...");
             m_StatusLabel.style.marginLeft = 4;
+            m_StatusLabel.style.fontSize = 10;
             m_StatusLabel.style.color = CodexPalette.Muted;
             m_StatusLabel.style.flexGrow = 1;
             toolbar.Add(m_StatusLabel);
 
+            m_RefreshButton = new Button(RefreshOrReconnect) { text = "Refresh" };
+            StyleGhostButton(m_RefreshButton);
+            toolbar.Add(m_RefreshButton);
+
+            m_SettingsButton = new Button(CodexAssistantSettingsWindow.Open) { text = "Settings" };
+            StyleGhostButton(m_SettingsButton);
+            m_SettingsButton.tooltip = "Display and composer preferences";
+            toolbar.Add(m_SettingsButton);
+
             m_AgentsButton = new Button(ToggleAgentsPanel) { text = "Agents" };
-            m_AgentsButton.style.marginLeft = 8;
+            StyleAccentSoftButton(m_AgentsButton);
+            m_AgentsButton.style.marginLeft = 6;
             m_AgentsButton.style.flexShrink = 0;
             m_AgentsButton.style.display = DisplayStyle.None;
             m_AgentsButton.tooltip = "Show subagents for this conversation";
@@ -194,58 +212,143 @@ namespace Minerva.Codex
             return toolbar;
         }
 
+        static void StyleGhostButton(Button button, bool accent = false)
+        {
+            button.style.height = 28;
+            button.style.paddingLeft = 10;
+            button.style.paddingRight = 10;
+            button.style.marginLeft = 4;
+            button.style.borderTopWidth = 1;
+            button.style.borderBottomWidth = 1;
+            button.style.borderLeftWidth = 1;
+            button.style.borderRightWidth = 1;
+            button.style.borderTopColor = Color.clear;
+            button.style.borderBottomColor = Color.clear;
+            button.style.borderLeftColor = Color.clear;
+            button.style.borderRightColor = Color.clear;
+            button.style.borderTopLeftRadius = 7;
+            button.style.borderTopRightRadius = 7;
+            button.style.borderBottomLeftRadius = 7;
+            button.style.borderBottomRightRadius = 7;
+            button.style.backgroundColor = Color.clear;
+            button.style.color = accent ? CodexPalette.Accent : CodexPalette.Muted;
+            button.style.fontSize = 10;
+            button.style.unityFontStyleAndWeight = FontStyle.Bold;
+            button.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                if (button.enabledSelf)
+                {
+                    button.style.backgroundColor = CodexPalette.Hover;
+                }
+            });
+            button.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                button.style.backgroundColor = Color.clear;
+            });
+        }
+
+        static void StyleAccentSoftButton(Button button)
+        {
+            button.style.height = 28;
+            button.style.paddingLeft = 11;
+            button.style.paddingRight = 11;
+            button.style.marginLeft = 4;
+            button.style.borderTopWidth = 0;
+            button.style.borderBottomWidth = 0;
+            button.style.borderLeftWidth = 0;
+            button.style.borderRightWidth = 0;
+            button.style.borderTopLeftRadius = 7;
+            button.style.borderTopRightRadius = 7;
+            button.style.borderBottomLeftRadius = 7;
+            button.style.borderBottomRightRadius = 7;
+            button.style.backgroundColor = CodexPalette.AccentSoft;
+            button.style.color = CodexPalette.Accent;
+            button.style.fontSize = 10;
+            button.style.unityFontStyleAndWeight = FontStyle.Bold;
+            button.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                if (button.enabledSelf)
+                {
+                    button.style.backgroundColor = CodexPalette.Selected;
+                }
+            });
+            button.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                button.style.backgroundColor = CodexPalette.AccentSoft;
+            });
+        }
+
         VisualElement BuildSidebar()
         {
             var sidebar = new VisualElement();
-            sidebar.style.width = 270;
+            sidebar.style.width = 292;
             sidebar.style.flexShrink = 0;
             sidebar.style.borderRightWidth = 1;
             sidebar.style.borderRightColor = CodexPalette.Border;
             sidebar.style.backgroundColor = CodexPalette.Sidebar;
 
             var filters = new VisualElement();
-            filters.style.paddingLeft = 8;
-            filters.style.paddingRight = 8;
-            filters.style.paddingTop = 8;
-            filters.style.paddingBottom = 6;
+            filters.style.paddingLeft = 14;
+            filters.style.paddingRight = 14;
+            filters.style.paddingTop = 14;
+            filters.style.paddingBottom = 11;
             filters.style.borderBottomWidth = 1;
             filters.style.borderBottomColor = CodexPalette.Border;
 
+            var section = new Label("CONVERSATIONS");
+            section.style.fontSize = 8;
+            section.style.unityFontStyleAndWeight = FontStyle.Bold;
+            section.style.color = CodexPalette.TextDim;
+            section.style.marginLeft = 2;
+            section.style.marginBottom = 8;
+            filters.Add(section);
+
             m_NewButton = new Button(NewConversation) { text = "+  New conversation", name = "codex-new" };
-            m_NewButton.style.height = 26;
-            m_NewButton.style.marginBottom = 6;
-            m_NewButton.style.paddingLeft = 10;
-            m_NewButton.style.paddingRight = 10;
-            m_NewButton.style.borderTopLeftRadius = 8;
-            m_NewButton.style.borderTopRightRadius = 8;
-            m_NewButton.style.borderBottomLeftRadius = 8;
-            m_NewButton.style.borderBottomRightRadius = 8;
-            m_NewButton.style.borderTopWidth = 1;
-            m_NewButton.style.borderBottomWidth = 1;
-            m_NewButton.style.borderLeftWidth = 1;
-            m_NewButton.style.borderRightWidth = 1;
-            m_NewButton.style.borderTopColor = CodexPalette.PillBorder;
-            m_NewButton.style.borderBottomColor = CodexPalette.PillBorder;
-            m_NewButton.style.borderLeftColor = CodexPalette.PillBorder;
-            m_NewButton.style.borderRightColor = CodexPalette.PillBorder;
-            m_NewButton.style.backgroundColor = CodexPalette.Pill;
-            m_NewButton.style.color = CodexPalette.Text;
+            m_NewButton.style.height = 34;
+            m_NewButton.style.marginBottom = 10;
+            m_NewButton.style.paddingLeft = 12;
+            m_NewButton.style.paddingRight = 12;
+            m_NewButton.style.borderTopLeftRadius = 9;
+            m_NewButton.style.borderTopRightRadius = 9;
+            m_NewButton.style.borderBottomLeftRadius = 9;
+            m_NewButton.style.borderBottomRightRadius = 9;
+            m_NewButton.style.borderTopWidth = 0;
+            m_NewButton.style.borderBottomWidth = 0;
+            m_NewButton.style.borderLeftWidth = 0;
+            m_NewButton.style.borderRightWidth = 0;
+            m_NewButton.style.backgroundColor = CodexPalette.SendAction;
+            m_NewButton.style.color = Color.white;
+            m_NewButton.style.fontSize = 11;
+            m_NewButton.style.unityFontStyleAndWeight = FontStyle.Bold;
             m_NewButton.style.unityTextAlign = TextAnchor.MiddleLeft;
             m_NewButton.tooltip = "Start a new conversation on the next message";
+            m_NewButton.RegisterCallback<MouseEnterEvent>(_ =>
+                m_NewButton.style.backgroundColor = CodexPalette.Accent);
+            m_NewButton.RegisterCallback<MouseLeaveEvent>(_ =>
+                m_NewButton.style.backgroundColor = CodexPalette.SendAction);
             filters.Add(m_NewButton);
 
             m_SearchField = new TextField { name = "codex-thread-search" };
-            m_SearchField.style.height = 24;
+            m_SearchField.style.height = 30;
+            m_SearchField.style.marginBottom = 7;
             m_SearchField.textEdition.placeholder = "Search conversations...";
             m_SearchField.textEdition.hidePlaceholderOnFocus = false;
+            StyleField(m_SearchField);
             m_SearchField.RegisterValueChangedCallback(evt => m_Workspace?.SetSearchTerm(evt.newValue));
             filters.Add(m_SearchField);
 
             m_ScopeField = new DropdownField { name = "codex-thread-scope" };
             m_ScopeField.choices = new List<string> { ScopeProject, ScopeAll };
             m_ScopeField.SetValueWithoutNotify(ScopeProject);
-            m_ScopeField.style.height = 22;
-            m_ScopeField.style.marginTop = 6;
+            m_ScopeField.style.height = 28;
+            m_ScopeField.style.marginTop = 0;
+            m_ScopeField.style.backgroundColor = CodexPalette.Pill;
+            m_ScopeField.style.borderTopLeftRadius = 7;
+            m_ScopeField.style.borderTopRightRadius = 7;
+            m_ScopeField.style.borderBottomLeftRadius = 7;
+            m_ScopeField.style.borderBottomRightRadius = 7;
+            m_ScopeField.style.paddingLeft = 8;
+            m_ScopeField.style.color = CodexPalette.Muted;
             m_ScopeField.tooltip = "Show conversations from this project or from every folder";
             m_ScopeField.RegisterValueChangedCallback(evt =>
                 m_Workspace?.SetShowAllProjects(evt.newValue == ScopeAll));
@@ -254,10 +357,34 @@ namespace Minerva.Codex
 
             m_ThreadList = new ScrollView(ScrollViewMode.Vertical);
             m_ThreadList.style.flexGrow = 1;
-            m_ThreadList.style.paddingTop = 4;
+            m_ThreadList.style.paddingTop = 6;
+            m_ThreadList.style.paddingLeft = 8;
+            m_ThreadList.style.paddingRight = 8;
+            m_ThreadList.style.overflow = Overflow.Hidden;
+            m_ThreadList.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+            m_ThreadList.contentContainer.style.width = Length.Percent(100);
             sidebar.Add(m_ThreadList);
 
             return sidebar;
+        }
+
+        static void StyleField(TextField field)
+        {
+            field.style.backgroundColor = CodexPalette.Pill;
+            field.style.borderTopWidth = 1;
+            field.style.borderBottomWidth = 1;
+            field.style.borderLeftWidth = 1;
+            field.style.borderRightWidth = 1;
+            field.style.borderTopColor = CodexPalette.Border;
+            field.style.borderBottomColor = CodexPalette.Border;
+            field.style.borderLeftColor = CodexPalette.Border;
+            field.style.borderRightColor = CodexPalette.Border;
+            field.style.borderTopLeftRadius = 8;
+            field.style.borderTopRightRadius = 8;
+            field.style.borderBottomLeftRadius = 8;
+            field.style.borderBottomRightRadius = 8;
+            field.style.paddingLeft = 8;
+            field.style.paddingRight = 8;
         }
 
         VisualElement BuildContent()
@@ -269,10 +396,11 @@ namespace Minerva.Codex
             var header = new VisualElement();
             header.style.flexDirection = FlexDirection.Row;
             header.style.alignItems = Align.Center;
-            header.style.paddingLeft = 12;
-            header.style.paddingRight = 12;
-            header.style.paddingTop = 8;
-            header.style.paddingBottom = 8;
+            header.style.paddingLeft = 18;
+            header.style.paddingRight = 14;
+            header.style.paddingTop = 11;
+            header.style.paddingBottom = 11;
+            header.style.backgroundColor = CodexPalette.Window;
             header.style.borderBottomWidth = 1;
             header.style.borderBottomColor = CodexPalette.Border;
             content.Add(header);
@@ -283,42 +411,52 @@ namespace Minerva.Codex
 
             m_HeaderTitle = new Label("No conversation selected");
             m_HeaderTitle.style.whiteSpace = WhiteSpace.Normal;
+            m_HeaderTitle.style.fontSize = 15;
             m_HeaderTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_HeaderTitle.style.color = CodexPalette.Text;
             headerText.Add(m_HeaderTitle);
 
             m_HeaderMeta = new Label(string.Empty);
             m_HeaderMeta.style.fontSize = 10;
             m_HeaderMeta.style.color = CodexPalette.Muted;
             m_HeaderMeta.style.whiteSpace = WhiteSpace.Normal;
+            m_HeaderMeta.style.marginTop = 2;
             headerText.Add(m_HeaderMeta);
 
             m_BackButton = new Button(GoToParentThread) { text = "← Parent" };
             m_BackButton.style.marginLeft = 8;
             m_BackButton.style.display = DisplayStyle.None;
             m_BackButton.tooltip = "Return to the parent agent conversation";
+            StyleAccentSoftButton(m_BackButton);
             header.Add(m_BackButton);
 
             m_ArchiveButton = new Button(ArchiveSelectedThread) { text = "Archive" };
-            m_ArchiveButton.style.marginLeft = 8;
+            m_ArchiveButton.style.marginLeft = 4;
             m_ArchiveButton.SetEnabled(false);
             m_ArchiveButton.tooltip = "Archive the selected conversation";
+            StyleGhostButton(m_ArchiveButton);
             header.Add(m_ArchiveButton);
 
             m_CopyButton = new Button(CopyResumeCommand) { text = "Copy resume" };
-            m_CopyButton.style.marginLeft = 8;
+            m_CopyButton.style.marginLeft = 4;
             m_CopyButton.SetEnabled(false);
+            StyleGhostButton(m_CopyButton);
             header.Add(m_CopyButton);
 
             m_ForkButton = new Button(ForkConversation) { text = "Fork" };
-            m_ForkButton.style.marginLeft = 8;
+            m_ForkButton.style.marginLeft = 4;
             m_ForkButton.SetEnabled(false);
             m_ForkButton.tooltip = "Copy this conversation into a new thread and open it";
+            StyleGhostButton(m_ForkButton);
             header.Add(m_ForkButton);
 
             m_Transcript = new ScrollView(ScrollViewMode.Vertical);
             m_Transcript.style.flexGrow = 1;
-            m_Transcript.style.paddingTop = 8;
+            m_Transcript.style.paddingTop = 14;
+            m_Transcript.style.paddingLeft = 18;
+            m_Transcript.style.paddingRight = 18;
             m_Transcript.verticalScrollerVisibility = ScrollerVisibility.Auto;
+            m_Transcript.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             m_Transcript.verticalScroller.valueChanged += _ =>
                 m_FollowTranscript = IsTranscriptAtBottom();
             content.Add(m_Transcript);
@@ -349,7 +487,7 @@ namespace Minerva.Codex
         VisualElement BuildAgentsPanel()
         {
             m_AgentsPanel = new VisualElement { name = "codex-agents" };
-            m_AgentsPanel.style.width = 236;
+            m_AgentsPanel.style.width = 250;
             m_AgentsPanel.style.flexShrink = 0;
             m_AgentsPanel.style.flexDirection = FlexDirection.Column;
             m_AgentsPanel.style.backgroundColor = CodexPalette.Sidebar;
@@ -360,17 +498,17 @@ namespace Minerva.Codex
             var header = new VisualElement();
             header.style.flexDirection = FlexDirection.Row;
             header.style.alignItems = Align.Center;
-            header.style.paddingLeft = 10;
-            header.style.paddingRight = 6;
-            header.style.paddingTop = 9;
-            header.style.paddingBottom = 7;
+            header.style.paddingLeft = 14;
+            header.style.paddingRight = 10;
+            header.style.paddingTop = 14;
+            header.style.paddingBottom = 10;
             header.style.borderBottomWidth = 1;
             header.style.borderBottomColor = CodexPalette.Border;
 
             var title = new Label("SUBAGENTS");
-            title.style.fontSize = 9;
+            title.style.fontSize = 8;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.color = CodexPalette.Muted;
+            title.style.color = CodexPalette.TextDim;
             header.Add(title);
 
             m_AgentsCountLabel = new Label(string.Empty);
@@ -405,12 +543,14 @@ namespace Minerva.Codex
 
             m_AgentsList = new ScrollView(ScrollViewMode.Vertical);
             m_AgentsList.style.flexGrow = 1;
-            m_AgentsList.style.paddingLeft = 6;
-            m_AgentsList.style.paddingRight = 6;
-            m_AgentsList.style.paddingTop = 4;
+            m_AgentsList.style.paddingLeft = 9;
+            m_AgentsList.style.paddingRight = 9;
+            m_AgentsList.style.paddingTop = 8;
+            m_AgentsList.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
 
             m_AgentsPanel.Add(header);
             m_AgentsPanel.Add(m_AgentsList);
+            m_AgentsSignature = null;
             return m_AgentsPanel;
         }
 
@@ -490,13 +630,27 @@ namespace Minerva.Codex
             var row = new VisualElement();
             row.style.flexDirection = FlexDirection.Row;
             row.style.alignItems = Align.FlexStart;
-            row.style.paddingLeft = 6;
-            row.style.paddingRight = 4;
-            row.style.paddingTop = 7;
-            row.style.paddingBottom = 7;
+            row.style.paddingLeft = 9;
+            row.style.paddingRight = 8;
+            row.style.paddingTop = 9;
+            row.style.paddingBottom = 9;
+            row.style.marginBottom = 6;
+            row.style.borderTopWidth = 1;
             row.style.borderBottomWidth = 1;
+            row.style.borderLeftWidth = 1;
+            row.style.borderRightWidth = 1;
+            row.style.borderTopColor = CodexPalette.Border;
             row.style.borderBottomColor = CodexPalette.Border;
+            row.style.borderLeftColor = CodexPalette.Border;
+            row.style.borderRightColor = CodexPalette.Border;
+            row.style.borderTopLeftRadius = 8;
+            row.style.borderTopRightRadius = 8;
+            row.style.borderBottomLeftRadius = 8;
+            row.style.borderBottomRightRadius = 8;
+            row.style.backgroundColor = CodexPalette.Surface;
             row.tooltip = "Open this subagent";
+            row.RegisterCallback<MouseEnterEvent>(_ => row.style.backgroundColor = CodexPalette.Hover);
+            row.RegisterCallback<MouseLeaveEvent>(_ => row.style.backgroundColor = CodexPalette.Surface);
 
             Color statusColor = agent.Status switch
             {
@@ -568,33 +722,33 @@ namespace Minerva.Codex
         {
             var composer = new VisualElement();
             composer.style.flexShrink = 0;
-            composer.style.backgroundColor = CodexPalette.Sidebar;
+            composer.style.backgroundColor = CodexPalette.Panel;
             composer.style.borderTopWidth = 1;
             composer.style.borderTopColor = CodexPalette.Border;
-            composer.style.paddingLeft = 12;
-            composer.style.paddingRight = 12;
-            composer.style.paddingTop = 8;
-            composer.style.paddingBottom = 8;
+            composer.style.paddingLeft = 18;
+            composer.style.paddingRight = 18;
+            composer.style.paddingTop = 11;
+            composer.style.paddingBottom = 11;
 
             m_ComposerCard = new VisualElement();
             m_ComposerCard.style.flexDirection = FlexDirection.Column;
-            m_ComposerCard.style.backgroundColor = CodexPalette.ComposerCard;
+            m_ComposerCard.style.backgroundColor = CodexPalette.Surface;
             m_ComposerCard.style.borderTopWidth = 1;
             m_ComposerCard.style.borderBottomWidth = 1;
             m_ComposerCard.style.borderLeftWidth = 1;
             m_ComposerCard.style.borderRightWidth = 1;
-            m_ComposerCard.style.borderTopColor = CodexPalette.PillBorder;
-            m_ComposerCard.style.borderBottomColor = CodexPalette.PillBorder;
-            m_ComposerCard.style.borderLeftColor = CodexPalette.PillBorder;
-            m_ComposerCard.style.borderRightColor = CodexPalette.PillBorder;
-            m_ComposerCard.style.borderTopLeftRadius = 10;
-            m_ComposerCard.style.borderTopRightRadius = 10;
-            m_ComposerCard.style.borderBottomLeftRadius = 10;
-            m_ComposerCard.style.borderBottomRightRadius = 10;
-            m_ComposerCard.style.paddingLeft = 8;
-            m_ComposerCard.style.paddingRight = 8;
-            m_ComposerCard.style.paddingTop = 6;
-            m_ComposerCard.style.paddingBottom = 6;
+            m_ComposerCard.style.borderTopColor = CodexPalette.Border;
+            m_ComposerCard.style.borderBottomColor = CodexPalette.Border;
+            m_ComposerCard.style.borderLeftColor = CodexPalette.Border;
+            m_ComposerCard.style.borderRightColor = CodexPalette.Border;
+            m_ComposerCard.style.borderTopLeftRadius = 14;
+            m_ComposerCard.style.borderTopRightRadius = 14;
+            m_ComposerCard.style.borderBottomLeftRadius = 14;
+            m_ComposerCard.style.borderBottomRightRadius = 14;
+            m_ComposerCard.style.paddingLeft = 11;
+            m_ComposerCard.style.paddingRight = 11;
+            m_ComposerCard.style.paddingTop = 9;
+            m_ComposerCard.style.paddingBottom = 9;
 
             m_QueueStrip = new VisualElement { name = "codex-queue" };
             m_QueueStrip.style.flexDirection = FlexDirection.Column;
@@ -606,8 +760,8 @@ namespace Minerva.Codex
 
             m_Composer = new TextField { multiline = true, name = "codex-composer" };
             m_Composer.style.flexGrow = 1;
-            m_Composer.style.minHeight = 46;
-            m_Composer.style.maxHeight = 160;
+            m_Composer.style.minHeight = 54;
+            m_Composer.style.maxHeight = 180;
             m_Composer.style.backgroundColor = Color.clear;
             m_Composer.style.borderTopWidth = 0;
             m_Composer.style.borderBottomWidth = 0;
@@ -634,14 +788,14 @@ namespace Minerva.Codex
 
             m_ComposerHint = new Label("Enter to send  ·  Shift+Enter for a new line");
             m_ComposerHint.style.fontSize = 9;
-            m_ComposerHint.style.color = CodexPalette.Muted;
+            m_ComposerHint.style.color = CodexPalette.TextDim;
             m_ComposerHint.style.flexGrow = 1;
             meta.Add(m_ComposerHint);
 
             m_SettingsSourceLabel = new Label(string.Empty);
             m_SettingsSourceLabel.name = "codex-settings-source";
             m_SettingsSourceLabel.style.fontSize = 9;
-            m_SettingsSourceLabel.style.color = CodexPalette.Muted;
+            m_SettingsSourceLabel.style.color = CodexPalette.TextDim;
             m_SettingsSourceLabel.style.marginLeft = 10;
             m_SettingsSourceLabel.style.whiteSpace = WhiteSpace.Normal;
             m_SettingsSourceLabel.style.unityTextAlign = TextAnchor.MiddleRight;
@@ -650,7 +804,7 @@ namespace Minerva.Codex
             var actions = new VisualElement();
             actions.style.flexDirection = FlexDirection.Row;
             actions.style.alignItems = Align.Center;
-            actions.style.marginTop = 4;
+            actions.style.marginTop = 7;
             m_ComposerCard.Add(actions);
 
             m_SandboxButton = AddPill(actions, "codex-sandbox", "Sandbox");
@@ -707,11 +861,11 @@ namespace Minerva.Codex
             m_EffortButton.clicked += ShowEffortMenu;
 
             m_ActionButton = new Button(OnComposerAction) { text = "Send", name = "codex-action" };
-            m_ActionButton.style.height = 26;
-            m_ActionButton.style.minWidth = 64;
-            m_ActionButton.style.paddingLeft = 12;
-            m_ActionButton.style.paddingRight = 12;
-            m_ActionButton.style.marginLeft = 2;
+            m_ActionButton.style.height = 30;
+            m_ActionButton.style.minWidth = 70;
+            m_ActionButton.style.paddingLeft = 14;
+            m_ActionButton.style.paddingRight = 14;
+            m_ActionButton.style.marginLeft = 4;
             m_ActionButton.style.borderTopLeftRadius = 8;
             m_ActionButton.style.borderTopRightRadius = 8;
             m_ActionButton.style.borderBottomLeftRadius = 8;
@@ -735,17 +889,17 @@ namespace Minerva.Codex
         Button AddPill(VisualElement parent, string name, string tooltip)
         {
             var button = new Button { name = name, tooltip = tooltip };
-            button.style.height = 24;
+            button.style.height = 26;
             button.style.minWidth = 28;
             button.style.paddingLeft = 10;
             button.style.paddingRight = 10;
             button.style.paddingTop = 2;
             button.style.paddingBottom = 2;
             button.style.marginRight = 6;
-            button.style.borderTopLeftRadius = 12;
-            button.style.borderTopRightRadius = 12;
-            button.style.borderBottomLeftRadius = 12;
-            button.style.borderBottomRightRadius = 12;
+            button.style.borderTopLeftRadius = 8;
+            button.style.borderTopRightRadius = 8;
+            button.style.borderBottomLeftRadius = 8;
+            button.style.borderBottomRightRadius = 8;
             button.style.borderTopWidth = 1;
             button.style.borderBottomWidth = 1;
             button.style.borderLeftWidth = 1;
@@ -1447,27 +1601,27 @@ namespace Minerva.Codex
             m_QuestionPanel.style.display = DisplayStyle.Flex;
 
             var card = new VisualElement();
-            card.style.backgroundColor = CodexPalette.ComposerCard;
+            card.style.backgroundColor = CodexPalette.Surface;
             card.style.borderTopWidth = 1;
             card.style.borderBottomWidth = 1;
             card.style.borderLeftWidth = 1;
             card.style.borderRightWidth = 1;
             card.style.borderTopColor = CodexPalette.Warning;
-            card.style.borderBottomColor = CodexPalette.PillBorder;
-            card.style.borderLeftColor = CodexPalette.PillBorder;
-            card.style.borderRightColor = CodexPalette.PillBorder;
-            card.style.borderTopLeftRadius = 8;
-            card.style.borderTopRightRadius = 8;
-            card.style.borderBottomLeftRadius = 8;
-            card.style.borderBottomRightRadius = 8;
-            card.style.marginLeft = 12;
-            card.style.marginRight = 12;
-            card.style.marginTop = 8;
-            card.style.marginBottom = 4;
-            card.style.paddingLeft = 10;
-            card.style.paddingRight = 10;
-            card.style.paddingTop = 8;
-            card.style.paddingBottom = 9;
+            card.style.borderBottomColor = CodexPalette.Border;
+            card.style.borderLeftColor = CodexPalette.Border;
+            card.style.borderRightColor = CodexPalette.Border;
+            card.style.borderTopLeftRadius = 12;
+            card.style.borderTopRightRadius = 12;
+            card.style.borderBottomLeftRadius = 12;
+            card.style.borderBottomRightRadius = 12;
+            card.style.marginLeft = 18;
+            card.style.marginRight = 18;
+            card.style.marginTop = 10;
+            card.style.marginBottom = 6;
+            card.style.paddingLeft = 14;
+            card.style.paddingRight = 14;
+            card.style.paddingTop = 11;
+            card.style.paddingBottom = 12;
             m_QuestionPanel.Add(card);
 
             var top = new VisualElement();
@@ -1684,27 +1838,27 @@ namespace Minerva.Codex
         static VisualElement CreateInteractionCard(Color accent)
         {
             var card = new VisualElement();
-            card.style.backgroundColor = CodexPalette.ComposerCard;
+            card.style.backgroundColor = CodexPalette.Surface;
             card.style.borderTopWidth = 1;
             card.style.borderBottomWidth = 1;
             card.style.borderLeftWidth = 1;
             card.style.borderRightWidth = 1;
             card.style.borderTopColor = accent;
-            card.style.borderBottomColor = CodexPalette.PillBorder;
-            card.style.borderLeftColor = CodexPalette.PillBorder;
-            card.style.borderRightColor = CodexPalette.PillBorder;
-            card.style.borderTopLeftRadius = 10;
-            card.style.borderTopRightRadius = 10;
-            card.style.borderBottomLeftRadius = 10;
-            card.style.borderBottomRightRadius = 10;
-            card.style.marginLeft = 12;
-            card.style.marginRight = 12;
-            card.style.marginTop = 8;
-            card.style.marginBottom = 4;
-            card.style.paddingLeft = 12;
-            card.style.paddingRight = 12;
-            card.style.paddingTop = 9;
-            card.style.paddingBottom = 10;
+            card.style.borderBottomColor = CodexPalette.Border;
+            card.style.borderLeftColor = CodexPalette.Border;
+            card.style.borderRightColor = CodexPalette.Border;
+            card.style.borderTopLeftRadius = 12;
+            card.style.borderTopRightRadius = 12;
+            card.style.borderBottomLeftRadius = 12;
+            card.style.borderBottomRightRadius = 12;
+            card.style.marginLeft = 18;
+            card.style.marginRight = 18;
+            card.style.marginTop = 10;
+            card.style.marginBottom = 6;
+            card.style.paddingLeft = 14;
+            card.style.paddingRight = 14;
+            card.style.paddingTop = 11;
+            card.style.paddingBottom = 12;
             return card;
         }
 
@@ -2486,42 +2640,50 @@ namespace Minerva.Codex
             bool selected = thread.Id == m_Workspace.SelectedThreadId;
 
             var row = new VisualElement();
-            row.style.paddingLeft = 8;
-            row.style.paddingRight = 8;
-            row.style.paddingTop = 6;
-            row.style.paddingBottom = 6;
-            row.style.marginLeft = 4;
-            row.style.marginRight = 4;
-            row.style.marginBottom = 2;
-            row.style.borderTopLeftRadius = 4;
-            row.style.borderTopRightRadius = 4;
-            row.style.borderBottomLeftRadius = 4;
-            row.style.borderBottomRightRadius = 4;
-
-            if (selected)
-            {
-                row.style.backgroundColor = CodexPalette.Selected;
-            }
+            row.style.paddingLeft = 9;
+            row.style.paddingRight = 10;
+            row.style.paddingTop = 9;
+            row.style.paddingBottom = 9;
+            row.style.marginLeft = 2;
+            row.style.marginRight = 2;
+            row.style.marginBottom = 4;
+            row.style.borderTopLeftRadius = 9;
+            row.style.borderTopRightRadius = 9;
+            row.style.borderBottomLeftRadius = 9;
+            row.style.borderBottomRightRadius = 9;
+            row.style.borderLeftWidth = 2;
+            row.style.borderLeftColor = selected ? CodexPalette.Accent : Color.clear;
+            row.style.backgroundColor = selected ? CodexPalette.Selected : Color.clear;
+            row.style.overflow = Overflow.Hidden;
 
             var titleRow = new VisualElement();
             titleRow.style.flexDirection = FlexDirection.Row;
             titleRow.style.alignItems = Align.FlexStart;
 
-            var title = new Label(DisplayTitle(thread));
-            title.style.whiteSpace = WhiteSpace.Normal;
-            title.style.fontSize = 11;
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.color = CodexPalette.Text;
-            title.style.flexGrow = 1;
-            titleRow.Add(title);
+            // Reserve the indicator slot for every row. The running dot then has a
+            // stable position and cannot drift with the title's wrapped width.
+            var indicatorSlot = new VisualElement();
+            indicatorSlot.style.width = 8;
+            indicatorSlot.style.marginRight = 6;
+            indicatorSlot.style.marginTop = 4;
+            indicatorSlot.style.flexShrink = 0;
+            titleRow.Add(indicatorSlot);
 
             if (selected && m_Workspace.IsRunning)
             {
-                var dot = new CodexPulseDot(CodexPalette.Warning, 6f);
-                dot.style.marginTop = 4;
-                dot.style.marginLeft = 6;
-                titleRow.Add(dot);
+                indicatorSlot.Add(new CodexPulseDot(CodexPalette.Warning, 6f));
             }
+
+            var title = new Label(DisplayTitle(thread));
+            title.style.whiteSpace = WhiteSpace.NoWrap;
+            title.style.textOverflow = TextOverflow.Ellipsis;
+            title.style.fontSize = 12;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = CodexPalette.Text;
+            title.style.flexGrow = 1;
+            title.style.flexShrink = 1;
+            title.style.overflow = Overflow.Hidden;
+            titleRow.Add(title);
 
             row.Add(titleRow);
 
@@ -2536,10 +2698,14 @@ namespace Minerva.Codex
                 if (!string.Equals(previewText, DisplayTitle(thread), StringComparison.Ordinal))
                 {
                     var preview = new Label(previewText);
-                    preview.style.whiteSpace = WhiteSpace.Normal;
+                    preview.style.whiteSpace = WhiteSpace.NoWrap;
+                    preview.style.textOverflow = TextOverflow.Ellipsis;
                     preview.style.fontSize = 10;
                     preview.style.color = CodexPalette.Muted;
-                    preview.style.marginTop = 2;
+                    preview.style.marginTop = 4;
+                    preview.style.marginLeft = 14;
+                    preview.style.flexShrink = 1;
+                    preview.style.overflow = Overflow.Hidden;
                     row.Add(preview);
                 }
             }
@@ -2549,8 +2715,9 @@ namespace Minerva.Codex
                 : Ago(thread.UpdatedAt);
             var meta = new Label(metaText);
             meta.style.fontSize = 9;
-            meta.style.color = CodexPalette.Muted;
-            meta.style.marginTop = 3;
+            meta.style.color = CodexPalette.TextDim;
+            meta.style.marginTop = 4;
+            meta.style.marginLeft = 14;
             row.Add(meta);
 
             string id = thread.Id;
@@ -2559,7 +2726,7 @@ namespace Minerva.Codex
             {
                 if (id != m_Workspace.SelectedThreadId)
                 {
-                    row.style.backgroundColor = CodexPalette.Sidebar;
+                    row.style.backgroundColor = CodexPalette.Hover;
                 }
             });
             row.RegisterCallback<MouseLeaveEvent>(_ =>
@@ -2589,7 +2756,7 @@ namespace Minerva.Codex
 
             if (string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
             {
-                AddPlaceholder("Type a message below to start a new conversation, or select one on the left.");
+                AddEmptyState();
                 RestoreScroll(previousOffset, stickToBottom);
                 return;
             }
@@ -2746,11 +2913,28 @@ namespace Minerva.Codex
                     value = isLive,
                 };
 
-                foldout.style.marginLeft = 12;
-                foldout.style.marginRight = 12;
-                foldout.style.marginTop = 2;
-                foldout.style.marginBottom = 6;
-                foldout.style.color = CodexPalette.Muted;
+                foldout.style.marginLeft = 18;
+                foldout.style.marginRight = 18;
+                foldout.style.marginTop = 4;
+                foldout.style.marginBottom = 10;
+                foldout.style.paddingLeft = 8;
+                foldout.style.paddingRight = 8;
+                foldout.style.paddingTop = 5;
+                foldout.style.paddingBottom = 5;
+                foldout.style.backgroundColor = CodexPalette.Surface;
+                foldout.style.borderTopWidth = 1;
+                foldout.style.borderBottomWidth = 1;
+                foldout.style.borderLeftWidth = 1;
+                foldout.style.borderRightWidth = 1;
+                foldout.style.borderTopColor = CodexPalette.Border;
+                foldout.style.borderBottomColor = CodexPalette.Border;
+                foldout.style.borderLeftColor = CodexPalette.Border;
+                foldout.style.borderRightColor = CodexPalette.Border;
+                foldout.style.borderTopLeftRadius = 10;
+                foldout.style.borderTopRightRadius = 10;
+                foldout.style.borderBottomLeftRadius = 10;
+                foldout.style.borderBottomRightRadius = 10;
+                foldout.style.color = CodexPalette.Text;
 
                 // History groups are collapsed, so building hundreds of hidden
                 // tool rows up front makes selecting a long thread very slow.
@@ -2772,7 +2956,8 @@ namespace Minerva.Codex
                             item,
                             m_ShowReasoning,
                             m_ShowToolCalls,
-                            id => m_Workspace?.SelectThread(id));
+                            id => m_Workspace?.SelectThread(id),
+                            (processId, text) => m_Workspace?.SendTerminalInput(processId, text));
                     }
                 }
 
@@ -2841,6 +3026,46 @@ namespace Minerva.Codex
                     m_Transcript.scrollOffset = previousOffset;
                 }
             });
+        }
+
+        void AddEmptyState()
+        {
+            var state = new VisualElement();
+            state.style.flexGrow = 1;
+            state.style.justifyContent = Justify.Center;
+            state.style.alignItems = Align.Center;
+            state.style.paddingLeft = 32;
+            state.style.paddingRight = 32;
+            state.style.paddingBottom = 48;
+
+            var mark = new Label("◆");
+            mark.style.fontSize = 34;
+            mark.style.color = CodexPalette.Accent;
+            mark.style.marginBottom = 12;
+            state.Add(mark);
+
+            var title = new Label("Codex Assistant");
+            title.style.fontSize = 19;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = CodexPalette.Text;
+            state.Add(title);
+
+            var copy = new Label("Start a conversation below, or choose one from the sidebar.");
+            copy.style.fontSize = 11;
+            copy.style.color = CodexPalette.Muted;
+            copy.style.whiteSpace = WhiteSpace.Normal;
+            copy.style.unityTextAlign = TextAnchor.MiddleCenter;
+            copy.style.marginTop = 7;
+            copy.style.maxWidth = 360;
+            state.Add(copy);
+
+            var hint = new Label("The active Editor project is used as the working directory.");
+            hint.style.fontSize = 9;
+            hint.style.color = CodexPalette.TextDim;
+            hint.style.marginTop = 14;
+            state.Add(hint);
+
+            m_Transcript.Add(state);
         }
 
         void AddPlaceholder(string text)

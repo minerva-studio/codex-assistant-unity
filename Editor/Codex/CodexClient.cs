@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using Newtonsoft.Json.Linq;
 
 namespace Minerva.Codex
@@ -88,6 +89,26 @@ namespace Minerva.Codex
             var parameters = BuildThreadParameters(query);
             parameters["searchTerm"] = query.SearchTerm;
             Request("thread/search", parameters, result => onResult?.Invoke(result?["data"] as JArray), onError);
+        }
+
+        public void WriteCommandInput(
+            string processId,
+            string text,
+            Action onResult,
+            Action<string> onError)
+        {
+            if (string.IsNullOrEmpty(processId))
+            {
+                onError?.Invoke("processId is required for command/exec/write");
+                return;
+            }
+
+            var parameters = new JObject
+            {
+                ["processId"] = processId,
+                ["deltaBase64"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(text ?? string.Empty)),
+            };
+            Request("command/exec/write", parameters, _ => onResult?.Invoke(), onError);
         }
 
         public void ArchiveThread(string threadId, Action onResult, Action<string> onError)

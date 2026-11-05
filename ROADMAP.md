@@ -24,6 +24,10 @@
   `send_user_message_question_reply` messages.
 - Command, file-change and permission approvals with allow-once/session/deny, plus standard MCP form/URL
   elicitations in the same interaction card.
+- P1 live updates: command/file output, MCP progress, plan steps, turn diff, terminal input for PTY commands
+  and `serverRequest/resolved` cleanup.
+- Modern visual pass: palette/surface hierarchy, compact toolbar/sidebar, card-based Process and interaction
+  surfaces, roomier composer, empty state and stable active-thread indicator.
 - Collapsible Process groups around intermediate replies, reasoning and tool records; live groups stay
   expanded, history collapses. Short reasoning stays inline, long chains fold under **Full reasoning**;
   settings can hide reasoning or tools, and tool screenshots render as images.
@@ -37,7 +41,7 @@
 
 - Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard OpenAI
   elicitation forms.
-- A broader visual refresh of the window: denser toolbar/sidebar, updated palette and message spacing.
+- Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
 - Thread management: rename, paginated history, unarchive.
 
 ## Later

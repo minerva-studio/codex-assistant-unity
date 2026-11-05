@@ -17,7 +17,8 @@ namespace Minerva.Codex
             JObject item,
             bool showReasoning,
             bool showTools,
-            Action<string> openThread = null)
+            Action<string> openThread = null,
+            Action<string, string> sendTerminalInput = null)
         {
             string type = item["type"]?.Value<string>() ?? "unknown";
             switch (type)
@@ -40,12 +41,23 @@ namespace Minerva.Codex
                     {
                         RenderPlan(parent, item);
                     }
-
+                    break;
+                case "turnPlan":
+                    if (showTools)
+                    {
+                        RenderTurnPlan(parent, item);
+                    }
+                    break;
+                case "turnDiff":
+                    if (showTools)
+                    {
+                        RenderTurnDiff(parent, item);
+                    }
                     break;
                 case "commandExecution":
                     if (showTools)
                     {
-                        RenderCommand(parent, item);
+                        RenderCommand(parent, item, sendTerminalInput);
                     }
 
                     break;
@@ -497,12 +509,23 @@ namespace Minerva.Codex
             AddText(foldout, text);
         }
 
-        static void RenderCommand(VisualElement parent, JObject item)
+        static void RenderCommand(
+            VisualElement parent,
+            JObject item,
+            Action<string, string> sendTerminalInput)
         {
             string command = item["command"]?.Value<string>() ?? string.Empty;
             string title = string.IsNullOrEmpty(command) ? "Command" : $"$ {OneLine(command, 80)}";
             Foldout foldout = Section(parent, title);
             AddStatus(foldout, item);
+            string status = item["status"]?.Value<string>() ?? string.Empty;
+            bool running = status.Equals("inProgress", StringComparison.OrdinalIgnoreCase) ||
+                           status.Equals("running", StringComparison.OrdinalIgnoreCase) ||
+                           status.Equals("started", StringComparison.OrdinalIgnoreCase);
+            if (running)
+            {
+                foldout.value = true;
+            }
 
             if (!string.IsNullOrWhiteSpace(command))
             {
@@ -515,6 +538,131 @@ namespace Minerva.Codex
                 Foldout outputSection = Section(foldout, "Output");
                 AddMuted(outputSection, output.TrimEnd());
             }
+
+            string terminalInput = item["terminalInput"]?.Value<string>();
+            if (!string.IsNullOrWhiteSpace(terminalInput))
+            {
+                Foldout inputSection = Section(foldout, "Terminal input");
+                AddCode(inputSection, terminalInput);
+            }
+
+            string processId = item["processId"]?.Value<string>();
+            if (sendTerminalInput == null || string.IsNullOrEmpty(processId) || !running)
+            {
+                return;
+            }
+
+            var inputRow = new VisualElement();
+            inputRow.style.flexDirection = FlexDirection.Row;
+            inputRow.style.alignItems = Align.Center;
+            inputRow.style.marginTop = 5;
+            foldout.Add(inputRow);
+
+            var input = new TextField { name = "codex-terminal-input" };
+            input.style.flexGrow = 1;
+            input.textEdition.placeholder = "Send terminal input...";
+            inputRow.Add(input);
+
+            var send = new Button(() =>
+            {
+                if (!string.IsNullOrWhiteSpace(input.value))
+                {
+                    sendTerminalInput(processId, input.value);
+                    input.value = string.Empty;
+                }
+            })
+            {
+                text = "Send",
+            };
+            send.style.marginLeft = 5;
+            inputRow.Add(send);
+
+            input.RegisterCallback<KeyDownEvent>(evt =>
+            {
+                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                {
+                    if (!string.IsNullOrWhiteSpace(input.value))
+                    {
+                        sendTerminalInput(processId, input.value);
+                        input.value = string.Empty;
+                    }
+
+                    evt.StopPropagation();
+                }
+            });
+        }
+
+        static void RenderTurnPlan(VisualElement parent, JObject item)
+        {
+            JArray plan = item["plan"] as JArray;
+            if (plan == null || plan.Count == 0)
+            {
+                return;
+            }
+
+            Foldout foldout = Section(parent, "Plan");
+            foldout.value = true;
+            string explanation = item["explanation"]?.Value<string>();
+            if (!string.IsNullOrWhiteSpace(explanation))
+            {
+                AddMuted(foldout, explanation);
+            }
+
+            foreach (JToken token in plan)
+            {
+                if (token is not JObject step)
+                {
+                    continue;
+                }
+
+                string text = step["step"]?.Value<string>();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    continue;
+                }
+
+                string status = step["status"]?.Value<string>() ?? "pending";
+                var label = new Label($"{PlanStatusMark(status)} {text}");
+                label.style.whiteSpace = WhiteSpace.Normal;
+                label.style.fontSize = 10;
+                label.style.color = PlanStatusColor(status);
+                label.style.marginTop = 2;
+                foldout.Add(label);
+            }
+        }
+
+        static void RenderTurnDiff(VisualElement parent, JObject item)
+        {
+            string diff = item["diff"]?.Value<string>();
+            if (string.IsNullOrWhiteSpace(diff))
+            {
+                return;
+            }
+
+            Foldout foldout = Section(parent, "Turn diff");
+            AddCode(foldout, diff);
+        }
+
+        static string PlanStatusMark(string status)
+        {
+            return status switch
+            {
+                "completed" => "✓",
+                "inProgress" or "in_progress" => "▶",
+                "failed" => "✕",
+                _ => "○",
+            };
+        }
+
+        static Color PlanStatusColor(string status)
+        {
+            return status switch
+            {
+                "completed" => CodexPalette.Success,
+                "inProgress" or "in_progress" => CodexPalette.Warning,
+                "failed" => CodexPalette.Error,
+                _ => CodexPalette.Muted,
+            };
         }
 
         static void RenderFileChange(VisualElement parent, JObject item)
@@ -530,9 +678,23 @@ namespace Minerva.Codex
 
             Foldout foldout = Section(parent, title);
             AddStatus(foldout, item);
+            string status = item["status"]?.Value<string>() ?? string.Empty;
+            if (status.Equals("inProgress", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("running", StringComparison.OrdinalIgnoreCase))
+            {
+                foldout.value = true;
+            }
+
             if (changes == null)
             {
                 return;
+            }
+
+            string output = item["output"]?.Value<string>();
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                Foldout outputSection = Section(foldout, "Output");
+                AddMuted(outputSection, output.TrimEnd());
             }
 
             foreach (JToken change in changes)
@@ -560,6 +722,18 @@ namespace Minerva.Codex
             string tool = item["tool"]?.Value<string>() ?? "tool";
             Foldout foldout = Section(parent, $"MCP · {server}/{tool}");
             AddStatus(foldout, item);
+            string status = item["status"]?.Value<string>() ?? string.Empty;
+            if (status.Equals("inProgress", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("running", StringComparison.OrdinalIgnoreCase))
+            {
+                foldout.value = true;
+            }
+
+            string progress = item["progress"]?.Value<string>();
+            if (!string.IsNullOrWhiteSpace(progress))
+            {
+                AddMuted(foldout, progress);
+            }
 
             JToken arguments = item["arguments"];
             if (arguments != null && arguments.Type != JTokenType.Null)
@@ -745,24 +919,32 @@ namespace Minerva.Codex
         {
             var bubble = new VisualElement();
             bubble.style.backgroundColor = background;
-            bubble.style.borderTopLeftRadius = 6;
-            bubble.style.borderTopRightRadius = 6;
-            bubble.style.borderBottomLeftRadius = 6;
-            bubble.style.borderBottomRightRadius = 6;
-            bubble.style.paddingLeft = 10;
-            bubble.style.paddingRight = 10;
-            bubble.style.paddingTop = 6;
-            bubble.style.paddingBottom = 8;
-            bubble.style.marginLeft = 12;
-            bubble.style.marginRight = 12;
-            bubble.style.marginTop = 2;
-            bubble.style.marginBottom = 8;
+            bubble.style.borderTopWidth = 1;
+            bubble.style.borderBottomWidth = 1;
+            bubble.style.borderLeftWidth = 1;
+            bubble.style.borderRightWidth = 1;
+            bubble.style.borderTopColor = CodexPalette.Border;
+            bubble.style.borderBottomColor = CodexPalette.Border;
+            bubble.style.borderLeftColor = CodexPalette.Border;
+            bubble.style.borderRightColor = CodexPalette.Border;
+            bubble.style.borderTopLeftRadius = 12;
+            bubble.style.borderTopRightRadius = 12;
+            bubble.style.borderBottomLeftRadius = 12;
+            bubble.style.borderBottomRightRadius = 12;
+            bubble.style.paddingLeft = 14;
+            bubble.style.paddingRight = 14;
+            bubble.style.paddingTop = 10;
+            bubble.style.paddingBottom = 12;
+            bubble.style.marginLeft = 18;
+            bubble.style.marginRight = 18;
+            bubble.style.marginTop = 4;
+            bubble.style.marginBottom = 12;
 
             var caption = new Label(role);
-            caption.style.fontSize = 9;
+            caption.style.fontSize = 8;
             caption.style.unityFontStyleAndWeight = FontStyle.Bold;
-            caption.style.color = CodexPalette.Muted;
-            caption.style.marginBottom = 3;
+            caption.style.color = role == "YOU" ? CodexPalette.Accent : CodexPalette.TextDim;
+            caption.style.marginBottom = 5;
             bubble.Add(caption);
 
             return bubble;

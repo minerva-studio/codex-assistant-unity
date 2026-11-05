@@ -1681,6 +1681,40 @@ namespace Minerva.Codex
                 case "item/reasoning/summaryTextDelta":
                     OnReasoningSummaryDelta(parameters);
                     break;
+                case "item/commandExecution/outputDelta":
+                    OnCommandOutputDelta(parameters);
+                    break;
+                case "item/commandExecution/terminalInteraction":
+                    OnTerminalInteraction(parameters);
+                    break;
+                case "item/fileChange/outputDelta":
+                    OnFileChangeOutputDelta(parameters);
+                    break;
+                case "item/fileChange/patchUpdated":
+                    OnFileChangePatchUpdated(parameters);
+                    break;
+                case "item/mcpToolCall/progress":
+                    OnMcpToolProgress(parameters);
+                    break;
+                case "item/plan/delta":
+                    OnPlanDelta(parameters);
+                    break;
+                case "turn/plan/updated":
+                    OnTurnPlanUpdated(parameters);
+                    break;
+                case "turn/diff/updated":
+                    OnTurnDiffUpdated(parameters);
+                    break;
+                case "serverRequest/resolved":
+                    OnServerRequestResolved(parameters);
+                    break;
+                case "command/exec/outputDelta":
+                case "process/outputDelta":
+                    OnProcessOutput(parameters);
+                    break;
+                case "process/exited":
+                    OnProcessExited(parameters);
+                    break;
                 case "turn/completed":
                     OnTurnCompleted(parameters);
                     break;
@@ -2034,6 +2068,275 @@ namespace Minerva.Codex
 
             m_ReasoningSummaries[SummaryKey(threadId, itemId)] = (JArray)summary.DeepClone();
             MarkTranscriptChanged(threadId);
+        }
+
+        void OnCommandOutputDelta(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            string delta = parameters["delta"]?.Value<string>();
+            if (string.IsNullOrEmpty(itemId) || string.IsNullOrEmpty(delta))
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem(itemId, "commandExecution");
+            AppendLiveOutput(item, delta);
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnTerminalInteraction(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            string stdin = parameters["stdin"]?.Value<string>();
+            if (string.IsNullOrEmpty(itemId) || string.IsNullOrEmpty(stdin))
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem(itemId, "commandExecution");
+            item["terminalInput"] = stdin;
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnFileChangeOutputDelta(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            string delta = parameters["delta"]?.Value<string>();
+            if (string.IsNullOrEmpty(itemId) || string.IsNullOrEmpty(delta))
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem(itemId, "fileChange");
+            AppendLiveOutput(item, delta, "output");
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnFileChangePatchUpdated(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            if (string.IsNullOrEmpty(itemId) || parameters["changes"] is not JArray changes)
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem(itemId, "fileChange");
+            item["changes"] = changes.DeepClone();
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnMcpToolProgress(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            string message = parameters["message"]?.Value<string>();
+            if (string.IsNullOrEmpty(itemId) || string.IsNullOrEmpty(message))
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem(itemId, "mcpToolCall");
+            item["progress"] = message;
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnPlanDelta(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string itemId = parameters["itemId"]?.Value<string>();
+            string delta = parameters["delta"]?.Value<string>();
+            if (string.IsNullOrEmpty(itemId) || string.IsNullOrEmpty(delta))
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem(itemId, "plan");
+            item["text"] = (item["text"]?.Value<string>() ?? string.Empty) + delta;
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnTurnPlanUpdated(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId) ||
+                parameters["plan"] is not JArray plan)
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem("live-turn-plan", "turnPlan");
+            item["plan"] = plan.DeepClone();
+            item["explanation"] = parameters["explanation"]?.DeepClone() ?? JValue.CreateNull();
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnTurnDiffUpdated(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string diff = parameters["diff"]?.Value<string>();
+            if (string.IsNullOrEmpty(diff))
+            {
+                return;
+            }
+
+            JObject item = EnsureLiveItem("live-turn-diff", "turnDiff");
+            item["diff"] = diff;
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnServerRequestResolved(JObject parameters)
+        {
+            string requestId = parameters["requestId"]?.ToString();
+            if (string.IsNullOrEmpty(requestId))
+            {
+                return;
+            }
+
+            m_QuestionRequests.RemoveAll(request => request.Id?.ToString() == requestId);
+            m_ApprovalRequests.RemoveAll(request => request.Id?.ToString() == requestId);
+            Status = HasPendingQuestion
+                ? "Codex is waiting for your answer"
+                : HasPendingApproval
+                    ? "Codex is waiting for your approval"
+                    : IsRunning ? "Codex is working..." : Status;
+            Changed?.Invoke();
+        }
+
+        void OnProcessOutput(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string processId = parameters["processId"]?.Value<string>();
+            string handle = parameters["processHandle"]?.Value<string>();
+            string encoded = parameters["deltaBase64"]?.Value<string>();
+            if (string.IsNullOrEmpty(encoded))
+            {
+                return;
+            }
+
+            JObject item = FindLiveItem("processId", processId) ??
+                           FindLiveItem("processHandle", handle);
+            if (item == null)
+            {
+                return;
+            }
+
+            string delta;
+            try
+            {
+                delta = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+            }
+            catch (FormatException)
+            {
+                return;
+            }
+
+            AppendLiveOutput(item, delta);
+            MarkTranscriptChanged(threadId);
+        }
+
+        void OnProcessExited(JObject parameters)
+        {
+            if (!TryGetLiveThread(parameters, out string threadId))
+            {
+                return;
+            }
+
+            string handle = parameters["processHandle"]?.Value<string>();
+            JObject item = FindLiveItem("processHandle", handle);
+            if (item == null)
+            {
+                return;
+            }
+
+            item["exitCode"] = parameters["exitCode"]?.DeepClone() ?? JValue.CreateNull();
+            item["status"] = "completed";
+            MarkTranscriptChanged(threadId);
+        }
+
+        JObject EnsureLiveItem(string itemId, string type)
+        {
+            JArray items = EnsureLiveItems();
+            int index = IndexOfItem(items, itemId);
+            if (index >= 0 && items[index] is JObject existing)
+            {
+                return existing;
+            }
+
+            var item = new JObject
+            {
+                ["id"] = itemId,
+                ["type"] = type,
+            };
+            items.Add(item);
+            return item;
+        }
+
+        JObject FindLiveItem(string field, string value)
+        {
+            if (string.IsNullOrEmpty(value) || m_LiveTurn?["items"] is not JArray items)
+            {
+                return null;
+            }
+
+            foreach (JToken token in items)
+            {
+                if (token is JObject item &&
+                    item[field]?.Value<string>() == value &&
+                    item["type"]?.Value<string>() == "commandExecution")
+                {
+                    return item;
+                }
+            }
+
+            return null;
+        }
+
+        static void AppendLiveOutput(JObject item, string delta, string field = "aggregatedOutput")
+        {
+            const int maxChars = 300_000;
+            string existing = item[field]?.Value<string>() ?? string.Empty;
+            string combined = existing + delta;
+            if (combined.Length > maxChars)
+            {
+                combined = "… earlier output truncated …\n" + combined.Substring(combined.Length - maxChars);
+            }
+
+            item[field] = combined;
         }
 
         JObject EnsureReasoningItem(string itemId, out JArray summary)
@@ -2766,6 +3069,19 @@ namespace Minerva.Codex
                 ? "Codex is waiting for your approval"
                 : IsRunning ? "Codex is working..." : "Answer sent";
             Changed?.Invoke();
+            return true;
+        }
+
+        public bool SendTerminalInput(string processId, string text)
+        {
+            if (string.IsNullOrEmpty(processId) ||
+                string.IsNullOrWhiteSpace(text) ||
+                m_Client == null)
+            {
+                return false;
+            }
+
+            m_Client.WriteCommandInput(processId, text.TrimEnd() + "\n", null, OnFailed);
             return true;
         }
 

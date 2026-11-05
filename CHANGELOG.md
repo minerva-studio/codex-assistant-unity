@@ -30,6 +30,10 @@ All notable changes to this package are documented here.
   app-server response. Stored question/answer wrappers render as question/answer cards instead of raw JSON.
 - Command, file-change and permission approval requests plus standard MCP form/URL elicitations render as
   interaction cards and send the protocol response instead of leaving the turn waiting.
+- P1 live updates: command/file output, MCP progress, plan steps, turn diff and resolved server requests;
+  running PTY commands accept terminal input.
+- Visual refresh of the window: palette, toolbar, compact sidebar rows, card surfaces, composer, empty state
+  and a stable leading active-thread indicator.
 - Archive now verifies the thread is actually gone after `thread/archive`, refreshes the thread list, and
   filters the archived id; if another Codex client still holds it, the window keeps it and explains why.
 - Codex file/image attachment annotations are stripped to the actual request, and data-URI image
