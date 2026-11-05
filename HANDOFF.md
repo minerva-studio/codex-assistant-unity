@@ -124,6 +124,11 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   top-right of the plain block, so they do not cover the message text. Fork calls
   `CodexWorkspace.ForkThread(source, lastTurnId)` and the app-server `thread/fork` request sets
   `lastTurnId`, which forks through that turn inclusively. Forking is refused while a turn is running.
+- Select text: UI Toolkit `Label` exposes `ITextSelection` but reports `isSelectable == false` even with
+  `focusable = true`; rich message labels therefore cannot be dragged. A header toggle switches to
+  `m_SelectView`, containing a read-only multiline `TextField` with a plain-text transcript. It includes
+  user/agent messages, not tool output, and caps at 120k chars to keep layout responsive. The normal
+  `m_Transcript` is hidden while active and restored by the Rich text button.
 - `BuildAgentsPanel` resets `m_AgentsSignature`; otherwise a UI rebuild can reuse the old signature while
   the new `m_AgentsList` is empty, leaving the rail blank.
 - Historical question replies are user messages wrapped as

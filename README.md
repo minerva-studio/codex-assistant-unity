@@ -58,6 +58,9 @@ tools are next.
 - Right-click a sidebar conversation for **Open**, **Rename...**, **Copy resume**, **Fork** and **Archive...**.
 - Hover any user or Codex message for **Copy** and **Fork from here**. Fork from here forks the conversation
   through that message's turn (`lastTurnId`), so later turns are omitted.
+- **Select text** in the header switches to a read-only plain-text transcript. You can drag-select, Ctrl/Cmd+A
+  and copy there; **Rich text** returns to the formatted conversation. UI Toolkit rich labels themselves do
+  not expose text selection.
 - Codex attachment annotations (“Files mentioned by the user… My request:”) are collapsed to the actual
   request; base64 image attachments render as images instead of dumping their payload into the transcript.
   Historical Process groups build their hidden tool rows lazily, so long threads don't create thousands of

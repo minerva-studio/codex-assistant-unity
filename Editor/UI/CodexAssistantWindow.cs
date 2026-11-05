@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -23,6 +24,9 @@ namespace Minerva.Codex
         CodexWorkspace m_Workspace;
         ScrollView m_ThreadList;
         ScrollView m_Transcript;
+        VisualElement m_SelectView;
+        TextField m_SelectText;
+        bool m_SelectTextMode;
         Label m_StatusLabel;
         Label m_HeaderTitle;
         Label m_HeaderMeta;
@@ -32,6 +36,7 @@ namespace Minerva.Codex
         Button m_CopyButton;
         Button m_ForkButton;
         Button m_ArchiveButton;
+        Button m_SelectTextButton;
         Button m_SettingsButton;
         Button m_NewButton;
         TextField m_SearchField;
@@ -443,6 +448,13 @@ namespace Minerva.Codex
             StyleGhostButton(m_CopyButton);
             header.Add(m_CopyButton);
 
+            m_SelectTextButton = new Button(ToggleSelectTextMode) { text = "Select text" };
+            m_SelectTextButton.style.marginLeft = 4;
+            m_SelectTextButton.SetEnabled(false);
+            m_SelectTextButton.tooltip = "Switch to a selectable plain-text transcript";
+            StyleGhostButton(m_SelectTextButton);
+            header.Add(m_SelectTextButton);
+
             m_ForkButton = new Button(ForkConversation) { text = "Fork" };
             m_ForkButton.style.marginLeft = 4;
             m_ForkButton.SetEnabled(false);
@@ -460,6 +472,31 @@ namespace Minerva.Codex
             m_Transcript.verticalScroller.valueChanged += _ =>
                 m_FollowTranscript = IsTranscriptAtBottom();
             content.Add(m_Transcript);
+
+            m_SelectView = new VisualElement();
+            m_SelectView.style.flexGrow = 1;
+            m_SelectView.style.flexDirection = FlexDirection.Column;
+            m_SelectView.style.display = DisplayStyle.None;
+            content.Add(m_SelectView);
+
+            m_SelectText = new TextField
+            {
+                name = "codex-select-text",
+                multiline = true,
+                isReadOnly = true,
+            };
+            m_SelectText.style.flexGrow = 1;
+            m_SelectText.style.minHeight = 200;
+            m_SelectText.style.backgroundColor = CodexPalette.Window;
+            m_SelectText.style.color = CodexPalette.Text;
+            m_SelectText.style.fontSize = 11;
+            m_SelectText.style.paddingLeft = 18;
+            m_SelectText.style.paddingRight = 18;
+            m_SelectText.style.paddingTop = 14;
+            m_SelectText.style.paddingBottom = 14;
+            m_SelectText.RegisterCallback<AttachToPanelEvent>(_ => StyleSelectText());
+            m_SelectText.schedule.Execute(StyleSelectText);
+            m_SelectView.Add(m_SelectText);
 
             m_QuestionPanel = new VisualElement();
             m_QuestionPanel.style.flexShrink = 0;
@@ -2764,6 +2801,22 @@ namespace Minerva.Codex
 
         void RebuildTranscript()
         {
+            if (m_SelectTextMode)
+            {
+                RebuildSelectText();
+                return;
+            }
+
+            if (m_SelectView != null)
+            {
+                m_SelectView.style.display = DisplayStyle.None;
+            }
+
+            if (m_Transcript != null)
+            {
+                m_Transcript.style.display = DisplayStyle.Flex;
+            }
+
             string threadId = m_Workspace.SelectedThreadId;
             if (!string.Equals(threadId, m_LastTranscriptThreadId, StringComparison.Ordinal))
             {
@@ -2815,6 +2868,12 @@ namespace Minerva.Codex
         {
             if (m_Workspace == null)
             {
+                return;
+            }
+
+            if (m_SelectTextMode)
+            {
+                RebuildSelectText();
                 return;
             }
 
@@ -3166,6 +3225,11 @@ namespace Minerva.Codex
 
         void UpdateHeader()
         {
+            if (m_SelectTextButton != null)
+            {
+                m_SelectTextButton.text = m_SelectTextMode ? "Rich text" : "Select text";
+            }
+
             CodexThreadInfo selected = m_Workspace.SelectedThread;
             if (selected == null)
             {
@@ -3178,6 +3242,7 @@ namespace Minerva.Codex
                     : m_Workspace.IsConnected ? "Send a message below to start" : string.Empty;
                 m_BackButton.style.display = DisplayStyle.None;
                 m_CopyButton.SetEnabled(hasThread);
+                m_SelectTextButton.SetEnabled(hasThread);
                 m_ForkButton.SetEnabled(
                     hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
                 m_ArchiveButton.SetEnabled(hasThread && m_Workspace.IsConnected && !m_Workspace.IsRunning);
@@ -3192,6 +3257,7 @@ namespace Minerva.Codex
             m_BackButton.style.display = hasParent ? DisplayStyle.Flex : DisplayStyle.None;
             m_BackButton.SetEnabled(hasParent && m_Workspace.IsConnected);
             m_CopyButton.SetEnabled(true);
+            m_SelectTextButton.SetEnabled(true);
             m_ForkButton.SetEnabled(
                 m_Workspace.IsConnected && !m_Workspace.IsRunning && !m_Workspace.IsForking);
             m_ArchiveButton.SetEnabled(m_Workspace.IsConnected && !m_Workspace.IsRunning);
@@ -3223,6 +3289,174 @@ namespace Minerva.Codex
             {
                 EditorGUIUtility.systemCopyBuffer = text;
             }
+        }
+
+        void ToggleSelectTextMode()
+        {
+            if (m_Workspace == null || string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
+            {
+                return;
+            }
+
+            m_SelectTextMode = !m_SelectTextMode;
+            m_SelectTextButton.text = m_SelectTextMode ? "Rich text" : "Select text";
+            m_SelectTextButton.tooltip = m_SelectTextMode
+                ? "Return to the formatted conversation"
+                : "Switch to a selectable plain-text transcript";
+            RebuildTranscript();
+        }
+
+        void StyleSelectText()
+        {
+            if (m_SelectText == null)
+            {
+                return;
+            }
+
+            m_SelectText.style.backgroundColor = CodexPalette.Window;
+            m_SelectText.style.borderTopWidth = 0;
+            m_SelectText.style.borderBottomWidth = 0;
+            m_SelectText.style.borderLeftWidth = 0;
+            m_SelectText.style.borderRightWidth = 0;
+            VisualElement input = m_SelectText.Q(className: "unity-base-text-field__input")
+                                  ?? m_SelectText.Q(className: "unity-text-input");
+            if (input != null)
+            {
+                input.style.backgroundColor = CodexPalette.Window;
+                input.style.color = CodexPalette.Text;
+                input.style.borderTopWidth = 0;
+                input.style.borderBottomWidth = 0;
+                input.style.borderLeftWidth = 0;
+                input.style.borderRightWidth = 0;
+            }
+        }
+
+        void RebuildSelectText()
+        {
+            if (m_SelectView == null || m_SelectText == null)
+            {
+                return;
+            }
+
+            m_Transcript.style.display = DisplayStyle.None;
+            m_SelectView.style.display = DisplayStyle.Flex;
+            m_SelectText.SetValueWithoutNotify(BuildSelectableText());
+            StyleSelectText();
+        }
+
+        string BuildSelectableText()
+        {
+            if (m_Workspace == null || string.IsNullOrEmpty(m_Workspace.SelectedThreadId))
+            {
+                return string.Empty;
+            }
+
+            var text = new StringBuilder();
+            for (int index = m_Workspace.Turns.Count - 1; index >= 0; index--)
+            {
+                AppendSelectableTurn(text, m_Workspace.Turns[index]);
+            }
+
+            if (m_Workspace.LiveTurn != null)
+            {
+                AppendSelectableTurn(text, m_Workspace.LiveTurn);
+            }
+
+            const int maxChars = 120_000;
+            string result = text.ToString().Trim();
+            if (result.Length > maxChars)
+            {
+                result = result.Substring(0, maxChars) + "\n\n… transcript truncated for the text view …";
+            }
+
+            return result;
+        }
+
+        void AppendSelectableTurn(StringBuilder text, JObject turn)
+        {
+            if (turn?["items"] is not JArray items)
+            {
+                return;
+            }
+
+            foreach (JToken token in items)
+            {
+                if (token is not JObject item)
+                {
+                    continue;
+                }
+
+                string type = item["type"]?.Value<string>();
+                switch (type)
+                {
+                    case "userMessage":
+                        AppendBlock(text, "YOU", SelectableUserText(item));
+                        break;
+                    case "agentMessage":
+                        AppendBlock(text, "CODEX", item["text"]?.Value<string>());
+                        break;
+                }
+            }
+        }
+
+        static void AppendBlock(StringBuilder text, string role, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            if (text.Length > 0)
+            {
+                text.AppendLine();
+                text.AppendLine();
+            }
+
+            text.AppendLine(role);
+            text.Append(value.TrimEnd());
+        }
+
+        static string SelectableUserText(JObject item)
+        {
+            if (item["content"] is not JArray content)
+            {
+                return string.Empty;
+            }
+
+            var text = new StringBuilder();
+            foreach (JToken part in content)
+            {
+                string value = part["text"]?.Value<string>();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    if (text.Length > 0)
+                    {
+                        text.AppendLine();
+                    }
+
+                    text.Append(value);
+                }
+            }
+
+            string raw = text.ToString();
+            if (CodexQuestionReply.TryParse(raw, out List<CodexQuestionReply> replies, out string remainder))
+            {
+                var result = new StringBuilder();
+                foreach (CodexQuestionReply reply in replies)
+                {
+                    if (result.Length > 0)
+                    {
+                        result.AppendLine();
+                    }
+
+                    result.AppendLine($"QUESTION: {reply.Question}");
+                    result.Append($"ANSWER: {reply.Answer}");
+                }
+
+                return result.ToString();
+            }
+
+            return CodexAnnotations.Clean(raw);
         }
 
         void ForkFromTurn(string turnId)
