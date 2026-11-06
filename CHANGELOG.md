@@ -10,7 +10,8 @@ All notable changes to this package are documented here.
   individual file edits with their status, read-only patch detail, copy and history pagination. Repeated
   paths remain separate; live aggregate patches disappear on completion. Selection and reading position
   survive tab switches and background updates. Patches in Changes and the transcript use green/red text
-  and row backgrounds for additions/deletions, keeping their signs and original copy text.
+  and row backgrounds for additions/deletions. File add/delete operations mark every raw content line
+  (including blanks) as added/removed; updates use unified syntax. Copy retains the original text.
 - Changes history uses a fixed current-turn summary with newer/older navigation and a searchable turn
   popup. Long histories do not add permanent sidebar rows. Current-turn files use left-aligned filenames,
   secondary directories, compact operation markers and repeated-edit numbering, with a bounded height.

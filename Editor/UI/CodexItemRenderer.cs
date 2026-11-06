@@ -1121,7 +1121,9 @@ namespace Minerva.Codex
                 if (!string.IsNullOrWhiteSpace(diff))
                 {
                     Foldout diffSection = Section(foldout, "Diff");
-                    AddPatch(diffSection, diff);
+                    JToken operation = change["kind"];
+                    string operationName = operation is JObject ? operation["type"]?.Value<string>() : operation?.Value<string>();
+                    AddPatch(diffSection, diff, operationName);
                 }
             }
         }
@@ -1294,12 +1296,12 @@ namespace Minerva.Codex
             return label;
         }
 
-        static void AddPatch(VisualElement parent, string text)
+        static void AddPatch(VisualElement parent, string text, string operation = null)
         {
             var scroll = new ScrollView(ScrollViewMode.Horizontal);
             scroll.style.minWidth = 0;
             var patch = new CodexPatchView();
-            patch.SetPatch(text);
+            patch.SetPatch(text, operation);
             scroll.Add(patch);
             scroll.contentViewport.RegisterCallback<GeometryChangedEvent>(evt => patch.style.minWidth = evt.newRect.width);
             parent.Add(scroll);

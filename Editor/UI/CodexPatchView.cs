@@ -6,11 +6,12 @@ using UnityEngine.UIElements;
 
 namespace Minerva.Codex
 {
-    /// <summary>Displays literal unified patch lines while retaining their original text for copying.</summary>
+    /// <summary>Displays unified patches or whole-file additions/deletions, retaining the original text for copying.</summary>
     internal sealed class CodexPatchView : VisualElement
     {
         /// <summary>The original patch, including its line endings. A null input is normalized to an empty string.</summary>
         public string Patch { get; private set; } = "";
+        string m_Operation;
 
         public CodexPatchView()
         {
@@ -25,12 +26,14 @@ namespace Minerva.Codex
         }
 
         /// <summary>Replaces the display from the supplied patch without interpreting markup or changing the original text.</summary>
-        /// <param name="patch">Unified patch text; null is treated as an empty patch.</param>
-        public void SetPatch(string patch)
+        /// <param name="patch">Unified patch or whole-file content; null is treated as an empty string.</param>
+        /// <param name="operation">For add/delete, every content line is an addition/deletion. Other values use unified-diff syntax.</param>
+        public void SetPatch(string patch, string operation = null)
         {
             patch ??= "";
-            if (Patch == patch) return;
+            if (Patch == patch && m_Operation == operation) return;
             Patch = patch;
+            m_Operation = operation;
             Clear();
             if (patch.Length == 0) return;
 
@@ -38,9 +41,12 @@ namespace Minerva.Codex
             // Hunk ranges distinguish header-looking source text from the next file's headers.
             int oldLines = 0;
             int newLines = 0;
+            bool fullFile = operation == "add" || operation == "delete";
             for (int index = 0; index < lines.Length; index++)
             {
                 string text = lines[index];
+                // A final newline terminates the last content line; it is not another added/deleted line.
+                if (fullFile && index == lines.Length - 1 && text.Length == 0) break;
                 if (index < lines.Length - 1 && text.EndsWith("\r", StringComparison.Ordinal))
                     text = text.Substring(0, text.Length - 1);
 
@@ -55,7 +61,14 @@ namespace Minerva.Codex
                 line.style.paddingLeft = line.style.paddingRight = 8;
                 line.style.paddingTop = line.style.paddingBottom = 0;
                 line.style.backgroundColor = Color.clear;
-                if (text.StartsWith("@@", StringComparison.Ordinal))
+                bool added = operation == "add";
+                bool removed = operation == "delete";
+                if (fullFile)
+                {
+                    // Whole-file content may itself start with diff-looking characters.
+                    line.text = (added ? "+ " : "- ") + text;
+                }
+                else if (text.StartsWith("@@", StringComparison.Ordinal))
                 {
                     line.AddToClassList("codex-patch-hunk");
                     line.style.color = CodexPalette.Accent;
@@ -73,21 +86,13 @@ namespace Minerva.Codex
                 else if (text.StartsWith("+", StringComparison.Ordinal)
                     && (oldLines > 0 || newLines > 0 || !text.StartsWith("+++ ", StringComparison.Ordinal)))
                 {
-                    line.AddToClassList("codex-patch-addition");
-                    line.style.color = CodexPalette.Success;
-                    Color background = CodexPalette.Success;
-                    background.a = CodexPalette.Dark ? 0.18f : 0.12f;
-                    line.style.backgroundColor = background;
+                    added = true;
                     if (newLines > 0) newLines--;
                 }
                 else if (text.StartsWith("-", StringComparison.Ordinal)
                     && (oldLines > 0 || newLines > 0 || !text.StartsWith("--- ", StringComparison.Ordinal)))
                 {
-                    line.AddToClassList("codex-patch-deletion");
-                    line.style.color = CodexPalette.Error;
-                    Color background = CodexPalette.Error;
-                    background.a = CodexPalette.Dark ? 0.18f : 0.12f;
-                    line.style.backgroundColor = background;
+                    removed = true;
                     if (oldLines > 0) oldLines--;
                 }
                 else if (text.StartsWith(" ", StringComparison.Ordinal))
@@ -96,6 +101,14 @@ namespace Minerva.Codex
                     if (newLines > 0) newLines--;
                 }
 
+                if (added || removed)
+                {
+                    line.AddToClassList(added ? "codex-patch-addition" : "codex-patch-deletion");
+                    Color color = added ? CodexPalette.Success : CodexPalette.Error;
+                    line.style.color = color;
+                    color.a = CodexPalette.Dark ? 0.18f : 0.12f;
+                    line.style.backgroundColor = color;
+                }
                 Add(line);
             }
         }

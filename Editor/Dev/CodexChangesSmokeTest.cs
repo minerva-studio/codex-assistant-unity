@@ -110,6 +110,21 @@ namespace Minerva.Codex.Editor.Dev
                 Submit(panel.Q<Button>("codex-changes-newer"));
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "patch-198", "adjacent navigation follows picker selection");
                 Require(panel.Query<Button>().ToList().Count == buttonCount, "permanent navigation size remains constant across turn selection");
+
+                var wholeFile = Turn("whole-file", "completed", "class Example {}\n\n");
+                var change = (JObject)((JArray)((JObject)((JArray)wholeFile["items"])[0])["changes"])[0];
+                change["kind"] = new JObject { ["type"] = "add" };
+                turns.Clear();
+                turns.Add(wholeFile);
+                SelectThread(workspace, "whole-file");
+                refresh();
+                var patch = panel.Q<CodexPatchView>("codex-change-diff");
+                Require(patch.childCount == 2 && patch[0].ClassListContains("codex-patch-addition")
+                    && patch[1].ClassListContains("codex-patch-addition"), "Changes treats the whole new file, including blank lines, as added");
+                change["kind"] = new JObject { ["type"] = "delete" };
+                refresh();
+                Require(patch[0].ClassListContains("codex-patch-deletion") && patch.Patch == "class Example {}\n\n",
+                    "Changes treats whole deleted files as removed while preserving raw copy text");
                 return "PASS: fixed navigation with 200 turns, picker jumps, adjacent navigation/endpoints, context stripping, filename hierarchy, repeat edits, selection retention, live deduplication/completion and pagination";
             }
             finally

@@ -44,7 +44,8 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   turn's aggregate diff appears separately while available; it is removed when the turn ends. Closing or
   switching right-side tabs preserves the Changes selection and reading position. The column is resizable.
   Patches here and in the transcript show additions in green and deletions in red, with full-row backgrounds;
-  copying retains the original patch text.
+  new files mark every content line as added, deleted files mark every content line as removed, and updates
+  use unified-diff syntax. Copying retains the original text without synthesized display markers.
 - Running work has a pulsing hint: a dot in the toolbar, a dot on the active sidebar conversation, and
   pulsing dots on running subagent rows. Static green/yellow/red dots mark completed/failed agents.
   A historical subagent with a stale “running” state is shown as **idle** unless it appears in the current

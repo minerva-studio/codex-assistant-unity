@@ -378,7 +378,7 @@ namespace Minerva.Codex
                 ? "Live snapshot · available while this turn is running"
                 : selected.Operation + " · " + selected.Status;
             m_Status.style.color = StatusColor(selected?.Status);
-            m_Diff.SetPatch(selected?.Diff);
+            m_Diff.SetPatch(selected?.Diff, selected?.Operation);
             bool hasPatch = !string.IsNullOrEmpty(selected?.Diff);
             m_Diff.style.display = hasPatch ? DisplayStyle.Flex : DisplayStyle.None;
             m_NoPatch.style.display = selected != null && !hasPatch ? DisplayStyle.Flex : DisplayStyle.None;

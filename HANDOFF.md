@@ -435,6 +435,12 @@ neutral. Hunk line counts distinguish header-looking source lines. Original patc
 source. Focused checks: `CodexPatchSmokeTest`, `CodexChangesSmokeTest`, `CodexTerminalBufferSmokeTest`,
 `CodexTerminalSmokeTest`. The last also offers an isolated live PTY fixture; always call StopProtocol when done.
 
+`SetPatch(text, operation)` treats add/delete record payloads as whole-file content, with display-only +/−
+markers and green/red rows for every actual line, including blanks and diff-looking source text. The final
+newline does not invent an extra line. Update/live aggregate payloads keep unified-diff parsing. Both callers
+pass the record operation, and the view's refresh comparison includes it so identical text can switch from
+add to delete. Copy still uses the unmodified record payload. Patch/Changes smoke checks cover both surfaces.
+
 Unity CLI + Pipeline package are installed. Use them instead of killing the editor:
 
 ```
