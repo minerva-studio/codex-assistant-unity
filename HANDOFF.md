@@ -168,7 +168,10 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   newest errors plus three newest warnings. Console access uses reflection over `UnityEditor.LogEntries` /
   `LogEntry`; it forces the Log/Warning/Error toolbar bits on and clears the search text for the read, then
   restores both. Slash commands are sent without the block, and `StripContext` removes it from queued rows
-  while the persisted queued message still carries it.
+  while the persisted queued message still carries it. In the transcript, `CodexItemRenderer` extracts a
+  leading block with `TryExtract`, renders a compact chip (`Summarize`) whose details label (`FormatDetails`)
+  expands on click, and passes the full raw text to the footer's Select/Copy. Before this, UMarkdown treated
+  `<unity-context>` as raw HTML and hid the whole block, leaving no visible sign that context was attached.
 - Panel resizing: `BuildResizer` adds a five-pixel handle with a one-pixel grip on both sides of the content.
   Pointer capture drives `m_SidebarWidth`/`m_AgentsWidth`; `ClampSidebarWidth`/`ClampAgentsWidth` keep at least
   320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and

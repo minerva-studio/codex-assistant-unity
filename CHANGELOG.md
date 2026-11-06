@@ -53,7 +53,9 @@ All notable changes to this package are documented here.
 - The composer's **Unity state** toggle prepends a send-time snapshot of the active scene or prefab stage,
   selection, compile state and recent console errors/warnings. Reading the console temporarily clears the
   Console toolbar/search filters so hidden severities still produce entry text, then restores them; slash
-  commands are sent unchanged, and queued rows show the user's text without the snapshot.
+  commands are sent unchanged, and queued rows show the user's text without the snapshot. In the transcript
+  the snapshot renders as a compact **Unity state · scene · errors** chip whose details expand on click;
+  Select/Copy still use the full raw message.
 - Clearing the composer after a send now resets the text-editing caret indices too; typing the next message
   no longer throws `ArgumentOutOfRangeException` from `TextEditingUtilities.ReplaceSelection`.
 - Transcript auto-follow now re-scrolls on content and viewport geometry changes instead of relying on one

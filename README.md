@@ -82,7 +82,8 @@ tools are next.
   `localImage` inputs and render them inline on both sides.
 - **Unity state** in the composer attaches a live snapshot to each normal message: active scene or prefab
   stage, current selection, compile state and the latest console errors/warnings. The snapshot is taken when
-  you send, so it includes edits made since the last message. Slash commands are sent unchanged.
+  you send, so it includes edits made since the last message. In the transcript it collapses to a compact
+  **Unity state** chip; click to expand the snapshot. Slash commands are sent unchanged.
 - Dragging any non-image file into the composer inserts a file reference. Images and file-reference chips can
   be dragged back out to the Project window or Explorer. File and skill references also appear as removable
   chips directly below the composer; the text field remains the source of truth.

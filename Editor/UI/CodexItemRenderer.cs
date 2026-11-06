@@ -169,29 +169,40 @@ namespace Minerva.Codex
 
                 if (!string.IsNullOrWhiteSpace(remainder))
                 {
+                    string cleanedRemainder = CodexAnnotations.Clean(remainder);
+                    CodexUnityContext.TryExtract(
+                        cleanedRemainder,
+                        out string contextBlock,
+                        out string displayText);
                     RenderUserBubble(
                         parent,
-                        CodexAnnotations.Clean(remainder),
+                        displayText,
                         turnId,
                         copyMessage,
                         forkFromTurn,
                         timestamp,
                         canFork,
-                        linkRoot);
+                        linkRoot,
+                        cleanedRemainder,
+                        contextBlock);
                 }
 
                 return;
             }
 
+            string cleaned = CodexAnnotations.Clean(raw);
+            CodexUnityContext.TryExtract(cleaned, out string messageContext, out string messageText);
             RenderUserBubble(
                 parent,
-                CodexAnnotations.Clean(raw),
+                messageText,
                 turnId,
                 copyMessage,
                 forkFromTurn,
                 timestamp,
                 canFork,
-                linkRoot);
+                linkRoot,
+                cleaned,
+                messageContext);
         }
 
         static void RenderUserBubble(
@@ -202,24 +213,49 @@ namespace Minerva.Codex
             Action<string> forkFromTurn,
             long timestampMs,
             bool canFork,
-            string linkRoot)
+            string linkRoot,
+            string fullText = null,
+            string contextBlock = null)
         {
-            if (string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrWhiteSpace(text) && string.IsNullOrEmpty(contextBlock))
             {
                 return;
             }
 
+            string copyText = string.IsNullOrEmpty(fullText) ? text : fullText;
             var wrapper = new VisualElement();
             wrapper.style.flexDirection = FlexDirection.Column;
-            VisualElement bubble = Bubble(CodexPalette.UserBubble);
-            VisualElement content = CodexMarkdown.Render(CodexMedia.Tokenize(text), linkRoot);
-            bubble.Add(content);
-            wrapper.Add(bubble);
+            if (!string.IsNullOrEmpty(contextBlock))
+            {
+                wrapper.Add(BuildUnityContextChip(contextBlock));
+            }
+
+            VisualElement host;
+            VisualElement content;
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                VisualElement bubble = Bubble(CodexPalette.UserBubble);
+                content = CodexMarkdown.Render(CodexMedia.Tokenize(text), linkRoot);
+                bubble.Add(content);
+                wrapper.Add(bubble);
+                host = bubble;
+            }
+            else
+            {
+                // Context-only messages still need a host for the footer's
+                // selectable view; the empty content element keeps the page
+                // layout unchanged until Select is used.
+                host = wrapper;
+                content = new VisualElement();
+                content.style.display = DisplayStyle.None;
+                wrapper.Add(content);
+            }
+
             AddMessageFooter(
                 wrapper,
-                bubble,
+                host,
                 content,
-                text,
+                copyText,
                 turnId,
                 timestampMs,
                 copyMessage,
@@ -227,6 +263,82 @@ namespace Minerva.Codex
                 true,
                 canFork);
             parent.Add(wrapper);
+        }
+
+        static VisualElement BuildUnityContextChip(string contextBlock)
+        {
+            var container = new VisualElement { name = "codex-unity-context-message" };
+            container.style.alignSelf = Align.FlexEnd;
+            container.style.maxWidth = Length.Percent(68);
+            container.style.marginRight = 18;
+            container.style.marginBottom = 4;
+
+            string summary = CodexUnityContext.Summarize(contextBlock);
+            var toggle = new Button
+            {
+                name = "codex-unity-context-toggle",
+                text = "▸ " + summary,
+                tooltip = "Show the Unity Editor snapshot attached to this message",
+            };
+            toggle.style.minHeight = 22;
+            toggle.style.minWidth = 0;
+            toggle.style.maxWidth = Length.Percent(100);
+            toggle.style.paddingLeft = 8;
+            toggle.style.paddingRight = 8;
+            toggle.style.paddingTop = 3;
+            toggle.style.paddingBottom = 3;
+            toggle.style.borderTopWidth = 1;
+            toggle.style.borderBottomWidth = 1;
+            toggle.style.borderLeftWidth = 1;
+            toggle.style.borderRightWidth = 1;
+            toggle.style.borderTopColor = CodexPalette.PillBorder;
+            toggle.style.borderBottomColor = CodexPalette.PillBorder;
+            toggle.style.borderLeftColor = CodexPalette.PillBorder;
+            toggle.style.borderRightColor = CodexPalette.PillBorder;
+            toggle.style.borderTopLeftRadius = 11;
+            toggle.style.borderTopRightRadius = 11;
+            toggle.style.borderBottomLeftRadius = 11;
+            toggle.style.borderBottomRightRadius = 11;
+            toggle.style.backgroundColor = CodexPalette.Pill;
+            toggle.style.color = CodexPalette.TextDim;
+            toggle.style.fontSize = 9;
+            toggle.style.whiteSpace = WhiteSpace.Normal;
+            toggle.style.unityTextAlign = TextAnchor.MiddleLeft;
+            toggle.RegisterCallback<MouseEnterEvent>(_ =>
+                toggle.style.backgroundColor = CodexPalette.PillHover);
+            toggle.RegisterCallback<MouseLeaveEvent>(_ =>
+                toggle.style.backgroundColor = CodexPalette.Pill);
+
+            var details = new Label(CodexUnityContext.FormatDetails(contextBlock))
+            {
+                name = "codex-unity-context-details",
+            };
+            details.style.display = DisplayStyle.None;
+            details.style.marginTop = 4;
+            details.style.paddingLeft = 8;
+            details.style.paddingRight = 8;
+            details.style.paddingTop = 6;
+            details.style.paddingBottom = 6;
+            details.style.backgroundColor = CodexPalette.CodeBackground;
+            details.style.color = CodexPalette.Text;
+            details.style.fontSize = 9;
+            details.style.whiteSpace = WhiteSpace.Normal;
+            details.style.borderTopLeftRadius = 8;
+            details.style.borderTopRightRadius = 8;
+            details.style.borderBottomLeftRadius = 8;
+            details.style.borderBottomRightRadius = 8;
+
+            bool expanded = false;
+            toggle.clicked += () =>
+            {
+                expanded = !expanded;
+                details.style.display = expanded ? DisplayStyle.Flex : DisplayStyle.None;
+                toggle.text = (expanded ? "▾ " : "▸ ") + summary;
+            };
+
+            container.Add(toggle);
+            container.Add(details);
+            return container;
         }
 
         static void RenderQuestionReply(VisualElement parent, CodexQuestionReply reply, string linkRoot)

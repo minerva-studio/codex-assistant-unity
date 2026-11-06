@@ -107,25 +107,173 @@ namespace Minerva.Codex
         }
 
         /// <summary>
+        /// Splits a leading context block from the rest of a user message.
+        /// Returns false when the text does not start with a complete block.
+        /// </summary>
+        public static bool TryExtract(string text, out string context, out string remainder)
+        {
+            context = null;
+            remainder = text;
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            int start = 0;
+            while (start < text.Length && char.IsWhiteSpace(text[start]))
+            {
+                start++;
+            }
+
+            if (start + OpenTag.Length > text.Length ||
+                string.CompareOrdinal(text, start, OpenTag, 0, OpenTag.Length) != 0)
+            {
+                return false;
+            }
+
+            int end = text.IndexOf(CloseTag, start + OpenTag.Length, StringComparison.Ordinal);
+            if (end < 0)
+            {
+                return false;
+            }
+
+            end += CloseTag.Length;
+            context = text.Substring(start, end - start);
+            remainder = text.Substring(end).TrimStart('\r', '\n', ' ', '\t');
+            return true;
+        }
+
+        /// <summary>
         /// Returns the part of <paramref name="text"/> after a leading context
         /// block, for places that show a queued message without its snapshot.
         /// Text without the block is returned unchanged.
         /// </summary>
         public static string StripContext(string text)
         {
-            if (string.IsNullOrEmpty(text) || !text.StartsWith(OpenTag, StringComparison.Ordinal))
+            if (!TryExtract(text, out _, out string remainder))
             {
                 return text;
             }
 
-            int end = text.IndexOf(CloseTag, OpenTag.Length, StringComparison.Ordinal);
-            if (end < 0)
-            {
-                return text;
-            }
-
-            string remainder = text.Substring(end + CloseTag.Length).TrimStart('\r', '\n', ' ', '\t');
             return remainder.Length == 0 ? "Unity state" : remainder;
+        }
+
+        /// <summary>One-line label for the collapsed transcript chip.</summary>
+        public static string Summarize(string context)
+        {
+            if (string.IsNullOrEmpty(context))
+            {
+                return "Unity state";
+            }
+
+            string scene = null;
+            string compile = null;
+            string console = null;
+            foreach (string raw in context.Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.StartsWith("Prefab stage: ", StringComparison.Ordinal))
+                {
+                    scene = line.Substring("Prefab stage: ".Length);
+                }
+                else if (line.StartsWith("Scenes: ", StringComparison.Ordinal))
+                {
+                    scene = line.Substring("Scenes: ".Length);
+                }
+                else if (line.StartsWith("Compile: ", StringComparison.Ordinal))
+                {
+                    compile = line.Substring("Compile: ".Length);
+                }
+                else if (line.StartsWith("Console: ", StringComparison.Ordinal))
+                {
+                    console = line.Substring("Console: ".Length);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(scene))
+            {
+                int marker = scene.IndexOf(" (", StringComparison.Ordinal);
+                if (marker >= 0)
+                {
+                    scene = scene.Substring(0, marker);
+                }
+
+                int separator = scene.IndexOf(';');
+                if (separator >= 0)
+                {
+                    scene = scene.Substring(0, separator);
+                }
+
+                scene = Path.GetFileNameWithoutExtension(scene.Trim());
+                if (string.IsNullOrEmpty(scene) || scene.Equals("none", StringComparison.OrdinalIgnoreCase))
+                {
+                    scene = null;
+                }
+            }
+
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(scene))
+            {
+                parts.Add(scene);
+            }
+
+            if (!string.IsNullOrEmpty(console) &&
+                !console.Equals("clean", StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add(console);
+            }
+
+            if (string.Equals(compile, "failed", StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrEmpty(console) ||
+                 console.IndexOf("error", StringComparison.OrdinalIgnoreCase) < 0))
+            {
+                parts.Add("compile failed");
+            }
+
+            return parts.Count == 0
+                ? "Unity state"
+                : "Unity state · " + string.Join(" · ", parts);
+        }
+
+        /// <summary>Inner lines of the snapshot, without the wrapper tags.</summary>
+        public static string FormatDetails(string context)
+        {
+            if (string.IsNullOrEmpty(context))
+            {
+                return string.Empty;
+            }
+
+            string inner = context.Trim();
+            if (inner.StartsWith(OpenTag, StringComparison.Ordinal))
+            {
+                inner = inner.Substring(OpenTag.Length);
+            }
+
+            if (inner.EndsWith(CloseTag, StringComparison.Ordinal))
+            {
+                inner = inner.Substring(0, inner.Length - CloseTag.Length);
+            }
+
+            var lines = new List<string>();
+            foreach (string raw in inner.Replace("\r\n", "\n").Split('\n'))
+            {
+                string line = raw.TrimEnd();
+                if (line.TrimStart().StartsWith(
+                        "Auto-attached Unity Editor snapshot",
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(line) && lines.Count == 0)
+                {
+                    continue;
+                }
+
+                lines.Add(line);
+            }
+
+            return string.Join("\n", lines).Trim();
         }
 
         static string DescribeEditor()
