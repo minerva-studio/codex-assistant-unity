@@ -192,7 +192,7 @@ namespace Minerva.Codex
         internal static string EffortName(string effort) => string.IsNullOrEmpty(effort)
             ? "Default" : char.ToUpperInvariant(effort[0]) + effort.Substring(1);
 
-        internal static Color EffortColor(string effort) => effort == "ultra" || effort == "max"
+        internal static Color EffortColor(string effort) => effort == "ultra"
             ? new Color(.58f, .31f, 1f) : new Color(0, .46f, .9f);
 
         internal static void DrawFastIcon(Painter2D painter, bool filled)
