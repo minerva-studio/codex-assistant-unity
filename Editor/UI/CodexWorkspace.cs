@@ -3430,6 +3430,40 @@ namespace Minerva.Codex
                 case "item/tool/requestUserInput":
                     AddQuestionRequest(request, parameters);
                     break;
+                case "execCommandApproval":
+                    AddApproval(new CodexApprovalRequest
+                    {
+                        Id = request["id"],
+                        Kind = CodexApprovalKind.Command,
+                        Legacy = true,
+                        ThreadId = parameters["conversationId"]?.Value<string>(),
+                        ItemId = parameters["callId"]?.Value<string>(),
+                        Reason = parameters["reason"]?.Value<string>(),
+                        Command = JoinLegacyCommand(parameters["command"]),
+                        Cwd = parameters["cwd"]?.Value<string>(),
+                    });
+                    break;
+                case "applyPatchApproval":
+                    var legacyPatch = new CodexApprovalRequest
+                    {
+                        Id = request["id"],
+                        Kind = CodexApprovalKind.FileChange,
+                        Legacy = true,
+                        ThreadId = parameters["conversationId"]?.Value<string>(),
+                        ItemId = parameters["callId"]?.Value<string>(),
+                        Reason = parameters["reason"]?.Value<string>(),
+                        Cwd = parameters["grantRoot"]?.Value<string>(),
+                    };
+                    if (parameters["fileChanges"] is JObject legacyChanges)
+                    {
+                        foreach (JProperty change in legacyChanges.Properties())
+                        {
+                            legacyPatch.Files.Add(change.Name);
+                        }
+                    }
+
+                    AddApproval(legacyPatch);
+                    break;
                 case "item/commandExecution/requestApproval":
                     AddApproval(new CodexApprovalRequest
                     {
@@ -3490,6 +3524,26 @@ namespace Minerva.Codex
                     });
                     break;
             }
+        }
+
+        static string JoinLegacyCommand(JToken command)
+        {
+            if (command is not JArray parts)
+            {
+                return command?.Value<string>() ?? string.Empty;
+            }
+
+            var values = new List<string>();
+            foreach (JToken part in parts)
+            {
+                string value = part?.Value<string>();
+                if (!string.IsNullOrEmpty(value))
+                {
+                    values.Add(value);
+                }
+            }
+
+            return string.Join(" ", values);
         }
 
         void AddQuestionRequest(JObject request, JObject parameters)
@@ -3672,34 +3726,43 @@ namespace Minerva.Codex
             }
 
             JObject result;
-            switch (request.Kind)
+            if (request.Legacy &&
+                (request.Kind == CodexApprovalKind.Command ||
+                 request.Kind == CodexApprovalKind.FileChange))
             {
-                case CodexApprovalKind.Command:
-                case CodexApprovalKind.FileChange:
-                    result = new JObject { ["decision"] = action };
-                    break;
-                case CodexApprovalKind.Permissions:
-                    bool grant = action == "grant_turn" || action == "grant_session";
-                    result = new JObject
-                    {
-                        ["permissions"] = grant
-                            ? request.Permissions?.DeepClone() ?? new JObject()
-                            : new JObject(),
-                    };
-                    if (grant)
-                    {
-                        result["scope"] = action == "grant_session" ? "session" : "turn";
-                    }
+                result = LegacyApprovalResult(action);
+            }
+            else
+            {
+                switch (request.Kind)
+                {
+                    case CodexApprovalKind.Command:
+                    case CodexApprovalKind.FileChange:
+                        result = new JObject { ["decision"] = action };
+                        break;
+                    case CodexApprovalKind.Permissions:
+                        bool grant = action == "grant_turn" || action == "grant_session";
+                        result = new JObject
+                        {
+                            ["permissions"] = grant
+                                ? request.Permissions?.DeepClone() ?? new JObject()
+                                : new JObject(),
+                        };
+                        if (grant)
+                        {
+                            result["scope"] = action == "grant_session" ? "session" : "turn";
+                        }
 
-                    break;
-                default:
-                    result = new JObject { ["action"] = action };
-                    if (action == "accept" && content != null)
-                    {
-                        result["content"] = content;
-                    }
+                        break;
+                    default:
+                        result = new JObject { ["action"] = action };
+                        if (action == "accept" && content != null)
+                        {
+                            result["content"] = content;
+                        }
 
-                    break;
+                        break;
+                }
             }
 
             m_Connection.Respond(request.Id, result);
@@ -3711,6 +3774,34 @@ namespace Minerva.Codex
                     : IsRunning ? "Codex is working..." : "Response sent";
             Changed?.Invoke();
             return true;
+        }
+
+        /// <summary>
+        /// Legacy exec/patch approvals use the ReviewDecision union, not the
+        /// newer accept/acceptForSession/decline/cancel strings.
+        /// </summary>
+        static JObject LegacyApprovalResult(string action)
+        {
+            switch (action)
+            {
+                case "accept":
+                    return new JObject { ["decision"] = "approved" };
+                case "acceptForSession":
+                    return new JObject { ["decision"] = "approved_for_session" };
+                case "cancel":
+                    return new JObject { ["decision"] = "abort" };
+                default:
+                    return new JObject
+                    {
+                        ["decision"] = new JObject
+                        {
+                            ["denied"] = new JObject
+                            {
+                                ["rejection"] = "Declined in Codex Assistant",
+                            },
+                        },
+                    };
+            }
         }
 
         void OnDisconnected(string reason)

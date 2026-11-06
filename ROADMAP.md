@@ -54,8 +54,7 @@
 
 ## Next
 
-- Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard OpenAI
-  elicitation forms.
+- MCP device verification and non-standard OpenAI elicitation forms.
 - Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
 - Verify composer IME placement on 6000.6+ (the workaround compiles out there) and on macOS.
 

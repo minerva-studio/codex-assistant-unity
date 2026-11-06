@@ -25,6 +25,7 @@ namespace Minerva.Codex
         public string CommandKind;
         public JArray AvailableDecisions;
         public JObject Permissions;
+        public bool Legacy;
         public readonly List<string> Files = new List<string>();
         public string ServerName;
         public string McpMode;

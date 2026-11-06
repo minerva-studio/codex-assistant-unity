@@ -69,20 +69,22 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `{ answers: { questionId: { answers: [text] } } }` on the original server-request id. The composer is
   disabled while a question is pending. Pending requests are dropped on `turn/completed`, disconnect, send
   failure and shutdown.
-- Approvals: `OnServerRequest` also handles `item/commandExecution/requestApproval`,
-  `item/fileChange/requestApproval`, `item/permissions/requestApproval` and
-  `mcpServer/elicitation/request`. `CodexApprovalRequest` stores the request id, kind, thread/turn/item ids,
-  command/cwd/reason, available decisions, permission profile, file paths (looked up from the matching
-  `fileChange` item), or MCP schema details. `CodexAssistantWindow` shows one interaction at a time:
-  question first, then approval. Command/file responses are `{decision: accept|acceptForSession|decline|cancel}`;
-  permissions grant `{permissions: requestedProfile, scope: turn|session}` and deny `{permissions: {}}`;
-  MCP responses are `{action: accept|decline|cancel, content?}`.
+- Approvals: `OnServerRequest` handles `execCommandApproval`, `applyPatchApproval`,
+  `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
+  `item/permissions/requestApproval` and `mcpServer/elicitation/request`. `CodexApprovalRequest` stores the
+  request id, kind, legacy flag, thread/turn/item ids, command/cwd/reason, available decisions, permission
+  profile, file paths (looked up from the matching `fileChange` item, or mapped from legacy `fileChanges`),
+  or MCP schema details. `CodexAssistantWindow` shows one interaction at a time:
+  question first, then approval. New command/file responses are
+  `{decision: accept|acceptForSession|decline|cancel}`; legacy responses use the `ReviewDecision` union
+  (`approved`, `approved_for_session`, `{denied:{rejection}}`, `abort`). Permissions grant
+  `{permissions: requestedProfile, scope: turn|session}` and deny `{permissions: {}}`; MCP responses are
+  `{action: accept|decline|cancel, content?}`.
   The composer is disabled while any question or approval is pending. Pending approvals are cleared on
   `turn/completed`, disconnect, send failure and shutdown.
 - MCP elicitation forms support the standard `form` schema (string/number/boolean/enum/array fields, required
   fields) and `url` mode. `openai/userVerification` is shown but can only be declined/cancelled from the
-  window; non-standard OpenAI form schemas fall back to a decline card. Legacy approval methods are not
-  registered because `turn/start` uses the newer request methods.
+  window; non-standard OpenAI form schemas fall back to a decline card.
 - P1 live handlers in `OnNotification`:
   `item/commandExecution/outputDelta` appends `aggregatedOutput`;
   `item/commandExecution/terminalInteraction` records `terminalInput`;

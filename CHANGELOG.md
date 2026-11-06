@@ -29,7 +29,8 @@ All notable changes to this package are documented here.
 - `request_user_input` questions render as an answer card above the composer and are sent back as a proper
   app-server response. Stored question/answer wrappers render as question/answer cards instead of raw JSON.
 - Command, file-change and permission approval requests plus standard MCP form/URL elicitations render as
-  interaction cards and send the protocol response instead of leaving the turn waiting.
+  interaction cards and send the protocol response instead of leaving the turn waiting. Legacy
+  `execCommandApproval`/`applyPatchApproval` requests use the same cards and send `ReviewDecision` responses.
 - P1 live updates: command/file output, MCP progress, plan steps, turn diff and resolved server requests;
   running PTY commands accept terminal input.
 - Visual refresh of the window: palette, toolbar, compact sidebar rows, card surfaces, composer, empty state
