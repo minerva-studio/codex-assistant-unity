@@ -890,8 +890,8 @@ namespace Minerva.Codex
             m_AgentsList.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
 
             m_RightPanel.Add(header);
-            m_ChangesPanel = new CodexChangesPanel((anchor, items) =>
-                ShowPopup(anchor, "Files and changes", Mathf.Min(440f, rootVisualElement.layout.width - 16f), items, true));
+            m_ChangesPanel = new CodexChangesPanel((anchor, title, items) =>
+                ShowPopup(anchor, title, Mathf.Min(440f, rootVisualElement.layout.width - 16f), items, true));
             m_RightPanel.Add(m_ChangesPanel);
             m_SubagentsView = new VisualElement { name = "codex-subagents-view" };
             m_SubagentsView.style.flexGrow = 1;

@@ -42,16 +42,17 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   **← Parent** while viewing one.
 - The right column has **Changes / Subagents** tabs. Subagents lists the selected conversation's agents
   with status, model and current activity. Click a row to open that agent; **Agents N** opens its tab.
-- **Changes** opens recorded file edits for the selected conversation. One file selector shows the current
-  filename, record position and turn summary; previous/next buttons move through individual edits.
-  Click the selector to search all loaded file-change records in a popup capped at eight visible rows.
-  The popup includes turn context, operation and path; selecting a record displays its patch directly,
-  without a second file list. Repeated edits remain separate, and failed/declined
-  changes keep their status. Earlier turns use the same history pagination as the transcript. A running
-  turn's aggregate diff appears separately while available; it is removed when the turn ends. Closing or
-  switching right-side tabs preserves the Changes selection and reading position. The column is resizable
+- **Changes** shows all recorded file edits in one turn as a continuous, scrollable diff. The top scope
+  menu defaults to **Latest turn**, following new recorded turns; choose a historical turn to pin it.
+  Each file header shows its path and addition/deletion counts, with independent folding, **Open** and
+  **Copy** actions. Repeated edits remain separate and show their order; failed/declined changes keep
+  their status. The toolbar offers optional file jumps and collapse/expand all. Long lines wrap while
+  preserving source whitespace. Earlier turns use the same history pagination as the transcript.
+  A running turn's aggregate snapshot starts folded, is excluded from per-file totals, and disappears
+  when the turn ends. Totals describe recorded edits, not a cumulative working-tree comparison.
+  Closing or switching right-side tabs preserves the Changes scope, folding and reading position. The column is resizable
   up to the space available in the window, reserving 320px for the transcript; it has no fixed maximum width.
-  **Open file** opens the selected record's current local file. Relative paths use the
+  **Open** opens that record's current local file. Relative paths use the
   conversation directory; renamed records open their destination. Missing files and aggregate diffs disable
   Open. Unity assets use Unity's opener; other files use their default application.
   Patches here and in the transcript show additions in green and deletions in red, with full-row backgrounds;

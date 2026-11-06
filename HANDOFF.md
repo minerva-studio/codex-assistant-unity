@@ -432,15 +432,19 @@ remain present until history hydration succeeds. `Load earlier turns` uses the w
 The focused `Tools/Minerva/Codex/Check Changes Panel` smoke check opens and closes an isolated fixture
 window and sends no Codex message.
 
-Changes navigation has one file-change selector with filename, record position and cleaned turn text
-(shared `CodexWorkspace.ExtractUserText`). It reuses the window-owned searchable popup (eight visible
-rows), listing every loaded file record with turn context, operation and path. Previous/next moves through
-individual records, including repeated edits of the same path. There is no permanent secondary file list.
-Selection remains a turn-id/record-key pair; flattened entries are derived locally from the turn records.
-Earlier-history loading is a separate button and remains reachable from an empty panel. Only patch
-scroll position needs preservation. Native button submission, direct jumps and 200-turn constant-size
-navigation are exercised by the focused Changes smoke check.
-Changes also provides Open file for the selected record. Record paths remain actual file paths;
+Changes uses one continuous vertical reader for every record in the chosen turn. Scope is null for
+Latest (following new recorded turns), or a pinned historical turn id. The scope and optional file-jump
+menus reuse the window-owned searchable popup (eight visible rows). Cleaned turn text comes from
+`CodexWorkspace.ExtractUserText`. Each record view owns its folding state and is reconciled by record
+key within the rendered turn, retaining identity across refreshes; changing turn/thread resets it.
+File headers include path, counts, Open and Copy. Repeat edits are numbered rather than combined.
+Only Changes requests whitespace-preserving wrapping from CodexPatchView; transcript patches retain
+their existing layout. Patch classification supplies counts; scope totals exclude the live aggregate,
+which starts folded and disappears at completion. Totals count recorded edits, including repeat edits,
+and do not claim a cumulative working-tree diff. Earlier-history loading remains reachable from an
+empty panel. Folding, direct file jumps, raw copy and 200-turn bounded scope rendering are covered
+by the focused Changes smoke check.
+Changes also provides Open for each record. Record paths remain actual file paths;
 PreviousPath is retained separately for rename display, while opening uses the destination. The shared
 CodexMarkdown.ResolveLocalPath resolves against SelectedCwd (or project root), handles file URIs and rejects
 malformed paths. Open rechecks file existence at activation, and aggregate diffs have no target. OpenLink

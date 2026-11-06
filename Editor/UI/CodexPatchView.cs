@@ -11,10 +11,17 @@ namespace Minerva.Codex
     {
         /// <summary>The original patch, including its line endings. A null input is normalized to an empty string.</summary>
         public string Patch { get; private set; } = "";
+        /// <summary>Added content lines, excluding unified file/hunk headers and the terminating newline.</summary>
+        public int Additions { get; private set; }
+        /// <summary>Removed content lines, excluding unified file/hunk headers and the terminating newline.</summary>
+        public int Deletions { get; private set; }
+        readonly bool m_Wrap;
         string m_Operation;
 
-        public CodexPatchView()
+        /// <param name="wrap">Wraps long lines while preserving whitespace for continuous, narrow patch readers.</param>
+        public CodexPatchView(bool wrap = false)
         {
+            m_Wrap = wrap;
             AddToClassList("codex-patch");
             style.alignSelf = Align.Stretch;
             style.flexShrink = 0;
@@ -34,6 +41,7 @@ namespace Minerva.Codex
             if (Patch == patch && m_Operation == operation) return;
             Patch = patch;
             m_Operation = operation;
+            Additions = Deletions = 0;
             Clear();
             if (patch.Length == 0) return;
 
@@ -52,7 +60,8 @@ namespace Minerva.Codex
 
                 var line = new Label(text) { enableRichText = false };
                 line.AddToClassList("codex-patch-line");
-                line.style.whiteSpace = WhiteSpace.Pre;
+                line.style.whiteSpace = m_Wrap ? WhiteSpace.PreWrap : WhiteSpace.Pre;
+                line.style.minWidth = 0;
                 line.style.alignSelf = Align.Stretch;
                 line.style.flexShrink = 0;
                 line.style.minHeight = 15;
@@ -103,6 +112,8 @@ namespace Minerva.Codex
 
                 if (added || removed)
                 {
+                    if (added) Additions++;
+                    else Deletions++;
                     line.AddToClassList(added ? "codex-patch-addition" : "codex-patch-deletion");
                     Color color = added ? CodexPalette.Success : CodexPalette.Error;
                     line.style.color = color;

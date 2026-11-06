@@ -7,7 +7,7 @@ using UnityEngine.UIElements;
 
 namespace Minerva.Codex.Editor.Dev
 {
-    /// <summary>Checks Changes selection and rendering without sending a Codex message.</summary>
+    /// <summary>Checks continuous Changes reading without sending a Codex message.</summary>
     internal static class CodexChangesSmokeTest
     {
         const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -15,9 +15,8 @@ namespace Minerva.Codex.Editor.Dev
         [MenuItem("Tools/Minerva/Codex/Check Changes Panel")]
         public static string Run()
         {
-            Type panelType = typeof(CodexChangesPanel);
             List<CodexAssistantWindow.PopupItem> menu = null;
-            var panel = new CodexChangesPanel((_, items) => menu = items);
+            var panel = new CodexChangesPanel((_, _, items) => menu = items);
             var host = UnityEngine.ScriptableObject.CreateInstance<EditorWindow>();
             host.titleContent = new UnityEngine.GUIContent("Changes smoke fixture");
             host.rootVisualElement.Add(panel);
@@ -27,11 +26,10 @@ namespace Minerva.Codex.Editor.Dev
                 var workspace = new CodexWorkspace();
                 SelectThread(workspace, "smoke-thread");
                 var turns = (List<JObject>)typeof(CodexWorkspace).GetField("m_Turns", Fields).GetValue(workspace);
-                Action refresh = () => panelType.GetMethod("Refresh").Invoke(panel, new object[] { workspace });
+                Action refresh = () => panel.Refresh(workspace);
                 refresh();
                 Require(panel.Q<Label>("codex-changes-empty").text.Contains("recorded"), "empty state describes recorded data");
-
-                JObject current = Turn("current", "completed", "first patch", "second patch");
+                JObject current = Turn("current", "completed", "first patch", "second patch\r\n");
                 JObject older = Turn("older", "failed", "older patch");
                 ((JArray)current["items"]).Add(new JObject
                 {
@@ -43,72 +41,94 @@ namespace Minerva.Codex.Editor.Dev
                 turns.Add(current);
                 turns.Add(older);
                 refresh();
-                var currentHeader = panel.Q<Button>("codex-change-file-selector");
-                Require(currentHeader.Query<Label>().ToList().Exists(label => label.text == "Example.cs"), "file name is the primary navigation label");
-                Require(currentHeader.Query<Label>().ToList().Exists(label => label.text.Contains("Fix the roof")), "file navigation includes cleaned turn context");
-                Require(!panel.Q<Button>("codex-changes-newer").enabledSelf && panel.Q<Button>("codex-changes-older").enabledSelf,
-                    "first change disables previous navigation and enables next");
-                Submit(currentHeader);
-                Require(menu.Count == 3 && menu[0].Label != menu[1].Label, "one picker includes every file record, keeping repeated paths distinct");
-                Require(menu[0].Label.Contains("Fix the roof") && !menu[0].Label.Contains("unity-context"), "searchable records retain human turn context without Unity metadata");
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "first patch", "newest turn selected initially");
-                Submit(panel.Q<Button>("codex-changes-older"));
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "second patch", "adjacent navigation visits a repeated edit in the same turn");
-                Submit(panel.Q<Button>("codex-changes-older"));
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "older patch", "historical turn can be selected");
-                Require(!panel.Q<Button>("codex-changes-older").enabledSelf && panel.Q<Button>("codex-changes-newer").enabledSelf,
-                    "last change disables next navigation and enables previous");
-                Require(panel.Q<Label>("codex-change-status").text.Contains("failed"), "failed patch is labelled");
+                var sections = panel.Query<VisualElement>("codex-change-record").ToList();
+                Require(sections.Count == 2 && panel.Query<CodexPatchView>().ToList().Count == 2,
+                    "all file records in the current turn are readable in one continuous view");
+                Require(sections.TrueForAll(section => section.Q("codex-change-body").style.display.value == DisplayStyle.Flex),
+                    "per-file patches start expanded");
+                var scope = panel.Q<Button>("codex-change-scope");
+                Require(scope.text.Contains("Latest"), "default scope follows latest turn");
+                Require(panel.Q<Label>("codex-changes-summary").text.Contains("Fix the roof"), "summary strips attached Unity context");
+                Require(sections[0].Q<Label>("codex-change-status").text.Contains("edit 1 / 2")
+                    && sections[1].Q<Label>("codex-change-status").text.Contains("edit 2 / 2"), "repeated edits keep distinct order");
+                Submit(sections[0].Q<Button>("codex-change-toggle"));
+                Require(sections[0].Q("codex-change-body").style.display.value == DisplayStyle.None
+                    && sections[1].Q("codex-change-body").style.display.value == DisplayStyle.Flex, "files fold independently");
                 ((JObject)((JArray)((JObject)((JArray)current["items"])[0])["changes"])[0])["diff"] = "streamed patch";
                 refresh();
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "older patch", "background updates preserve explicit selection");
+                Require(ReferenceEquals(sections[0], panel.Q("codex-change-record"))
+                    && sections[0].Q("codex-change-body").style.display.value == DisplayStyle.None,
+                    "background refresh retains section identity and folding");
+                Require(sections[0].Q<CodexPatchView>().Patch == "streamed patch", "collapsed patches still update");
+                Require(sections[1].Q<Button>("codex-change-copy").enabledSelf
+                    && sections[1].Q<CodexPatchView>().Patch == "second patch\r\n",
+                    "per-file copy source retains exact raw line endings");
+                Submit(panel.Q<Button>("codex-changes-files"));
+                Require(menu.Count == 2 && menu[0].Label != menu[1].Label, "optional file jumps preserve repeated records");
+                Action staleFileJump = menu[0].Action;
+                menu[0].Action();
+                Require(sections[0].Q("codex-change-body").style.display.value == DisplayStyle.Flex, "file jump expands its target");
+                Submit(panel.Q<Button>("codex-changes-collapse"));
+                Require(sections.TrueForAll(section => section.Q("codex-change-body").style.display.value == DisplayStyle.None), "collapse all folds every file");
+                Submit(panel.Q<Button>("codex-changes-collapse"));
+                Require(sections.TrueForAll(section => section.Q("codex-change-body").style.display.value == DisplayStyle.Flex), "expand all restores every file");
+                Submit(scope);
+                Require(menu.Count == 3 && menu[0].Selected && menu[1].Label.Contains("Fix the roof")
+                    && !menu[1].Label.Contains("unity-context"), "scope menu has latest plus searchable loaded turns");
+                menu[2].Action();
+                Require(panel.Q<CodexPatchView>().Patch == "older patch"
+                    && panel.Q<Label>("codex-change-status").text.Contains("failed"), "historical scope displays its patches and status");
+                staleFileJump();
+                Require(panel.Q<CodexPatchView>().Patch == "older patch", "a stale file jump cannot change historical scope");
+                turns.Insert(0, Turn("newest", "completed", "newest patch"));
+                refresh();
+                Require(panel.Q<CodexPatchView>().Patch == "older patch", "historical scope stays pinned when a new turn arrives");
+                Submit(scope);
+                menu[0].Action();
+                Require(panel.Q<CodexPatchView>().Patch == "newest patch", "latest scope follows newly recorded turns");
+                turns.RemoveAt(0);
+                refresh();
 
                 var live = (JObject)current.DeepClone();
-                ((JArray)live["items"]).Add(new JObject { ["id"] = "live-turn-diff", ["type"] = "turnDiff", ["diff"] = "aggregate live patch" });
+                ((JArray)live["items"]).Add(new JObject { ["id"] = "live-turn-diff", ["type"] = "turnDiff", ["diff"] = "+aggregate live patch" });
                 typeof(CodexWorkspace).GetField("m_LiveTurn", Fields).SetValue(workspace, live);
                 typeof(CodexWorkspace).GetField("m_LiveThreadId", Fields).SetValue(workspace, "smoke-thread");
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, true);
                 refresh();
-                Submit(currentHeader);
-                Require(menu.Count == 4, "live turn deduplicates its history copy and includes aggregate as a separate record");
-                menu[2].Action();
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "aggregate live patch", "live patch can be inspected");
-                Require(!panel.Q<Button>("codex-change-open").enabledSelf, "aggregate diff has no single file to open");
+                sections = panel.Query<VisualElement>("codex-change-record").ToList();
+                Require(sections.Count == 3, "live turn deduplicates history and retains a separate aggregate");
+                Require(sections[2].Q("codex-change-body").style.display.value == DisplayStyle.None
+                    && !sections[2].Q<Button>("codex-change-open").enabledSelf, "aggregate starts folded and has no file target");
+                Require(panel.Q<Label>("codex-changes-added").text == "+0", "aggregate is excluded from per-file totals");
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, false);
                 live["status"] = "completed";
                 refresh();
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "streamed patch", "completion hides live aggregate before history reload succeeds");
+                Require(panel.Query<CodexPatchView>().ToList().Count == 2, "completion removes live aggregate before history reload");
                 typeof(CodexWorkspace).GetField("m_LiveTurn", Fields).SetValue(workspace, null);
                 refresh();
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "streamed patch", "completion removes stale live patch");
 
-                JObject missing = Turn("missing", "declined", "");
-                turns.Insert(0, missing);
+                turns.Insert(0, Turn("missing", "declined", ""));
                 SelectThread(workspace, "another-thread");
                 refresh();
                 Require(panel.Q<Label>("codex-change-status").text.Contains("declined"), "declined patch retains status");
-                Require(panel.Q<Label>("codex-change-no-patch").style.display.value == DisplayStyle.Flex, "missing patch has an explicit explanation");
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "", "missing patch explanation does not become patch content");
+                Require(panel.Q<Label>("codex-change-no-patch").style.display.value == DisplayStyle.Flex
+                    && panel.Q<CodexPatchView>().Patch == "", "missing patch explains absence without inventing copy content");
                 turns.Clear();
                 refresh();
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "", "empty/thread transition clears old diff");
+                Require(panel.Query<CodexPatchView>().ToList().Count == 0, "empty transition clears all old file sections");
                 typeof(CodexWorkspace).GetField("m_HasMoreTurns", Fields).SetValue(workspace, true);
                 refresh();
                 Require(panel.Q<Button>("codex-changes-earlier").style.display.value == DisplayStyle.Flex, "earlier history remains accessible from an empty panel");
-
                 for (int index = 0; index < 200; index++) turns.Add(Turn("turn-" + index, "completed", "patch-" + index));
                 SelectThread(workspace, "long-history");
                 refresh();
                 int buttonCount = panel.Query<Button>().ToList().Count;
-                Require(buttonCount <= 6,
-                    "200 turns do not create a growing permanent menu");
-                Submit(currentHeader);
-                Require(menu.Count == 200 && menu[0].Selected, "all file records remain available in the single search popup");
-                menu[199].Action();
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "patch-199", "picker can jump directly to the last of 200 turns");
-                Submit(panel.Q<Button>("codex-changes-newer"));
-                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "patch-198", "adjacent navigation follows picker selection");
-                Require(panel.Query<Button>().ToList().Count == buttonCount, "permanent navigation size remains constant across turn selection");
+                Require(buttonCount <= 8 && panel.Query<CodexPatchView>().ToList().Count == 1, "200 turns render only the current scope");
+                Submit(scope);
+                Require(menu.Count == 201 && menu[0].Selected, "loaded historical turns remain searchable alongside latest scope");
+                menu[200].Action();
+                Require(panel.Q<CodexPatchView>().Patch == "patch-199", "scope jumps directly to the last of 200 turns");
+                Require(panel.Query<Button>().ToList().Count == buttonCount, "history does not enlarge permanent navigation");
 
                 var wholeFile = Turn("whole-file", "completed", "class Example {}\n\n");
                 var change = (JObject)((JArray)((JObject)((JArray)wholeFile["items"])[0])["changes"])[0];
@@ -117,13 +137,14 @@ namespace Minerva.Codex.Editor.Dev
                 turns.Add(wholeFile);
                 SelectThread(workspace, "whole-file");
                 refresh();
-                var patch = panel.Q<CodexPatchView>("codex-change-diff");
+                var patch = panel.Q<CodexPatchView>();
                 Require(patch.childCount == 2 && patch[0].ClassListContains("codex-patch-addition")
-                    && patch[1].ClassListContains("codex-patch-addition"), "Changes treats the whole new file, including blank lines, as added");
+                    && patch[1].ClassListContains("codex-patch-addition") && panel.Q<Label>("codex-changes-added").text == "+2",
+                    "whole-file additions include blank content lines in rendering and totals");
                 change["kind"] = new JObject { ["type"] = "delete" };
                 refresh();
-                Require(patch[0].ClassListContains("codex-patch-deletion") && patch.Patch == "class Example {}\n\n",
-                    "Changes treats whole deleted files as removed while preserving raw copy text");
+                Require(patch[0].ClassListContains("codex-patch-deletion") && patch.Patch == "class Example {}\n\n"
+                    && panel.Q<Label>("codex-changes-removed").text == "−2", "whole-file deletions retain raw text and update totals");
 
                 string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "codex-open-file-" + Guid.NewGuid().ToString("N"));
                 System.IO.Directory.CreateDirectory(directory);
@@ -138,21 +159,20 @@ namespace Minerva.Codex.Editor.Dev
                     change["kind"] = new JObject { ["type"] = "update" };
                     refresh();
                     var open = panel.Q<Button>("codex-change-open");
-                    Require(open.enabledSelf && open.tooltip == original, "relative file path resolves against the conversation cwd");
+                    Require(open.enabledSelf && open.tooltip == original, "relative file path resolves against conversation cwd");
                     change["path"] = original;
                     refresh();
                     Require(open.enabledSelf && open.tooltip == original, "absolute file path stays absolute");
                     change["kind"] = new JObject { ["type"] = "update", ["move_path"] = "Renamed.cs" };
                     refresh();
-                    Require(open.enabledSelf && open.tooltip == renamed, "renamed record opens the destination rather than its display text or source");
+                    Require(open.enabledSelf && open.tooltip == renamed, "renamed record opens its destination");
                     System.IO.File.Delete(renamed);
                     Submit(open);
-                    Require(!open.enabledSelf, "a file removed after render disables Open without launching an application");
+                    Require(!open.enabledSelf, "file disappearance disables Open without launching an application");
                     refresh();
                     Require(!open.enabledSelf, "missing files remain unavailable");
-                    Require(CodexMarkdown.ResolveLocalPath(new Uri(original).AbsoluteUri, directory) == original,
-                        "the shared resolver accepts a file URI");
-                    Require(CodexMarkdown.ResolveLocalPath("bad\0path", directory) == null, "malformed local paths cannot break the panel");
+                    Require(CodexMarkdown.ResolveLocalPath(new Uri(original).AbsoluteUri, directory) == original, "shared resolver accepts file URIs");
+                    Require(CodexMarkdown.ResolveLocalPath("bad\0path", directory) == null, "malformed paths cannot break the panel");
                 }
                 finally
                 {
@@ -160,7 +180,7 @@ namespace Minerva.Codex.Editor.Dev
                     System.IO.File.Delete(renamed);
                     System.IO.Directory.Delete(directory);
                 }
-                return "PASS: navigation/history, raw patches, Open file availability, absolute/relative/renamed paths, file disappearance, aggregate guard and shared URI resolution";
+                return "PASS: continuous multi-file reading, independent/persistent folding, latest/history scopes, repeated edits, file jumps, raw copy source, totals, live aggregate and file opening guards";
             }
             finally
             {
@@ -184,15 +204,12 @@ namespace Minerva.Codex.Editor.Dev
         {
             var changes = new JArray();
             foreach (string patch in patches)
-            {
                 changes.Add(new JObject
                 {
                     ["path"] = "Assets/Example.cs",
                     ["kind"] = new JObject { ["type"] = "update", ["move_path"] = JValue.CreateNull() },
                     ["diff"] = patch,
                 });
-            }
-
             return new JObject
             {
                 ["id"] = id,

@@ -42,26 +42,34 @@ namespace Minerva.Codex.Editor.Dev
             Require(((Label)view[8]).style.backgroundColor.value.a == 0 && ((Label)view[9]).style.backgroundColor.value.a == 0,
                 "subsequent file headers remain neutral after the preceding hunk");
             Require(view.Patch == patch, "display classification never rewrites copyable patch text");
+            Require(view.Additions == 2 && view.Deletions == 2, "counts exclude file/hunk headers and include header-looking source lines");
 
             view.SetPatch("+replacement\n");
             Require(view.childCount == 2 && ((Label)view[0]).text == "+replacement", "new patch replaces old display rows");
             view.SetPatch(null);
             Require(view.Patch == "" && view.childCount == 0, "empty patch clears display without inventing patch content");
+            Require(view.Additions == 0 && view.Deletions == 0, "empty patch clears line counts");
 
             const string content = "class Example {}\r\n\r\n@@ literal content\r\n+++ literal content\r\n- literal content\r\n";
             view.SetPatch(content, "add");
             Require(view.childCount == 5 && view.Patch == content, "whole-file content preserves raw copy and does not invent a line after the final newline");
+            Require(view.Additions == 5 && view.Deletions == 0, "new-file counts include blank lines but exclude the terminating newline");
             foreach (Label line in view.Children())
                 Require(line.ClassListContains("codex-patch-addition") && line.text.StartsWith("+ ", StringComparison.Ordinal),
                     "every new-file line, including blanks and diff-looking content, is an addition");
             Require(((Label)view[3]).text == "+ +++ literal content", "whole-file content retains its own plus characters");
             view.SetPatch(content, "delete");
+            Require(view.Additions == 0 && view.Deletions == 5, "operation changes reset classified counts");
             foreach (Label line in view.Children())
                 Require(line.ClassListContains("codex-patch-deletion") && line.text.StartsWith("- ", StringComparison.Ordinal),
                     "every deleted-file line is a deletion even when the content is identical to the previous addition");
             view.SetPatch(content, "update");
             Require(((Label)view[0]).text == "class Example {}" && ((Label)view[0]).style.backgroundColor.value.a == 0,
                 "switching to update restores unified-diff classification for the same text");
+            var wrapped = new CodexPatchView(wrap: true);
+            wrapped.SetPatch("+    indented source\n");
+            Require(((Label)wrapped[0]).style.whiteSpace.value == WhiteSpace.PreWrap && wrapped.Patch == "+    indented source\n",
+                "continuous readers wrap long lines without changing source whitespace or copy text");
 
             var transcript = new VisualElement();
             CodexItemRenderer.Render(transcript, new Newtonsoft.Json.Linq.JObject
