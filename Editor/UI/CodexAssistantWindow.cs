@@ -26,7 +26,6 @@ namespace Minerva.Codex
         const float MinSidebarWidth = 230f;
         const float MaxSidebarWidth = 460f;
         const float MinRightPanelWidth = 240f;
-        const float MaxRightPanelWidth = 700f;
         const float MinTranscriptWidth = 320f;
 
         const string ScopeProject = "This project";
@@ -172,10 +171,8 @@ namespace Minerva.Codex
                 EditorPrefs.GetFloat(SidebarWidthKey, DefaultSidebarWidth),
                 MinSidebarWidth,
                 MaxSidebarWidth);
-            m_RightPanelWidth = Mathf.Clamp(
-                EditorPrefs.GetFloat(RightPanelWidthKey, DefaultRightPanelWidth),
-                MinRightPanelWidth,
-                MaxRightPanelWidth);
+            m_RightPanelWidth = Math.Max(MinRightPanelWidth,
+                EditorPrefs.GetFloat(RightPanelWidthKey, DefaultRightPanelWidth));
             CodexPreferences.Changed += OnPreferencesChanged;
             CodexPreferences.ReloadRequested += OnBackendReloadRequested;
             EditorApplication.update += PlaceComposerImeWindow;
@@ -519,7 +516,7 @@ namespace Minerva.Codex
         float ClampRightPanelWidth(float width)
         {
             float available = rootVisualElement.layout.width - MinTranscriptWidth - m_Sidebar.resolvedStyle.width - 10;
-            float upper = Mathf.Clamp(available, MinRightPanelWidth, MaxRightPanelWidth);
+            float upper = Math.Max(MinRightPanelWidth, available);
             return Mathf.Clamp(width, MinRightPanelWidth, upper);
         }
 
@@ -533,7 +530,7 @@ namespace Minerva.Codex
             if (rightVisible)
             {
                 float rightMax = Math.Max(MinRightPanelWidth, available - sidebar);
-                m_RightPanel.style.width = Mathf.Clamp(m_RightPanelWidth, MinRightPanelWidth, Math.Min(MaxRightPanelWidth, rightMax));
+                m_RightPanel.style.width = Mathf.Clamp(m_RightPanelWidth, MinRightPanelWidth, rightMax);
             }
         }
 

@@ -42,7 +42,8 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   edits show their order and remain separate, and failed/declined
   changes keep their status. Earlier turns use the same history pagination as the transcript. A running
   turn's aggregate diff appears separately while available; it is removed when the turn ends. Closing or
-  switching right-side tabs preserves the Changes selection and reading position. The column is resizable.
+  switching right-side tabs preserves the Changes selection and reading position. The column is resizable
+  up to the space available in the window, reserving 320px for the transcript; it has no fixed maximum width.
   Patches here and in the transcript show additions in green and deletions in red, with full-row backgrounds;
   new files mark every content line as added, deleted files mark every content line as removed, and updates
   use unified-diff syntax. Copying retains the original text without synthesized display markers.

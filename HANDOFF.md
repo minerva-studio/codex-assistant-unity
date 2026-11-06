@@ -190,13 +190,15 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   leading block with `TryExtract`, renders a compact chip (`Summarize`) whose details label (`FormatDetails`)
   expands on click, and passes the full raw text to the footer's Select/Copy. Before this, UMarkdown treated
   `<unity-context>` as raw HTML and hid the whole block, leaving no visible sign that context was attached.
-  `UserText` is used by `CodexWorkspace.Parse`, `OnThreadStarted`, `ExtractTitleUserText`, `DisplayTitle` and
+  `UserText` is used by `CodexWorkspace.Parse`, `OnThreadStarted`, `ExtractUserText`, `DisplayTitle` and
   the sidebar detail so previews, fallback titles and auto-title input start at the user's request; a preview
   truncated before the closing tag falls back to "Unity state" instead of leaking the XML prefix.
 - Panel resizing: `BuildResizer` adds a five-pixel handle with a one-pixel grip on both sides of the content.
-  Pointer capture drives `m_SidebarWidth`/`m_AgentsWidth`; `ClampSidebarWidth`/`ClampAgentsWidth` keep at least
+  The right column has no fixed maximum width; drag/resize fitting reserve only the sidebar, two handles
+  and 320px transcript minimum. Its persisted preferred width is retained when fitting a smaller window.
+  Pointer capture drives `m_SidebarWidth`/`m_RightPanelWidth`; `ClampSidebarWidth`/`ClampRightPanelWidth` keep at least
   320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and
-  `Minerva.Codex.AgentsWidth`; the right handle is hidden whenever the subagent rail is hidden.
+  `Minerva.Codex.AgentsWidth`; the right handle is hidden whenever the shared right column is hidden.
 - IME positioning (Windows): UI Toolkit's own placement in 6000.3 hands the platform a caret position in
   element-local coordinates, so the candidate window lands at the top-left of the editor window. The working
   fix is `PlaceComposerImeWindow` in `CodexAssistantWindow`: while the window and the composer have focus, an
