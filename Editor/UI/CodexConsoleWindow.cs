@@ -27,6 +27,8 @@ namespace Minerva.Codex
         bool m_FollowOutput = true;
         bool m_RefreshScheduled;
         bool m_ProgrammaticScroll;
+        bool m_LastConnected;
+        double m_NextBindingCheck;
 
         [MenuItem("Window/Minerva/Codex Console", priority = 3)]
         public static void Open()
@@ -52,6 +54,40 @@ namespace Minerva.Codex
             // assistant window reconnects. Pick its workspace up again on the
             // next editor tick instead of requiring a reopen.
             EditorApplication.delayCall += RebindAssistant;
+            EditorApplication.update += CheckWorkspaceBinding;
+        }
+
+        void CheckWorkspaceBinding()
+        {
+            if (EditorApplication.timeSinceStartup < m_NextBindingCheck)
+            {
+                return;
+            }
+
+            m_NextBindingCheck = EditorApplication.timeSinceStartup + 1.0;
+
+            bool connected = m_Workspace != null && m_Workspace.IsConnected;
+            if (connected != m_LastConnected)
+            {
+                m_LastConnected = connected;
+                Refresh();
+            }
+
+            if (connected)
+            {
+                return;
+            }
+
+            foreach (CodexAssistantWindow assistant in
+                     Resources.FindObjectsOfTypeAll<CodexAssistantWindow>())
+            {
+                if (assistant.Workspace != null &&
+                    !ReferenceEquals(assistant.Workspace, m_Workspace))
+                {
+                    Bind(assistant.Workspace);
+                    return;
+                }
+            }
         }
 
         void RebindAssistant()
@@ -74,6 +110,7 @@ namespace Minerva.Codex
 
         void OnDisable()
         {
+            EditorApplication.update -= CheckWorkspaceBinding;
             if (m_Workspace != null)
             {
                 m_Workspace.ConsoleChanged -= OnConsoleChanged;
@@ -352,13 +389,15 @@ namespace Minerva.Codex
                 return;
             }
 
-            bool connected = m_Workspace != null;
-            m_Command.SetEnabled(connected && (m_Workspace == null || !m_Workspace.ConsoleRunning));
-            m_Cwd.SetEnabled(connected && (m_Workspace == null || !m_Workspace.ConsoleRunning));
-            m_Mode.SetEnabled(connected && (m_Workspace == null || !m_Workspace.ConsoleRunning));
+            bool hasWorkspace = m_Workspace != null;
+            bool connected = hasWorkspace && m_Workspace.IsConnected;
+            m_LastConnected = connected;
 
-            if (!connected)
+            if (!hasWorkspace)
             {
+                m_Command.SetEnabled(false);
+                m_Cwd.SetEnabled(false);
+                m_Mode.SetEnabled(false);
                 m_RunButton.text = "Run";
                 m_RunButton.style.backgroundColor = CodexPalette.SendAction;
                 m_RunButton.SetEnabled(false);
@@ -369,18 +408,23 @@ namespace Minerva.Codex
             }
 
             bool running = m_Workspace.ConsoleRunning;
+            m_Command.SetEnabled(connected && !running);
+            m_Cwd.SetEnabled(connected && !running);
+            m_Mode.SetEnabled(connected && !running);
             m_RunButton.text = running ? "Stop" : "Run";
             m_RunButton.tooltip = running ? "Stop the running command" : "Run the command";
             m_RunButton.style.backgroundColor = running
                 ? CodexPalette.StopAction
                 : CodexPalette.SendAction;
-            m_RunButton.SetEnabled(true);
+            m_RunButton.SetEnabled(connected);
             m_ClearButton.SetEnabled(m_Workspace.ConsoleOutput.Length > 0 || running);
-            m_Command.SetEnabled(!running);
-            m_Cwd.SetEnabled(!running);
-            m_Mode.SetEnabled(!running);
 
-            if (running)
+            if (!connected)
+            {
+                m_Status.text = "Connecting to app-server...";
+                m_Status.style.color = CodexPalette.Warning;
+            }
+            else if (running)
             {
                 m_Status.text = m_Workspace.ConsoleLocal
                     ? "Running · local process (unsandboxed)"

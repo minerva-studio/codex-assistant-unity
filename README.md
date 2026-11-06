@@ -51,8 +51,8 @@ tools are next.
 - **Console** in the toolbar opens a standalone command window, independent of conversations. Sandboxed mode
   uses `command/exec`; Local mode uses `process/spawn` on the app-server host. Output streams live; Run
   becomes Stop while the process is alive; Copy, Clear and the working-directory field are available. The
-  command line is split into argv (double/single quotes supported), not passed through a shell, so pipes,
-  redirects and stdin/PTY sessions are not available yet.
+  command line is split into argv (double/single quotes supported; backslashes and UNC paths are preserved),
+  not passed through a shell, so pipes, redirects and stdin/PTY sessions are not available yet.
 - Codex output is plain document text; only user input uses a compact, right-aligned bubble (max 68% of the
   transcript width). Process and approval/question surfaces remain cards because they are interaction
   containers.

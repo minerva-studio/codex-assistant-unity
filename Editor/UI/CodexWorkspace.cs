@@ -104,7 +104,8 @@ namespace Minerva.Codex
         readonly List<Action<IReadOnlyList<CodexSkillInfo>>> m_SkillWaiters =
             new List<Action<IReadOnlyList<CodexSkillInfo>>>();
         readonly StringBuilder m_ConsoleOutput = new StringBuilder();
-        readonly Decoder m_ConsoleDecoder = Encoding.UTF8.GetDecoder();
+        readonly Decoder m_ConsoleStdoutDecoder = Encoding.UTF8.GetDecoder();
+        readonly Decoder m_ConsoleStderrDecoder = Encoding.UTF8.GetDecoder();
         const int MaxConsoleCharacters = 200000;
         string m_ConsoleProcessId;
         string m_ConsoleProcessHandle;
@@ -3871,7 +3872,8 @@ namespace Minerva.Codex
             int generation = ++m_ConsoleGeneration;
 
             m_ConsoleOutput.Clear();
-            m_ConsoleDecoder.Reset();
+            m_ConsoleStdoutDecoder.Reset();
+            m_ConsoleStderrDecoder.Reset();
             m_ConsoleProcessId = processId;
             m_ConsoleProcessHandle = processId;
             m_ConsoleRunning = true;
@@ -3985,9 +3987,12 @@ namespace Minerva.Codex
             try
             {
                 byte[] bytes = Convert.FromBase64String(encoded);
-                int charCount = m_ConsoleDecoder.GetCharCount(bytes, 0, bytes.Length, false);
+                Decoder decoder = parameters["stream"]?.Value<string>() == "stderr"
+                    ? m_ConsoleStderrDecoder
+                    : m_ConsoleStdoutDecoder;
+                int charCount = decoder.GetCharCount(bytes, 0, bytes.Length, false);
                 var characters = new char[charCount];
-                m_ConsoleDecoder.GetChars(bytes, 0, bytes.Length, characters, 0, false);
+                decoder.GetChars(bytes, 0, bytes.Length, characters, 0, false);
                 AppendConsoleText(new string(characters));
                 ConsoleChanged?.Invoke();
             }
@@ -3996,6 +4001,28 @@ namespace Minerva.Codex
             }
 
             return true;
+        }
+
+        void FlushConsoleDecoders()
+        {
+            FlushConsoleDecoder(m_ConsoleStdoutDecoder);
+            FlushConsoleDecoder(m_ConsoleStderrDecoder);
+        }
+
+        void FlushConsoleDecoder(Decoder decoder)
+        {
+            int needed = decoder.GetCharCount(Array.Empty<byte>(), 0, 0, true);
+            if (needed <= 0)
+            {
+                return;
+            }
+
+            var characters = new char[needed];
+            int count = decoder.GetChars(Array.Empty<byte>(), 0, 0, characters, 0, true);
+            if (count > 0)
+            {
+                AppendConsoleText(new string(characters, 0, count));
+            }
         }
 
         bool TryHandleConsoleExit(JObject parameters)
@@ -4011,6 +4038,7 @@ namespace Minerva.Codex
                 return false;
             }
 
+            FlushConsoleDecoders();
             AppendConsoleText(parameters["stdout"]?.Value<string>());
             AppendConsoleText(parameters["stderr"]?.Value<string>());
             m_ConsoleExitCode = parameters["exitCode"]?.Value<int?>() ?? 0;
@@ -4029,6 +4057,7 @@ namespace Minerva.Codex
                 return;
             }
 
+            FlushConsoleDecoders();
             AppendConsoleText(result?["stdout"]?.Value<string>());
             AppendConsoleText(result?["stderr"]?.Value<string>());
             m_ConsoleExitCode = result?["exitCode"]?.Value<int?>() ?? 0;
@@ -4098,11 +4127,12 @@ namespace Minerva.Codex
             {
                 char character = line[index];
                 if (character == '\\' &&
-                    !singleQuoted &&
+                    doubleQuoted &&
                     index + 1 < line.Length &&
-                    (line[index + 1] == '"' || line[index + 1] == '\\'))
+                    line[index + 1] == '"')
                 {
-                    token.Append(line[++index]);
+                    token.Append('"');
+                    index++;
                     hasToken = true;
                     continue;
                 }

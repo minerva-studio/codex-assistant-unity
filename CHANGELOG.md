@@ -36,6 +36,8 @@ All notable changes to this package are documented here.
 - Standalone **Console** window: `command/exec` in the sandbox or `process/spawn` on the host, with live
   stdout/stderr, exit code, stop, copy and clear. It is not tied to a conversation; the command line is
   parsed as argv rather than run through a shell, so stdin/PTY and shell syntax are not supported yet.
+  stdout and stderr use independent UTF-8 decoders, UNC/backslash paths are preserved, and the window
+  re-binds to a new workspace after the Assistant is closed and reopened.
 - Visual refresh of the window: palette, toolbar, compact sidebar rows, card surfaces, composer, empty state
   and a stable leading active-thread indicator.
 - Codex output is no longer wrapped in a bubble; user input keeps a compact right-aligned bubble.

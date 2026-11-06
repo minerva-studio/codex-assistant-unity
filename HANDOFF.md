@@ -103,8 +103,12 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   into argv (quotes supported; no shell), then calls `CodexClient.ExecCommand` (`command/exec`,
   `processId` + `streamStdoutStderr`) or `SpawnProcess` (`process/spawn`, `processHandle` +
   `streamStdoutStderr`). The final `command/exec` response supplies the exit code; `process/exited` does the
-  same for local processes. `StopConsole` sends `command/exec/terminate` or `process/kill`. `stdin`, PTY
-  mode, shell pipes/redirects and output resize are not implemented yet.
+  same for local processes. `StopConsole` sends `command/exec/terminate` or `process/kill`. stdout and stderr
+  use separate UTF-8 decoders (a split multibyte character in one stream cannot consume the other's bytes);
+  `SplitCommandLine` preserves backslashes and UNC paths and only treats `\"` inside double quotes as an
+  escape. `CodexConsoleWindow` polls the assistant every second when its workspace is disconnected, so it
+  re-binds after the Assistant is closed and reopened. `stdin`, PTY mode, shell pipes/redirects and output
+  resize are not implemented yet.
 - The terminal input row is rendered by `RenderCommand` only when a running command has a `processId` and a
   `sendTerminalInput` callback was supplied. The window calls `CodexClient.WriteCommandInput`, which sends
   `command/exec/write { processId, deltaBase64 }`. This is for turn-level PTY commands, not a general
