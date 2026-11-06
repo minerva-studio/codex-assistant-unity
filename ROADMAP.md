@@ -24,7 +24,7 @@
   `send_user_message_question_reply` messages.
 - Command, file-change and permission approvals with allow-once/session/deny, plus standard MCP form/URL
   elicitations in the same interaction card.
-- P1 live updates: command/file output, MCP progress, plan steps, turn diff, terminal input for PTY commands
+- P1 live updates: command/file output, MCP progress, plan steps, turn diff, observed terminal input
   and `serverRequest/resolved` cleanup.
 - Modern visual pass: palette/surface hierarchy, compact toolbar/sidebar, card-based Process and interaction
   surfaces, roomier composer, empty state and stable active-thread indicator. Codex text is unbubbled; user
@@ -51,10 +51,12 @@
   IMM32 (the workaround compiles out from 6000.6 on).
 - Unity context attachments: a composer toggle prepends the active scene/prefab, selection, compile state and
   the latest console errors/warnings to each normal message, captured at send time.
-- Standalone console: `command/exec` (sandboxed) and `process/spawn` (local), with live output, stop, copy
-  and clear.
+- Standalone persistent shell terminal: `command/exec` (sandboxed) and `process/spawn` (local), with PTY
+  output, stdin, cwd/variables, history, Ctrl+C, folder selection, restart, copy and clear. Conversation
+  process cards stay read-only because their ids are not standalone session handles.
 - Shared right-side Changes/Subagents tabs. Changes browses recorded per-file patches by turn with status,
   copy and earlier-history loading; a running aggregate diff is labelled separately and cleared on completion.
+  Changes and transcript patches retain +/- signs with green/red text and row backgrounds.
 
 ## Next
 

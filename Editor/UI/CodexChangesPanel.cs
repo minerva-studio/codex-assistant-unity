@@ -37,7 +37,8 @@ namespace Minerva.Codex
         readonly VisualElement m_FileList;
         readonly Label m_Path;
         readonly Label m_Status;
-        readonly Label m_Diff;
+        readonly CodexPatchView m_Diff;
+        readonly Label m_NoPatch;
         readonly Button m_Copy;
         readonly ScrollView m_Patch;
         readonly List<ChangeTurn> m_Turns = new List<ChangeTurn>();
@@ -129,17 +130,20 @@ namespace Minerva.Codex
             m_Patch.style.borderTopRightRadius = 6;
             m_Patch.style.borderBottomLeftRadius = 6;
             m_Patch.style.borderBottomRightRadius = 6;
-            m_Diff = Text("", 10, CodexPalette.Text);
-            m_Diff.name = "codex-change-diff";
-            m_Diff.style.unityFont = UnityEditor.EditorGUIUtility.Load("Fonts/RobotoMono/RobotoMono-Regular.ttf") as Font;
-            m_Diff.style.whiteSpace = WhiteSpace.Pre;
-            m_Diff.style.paddingLeft = 8;
-            m_Diff.style.paddingRight = 8;
-            m_Diff.style.paddingTop = 8;
-            m_Diff.style.paddingBottom = 8;
+            m_Diff = new CodexPatchView { name = "codex-change-diff" };
             m_Patch.Add(m_Diff);
+            m_NoPatch = Text("No patch was provided for this recorded change.", 10, CodexPalette.Muted);
+            m_NoPatch.name = "codex-change-no-patch";
+            m_NoPatch.style.paddingLeft = m_NoPatch.style.paddingRight = 8;
+            m_NoPatch.style.paddingTop = m_NoPatch.style.paddingBottom = 8;
+            m_Patch.Add(m_NoPatch);
             Add(m_Patch);
-            m_Patch.contentViewport.RegisterCallback<GeometryChangedEvent>(_ => RestoreReadingPosition());
+            m_Patch.contentViewport.RegisterCallback<GeometryChangedEvent>(evt =>
+            {
+                // Stretch every line across the viewport, including patches whose longest line is short.
+                m_Diff.style.minWidth = evt.newRect.width;
+                RestoreReadingPosition();
+            });
         }
 
         /// <summary>Refreshes from the selected conversation without changing its data.</summary>
@@ -312,10 +316,10 @@ namespace Minerva.Codex
                 ? "Live snapshot · available while this turn is running"
                 : selected.Operation + " · " + selected.Status;
             m_Status.style.color = StatusColor(selected?.Status);
-            string patch = selected == null ? "" : string.IsNullOrEmpty(selected.Diff)
-                ? "No patch was provided for this recorded change."
-                : selected.Diff;
-            if (m_Diff.text != patch) m_Diff.text = patch;
+            m_Diff.SetPatch(selected?.Diff);
+            bool hasPatch = !string.IsNullOrEmpty(selected?.Diff);
+            m_Diff.style.display = hasPatch ? DisplayStyle.Flex : DisplayStyle.None;
+            m_NoPatch.style.display = selected != null && !hasPatch ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         ChangeRecord SelectedRecord()

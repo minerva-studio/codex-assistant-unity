@@ -291,9 +291,9 @@ namespace Minerva.Codex
             m_SettingsButton.tooltip = "Display and composer preferences";
             toolbar.Add(m_SettingsButton);
 
-            var consoleButton = new Button(OpenConsole) { text = "Console" };
+            var consoleButton = new Button(OpenConsole) { text = "Terminal" };
             StyleGhostButton(consoleButton);
-            consoleButton.tooltip = "Run standalone commands through app-server";
+            consoleButton.tooltip = "Open a persistent shell terminal";
             toolbar.Add(consoleButton);
 
             m_ChangesButton = new Button(() => ToggleRightPanel(RightPanelTab.Changes)) { text = "Changes" };
@@ -3170,48 +3170,6 @@ namespace Minerva.Codex
             }
         }
 
-        /// <summary>
-        /// Moves the composer caret to the end after the text is replaced from
-        /// code. The TextField's visible selection and its text-editing indices
-        /// are different state: if only the text is replaced, the keyboard
-        /// handlers and the IME candidate window keep operating on the old caret,
-        /// which puts the composition window in the wrong place and can throw
-        /// from the next insert.
-        /// </summary>
-        void PlaceComposerCaretAtEnd()
-        {
-            if (m_Composer == null)
-            {
-                return;
-            }
-
-            int end = m_Composer.value?.Length ?? 0;
-
-            // Public path: updates the visible selection and the text editing
-            // state together.
-            m_Composer.SelectRange(end, end);
-
-            try
-            {
-                object utilities = FindEditingUtilities(m_Composer.Q<TextElement>());
-                if (utilities == null)
-                {
-                    return;
-                }
-
-                // The indices the keyboard handlers and the IME position read.
-                // Set them without glyph-index validation, which clamps to 0 while
-                // the element has not been laid out again.
-                SetNonPublicProperty(utilities, "cursorIndexNoValidation", end);
-                SetNonPublicProperty(utilities, "selectIndexNoValidation", end);
-            }
-            catch (Exception)
-            {
-                // The caret is cosmetic; never fail the reference insertion because
-                // this Unity build hides the text-editing utilities.
-            }
-        }
-
 #if UNITY_EDITOR_WIN && !UNITY_6000_6_OR_NEWER
         void PlaceComposerImeWindow()
         {
@@ -3339,41 +3297,6 @@ namespace Minerva.Codex
         {
         }
 #endif
-
-        static object FindEditingUtilities(TextElement element)
-        {
-            if (element == null)
-            {
-                return null;
-            }
-
-            object manipulator = null;
-            for (Type type = element.GetType(); type != null && manipulator == null; type = type.BaseType)
-            {
-                foreach (FieldInfo field in type.GetFields(
-                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
-                             BindingFlags.DeclaredOnly))
-                {
-                    if (field.FieldType.Name == "TextEditingManipulator")
-                    {
-                        manipulator = field.GetValue(element);
-                        break;
-                    }
-                }
-            }
-
-            return manipulator?
-                .GetType()
-                .GetField("editingUtilities", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                ?.GetValue(manipulator);
-        }
-
-        static void SetNonPublicProperty(object target, string name, object value)
-        {
-            target.GetType()
-                .GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                ?.SetValue(target, value);
-        }
 
         void RebuildReferenceChips()
         {
@@ -3565,7 +3488,7 @@ namespace Minerva.Codex
             m_Composer.SetValueWithoutNotify(updated);
             UpdateComposer();
             RebuildReferenceChips();
-            PlaceComposerCaretAtEnd();
+            CodexTextEditing.CaretAtEnd(m_Composer);
         }
 
         static bool IsRemoteReference(string target)
@@ -3704,8 +3627,8 @@ namespace Minerva.Codex
 
                 m_Composer.SetValueWithoutNotify(inserted);
                 m_Composer.Focus();
-                PlaceComposerCaretAtEnd();
-                m_Composer.schedule.Execute(PlaceComposerCaretAtEnd);
+                CodexTextEditing.CaretAtEnd(m_Composer);
+                m_Composer.schedule.Execute(() => CodexTextEditing.CaretAtEnd(m_Composer));
                 UpdateComposer();
                 RebuildReferenceChips();
             });
@@ -4369,8 +4292,8 @@ namespace Minerva.Codex
             // SetValueWithoutNotify changes the visible text but leaves the
             // text-editing indices at the old position. The next typed character
             // then inserts at a stale index and throws from ReplaceSelection.
-            PlaceComposerCaretAtEnd();
-            m_Composer.schedule.Execute(PlaceComposerCaretAtEnd);
+            CodexTextEditing.CaretAtEnd(m_Composer);
+            m_Composer.schedule.Execute(() => CodexTextEditing.CaretAtEnd(m_Composer));
             ClearAttachments();
             RebuildReferenceChips();
             UpdateComposer();
@@ -4771,7 +4694,6 @@ namespace Minerva.Codex
                         m_ShowReasoning,
                         m_ShowToolCalls,
                         null,
-                        null,
                         CopyMessageText,
                         ForkFromTurn,
                         turnId,
@@ -4793,7 +4715,6 @@ namespace Minerva.Codex
                         item,
                         m_ShowReasoning,
                         m_ShowToolCalls,
-                        null,
                         null,
                         CopyMessageText,
                         ForkFromTurn,
@@ -4923,7 +4844,6 @@ namespace Minerva.Codex
                             m_ShowReasoning,
                             m_ShowToolCalls,
                             id => m_Workspace?.SelectThread(id),
-                            (processId, text) => m_Workspace?.SendTerminalInput(processId, text),
                             CopyMessageText,
                             ForkFromTurn,
                             turnId,

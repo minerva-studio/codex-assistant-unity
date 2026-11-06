@@ -9,7 +9,8 @@ All notable changes to this package are documented here.
 - Right-side **Changes / Subagents** tabs with a shared resizable column. Changes lists loaded turns and
   individual file edits with their status, read-only patch detail, copy and history pagination. Repeated
   paths remain separate; live aggregate patches disappear on completion. Selection and reading position
-  survive tab switches and background updates. Console guidance now explains executable vs shell aliases.
+  survive tab switches and background updates. Patches in Changes and the transcript use green/red text
+  and row backgrounds for additions/deletions, keeping their signs and original copy text.
 
 - JSON-RPC over newline-delimited JSON transport for `codex app-server`, with the reader on a
   background thread and callbacks dispatched to the Unity main thread.
@@ -36,13 +37,14 @@ All notable changes to this package are documented here.
 - Command, file-change and permission approval requests plus standard MCP form/URL elicitations render as
   interaction cards and send the protocol response instead of leaving the turn waiting. Legacy
   `execCommandApproval`/`applyPatchApproval` requests use the same cards and send `ReviewDecision` responses.
-- P1 live updates: command/file output, MCP progress, plan steps, turn diff and resolved server requests;
-  running PTY commands accept terminal input.
-- Standalone **Console** window: `command/exec` in the sandbox or `process/spawn` on the host, with live
-  stdout/stderr, exit code, stop, copy and clear. It is not tied to a conversation; the command line is
-  parsed as argv rather than run through a shell, so stdin/PTY and shell syntax are not supported yet.
-  stdout and stderr use independent UTF-8 decoders, UNC/backslash paths are preserved, and the window
-  re-binds to a new workspace after the Assistant is closed and reopened.
+- P1 live updates: command/file output, MCP progress, plan steps, turn diff and resolved server requests.
+  Conversation process output and observed stdin remain read-only; standalone session ids are no longer
+  incorrectly sent to a conversational command's process id.
+- Standalone **Terminal** window with a persistent PowerShell/bash PTY, direct shell syntax, working
+  directory/variables, bottom command/stdin input, history, interrupt, restart, folder selection, copy and
+  clear. Sandboxed `command/exec` and Local `process/spawn` use independent UTF-8 decoders for stdout/stderr.
+  A bounded VT text buffer handles cursor/erase/progress and hidden prompt metadata. The window rebinds
+  after Assistant reconnects and retains its last directory; domain reload creates a fresh shell.
 - Visual refresh of the window: palette, toolbar, compact sidebar rows, card surfaces, composer, empty state
   and a stable leading active-thread indicator.
 - Codex output is no longer wrapped in a bubble; user input keeps a compact right-aligned bubble.

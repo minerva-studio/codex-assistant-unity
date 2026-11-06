@@ -18,7 +18,6 @@ namespace Minerva.Codex
             bool showReasoning,
             bool showTools,
             Action<string> openThread = null,
-            Action<string, string> sendTerminalInput = null,
             Action<string> copyMessage = null,
             Action<string> forkFromTurn = null,
             string turnId = null,
@@ -79,7 +78,7 @@ namespace Minerva.Codex
                 case "commandExecution":
                     if (showTools)
                     {
-                        RenderCommand(parent, item, sendTerminalInput);
+                        RenderCommand(parent, item);
                     }
 
                     break;
@@ -913,8 +912,7 @@ namespace Minerva.Codex
 
         static void RenderCommand(
             VisualElement parent,
-            JObject item,
-            Action<string, string> sendTerminalInput)
+            JObject item)
         {
             string command = item["command"]?.Value<string>() ?? string.Empty;
             string title = string.IsNullOrEmpty(command) ? "Command" : $"$ {OneLine(command, 80)}";
@@ -948,51 +946,6 @@ namespace Minerva.Codex
                 Foldout inputSection = Section(foldout, "Terminal input");
                 AddCode(inputSection, terminalInput);
             }
-
-            string processId = item["processId"]?.Value<string>();
-            if (sendTerminalInput == null || string.IsNullOrEmpty(processId) || !running)
-            {
-                return;
-            }
-
-            var inputRow = new VisualElement();
-            inputRow.style.flexDirection = FlexDirection.Row;
-            inputRow.style.alignItems = Align.Center;
-            inputRow.style.marginTop = 5;
-            foldout.Add(inputRow);
-
-            var input = new TextField { name = "codex-terminal-input" };
-            input.style.flexGrow = 1;
-            input.textEdition.placeholder = "Send terminal input...";
-            inputRow.Add(input);
-
-            var send = new Button(() =>
-            {
-                if (!string.IsNullOrWhiteSpace(input.value))
-                {
-                    sendTerminalInput(processId, input.value);
-                    input.value = string.Empty;
-                }
-            })
-            {
-                text = "Send",
-            };
-            send.style.marginLeft = 5;
-            inputRow.Add(send);
-
-            input.RegisterCallback<KeyDownEvent>(evt =>
-            {
-                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
-                {
-                    if (!string.IsNullOrWhiteSpace(input.value))
-                    {
-                        sendTerminalInput(processId, input.value);
-                        input.value = string.Empty;
-                    }
-
-                    evt.StopPropagation();
-                }
-            });
         }
 
         static void RenderTurnPlan(VisualElement parent, JObject item)
@@ -1043,7 +996,7 @@ namespace Minerva.Codex
             }
 
             Foldout foldout = Section(parent, "Turn diff");
-            AddCode(foldout, diff);
+            AddPatch(foldout, diff);
         }
 
         static string AppendDuration(string title, JObject item)
@@ -1168,7 +1121,7 @@ namespace Minerva.Codex
                 if (!string.IsNullOrWhiteSpace(diff))
                 {
                     Foldout diffSection = Section(foldout, "Diff");
-                    AddCode(diffSection, diff);
+                    AddPatch(diffSection, diff);
                 }
             }
         }
@@ -1339,6 +1292,17 @@ namespace Minerva.Codex
             label.style.marginBottom = 2;
             parent.Add(label);
             return label;
+        }
+
+        static void AddPatch(VisualElement parent, string text)
+        {
+            var scroll = new ScrollView(ScrollViewMode.Horizontal);
+            scroll.style.minWidth = 0;
+            var patch = new CodexPatchView();
+            patch.SetPatch(text);
+            scroll.Add(patch);
+            scroll.contentViewport.RegisterCallback<GeometryChangedEvent>(evt => patch.style.minWidth = evt.newRect.width);
+            parent.Add(scroll);
         }
 
         static void AddCode(VisualElement parent, string text)

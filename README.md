@@ -17,7 +17,7 @@ and the same one Codex Desktop lists in its sidebar (switch it to chronological 
 ## Status
 
 Conversation client with a composer, searchable/archivable thread navigation, collapsible reasoning and tool
-records, approval cards, standalone console, right-side Changes/Subagents panels and a settings panel.
+records, approval cards, standalone terminal, right-side Changes/Subagents panels and a settings panel.
 Verified against Codex CLI 0.166.0 on Unity 6000.3.
 
 ## Features
@@ -40,6 +40,8 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   changes keep their status. Earlier turns use the same history pagination as the transcript. A running
   turn's aggregate diff appears separately while available; it is removed when the turn ends. Closing or
   switching right-side tabs preserves the Changes selection and reading position. The column is resizable.
+  Patches here and in the transcript show additions in green and deletions in red, with full-row backgrounds;
+  copying retains the original patch text.
 - Running work has a pulsing hint: a dot in the toolbar, a dot on the active sidebar conversation, and
   pulsing dots on running subagent rows. Static green/yellow/red dots mark completed/failed agents.
   A historical subagent with a stale “running” state is shown as **idle** unless it appears in the current
@@ -52,13 +54,13 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   decision back to the app-server. Legacy `execCommandApproval` and `applyPatchApproval` requests use the
   same cards.
 - Live command/file output, MCP progress, plan steps and the turn diff update inside Process while the turn
-  runs. A running command with a PTY process id gets an inline terminal input row.
-- **Console** in the toolbar opens a standalone command window, independent of conversations. Sandboxed mode
-  uses `command/exec`; Local mode uses `process/spawn` on the app-server host. Output streams live; Run
-  becomes Stop while the process is alive; Copy, Clear and the working-directory field are available. The
-  command line is split into argv (double/single quotes supported; backslashes and UNC paths are preserved),
-  not passed through a shell, so pipes, redirects and stdin/PTY sessions are not available yet. On Windows,
-  run `cmd.exe /c dir` or `powershell.exe -NoProfile -Command ls`; bare `ls` is not a Windows executable.
+  runs. Conversation processes show output and observed terminal input as read-only history.
+- **Terminal** in the toolbar opens a persistent shell independent of conversations: PowerShell on Windows,
+  bash on macOS/Linux. Type `ls`, `cd`, pipes and other shell commands directly. The shell retains its working
+  directory and variables between submissions. Sandboxed mode uses `command/exec`; Local uses `process/spawn`
+  on the app-server host. The bottom input supports Enter to submit, Shift+Enter for a newline, Up/Down history,
+  and stdin while a program runs. Ctrl+C interrupts without restarting the shell. Folder, Restart, Clear
+  (Ctrl+L) and Copy are available above the selectable output. Closing the window keeps its shell alive.
 - Codex output is plain document text; only user input uses a compact, right-aligned bubble (max 68% of the
   transcript width). Process and approval/question surfaces remain cards because they are interaction
   containers.
@@ -192,8 +194,11 @@ sends two real messages, one after creating a thread, and checks streaming and h
 - Changes shows app-server `fileChange` records, not the Git working tree or every filesystem/scene edit.
   Shell and Unity-tool edits may have no such record. Historical per-file patches come from loaded history;
   the live aggregate diff and turn-plan notifications are not cached as persistent history by this package.
-- Standalone Console runs programs without a conversation. Inline terminal input remains available when
-  a running conversation's `commandExecution` item exposes a PTY `processId`.
+- Terminal uses a lightweight plain-text VT display for shell output, progress and cursor/erase sequences;
+  full-screen TUIs, ANSI text styling and history reflow on resize are not implemented. Output is capped at
+  200,000 UTF-16 units. Disconnecting or domain reload starts a new shell and restores the last directory;
+  variables and active programs do not survive that connection change. Windows PowerShell was exercised
+  live; the macOS/Linux bash path has not been verified on a host running those platforms.
 - A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving
   between homes does not migrate conversations.
 - The context indicator needs a token-usage notification. It shows `ctx —` until the conversation has run a

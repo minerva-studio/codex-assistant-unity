@@ -93,26 +93,29 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `item/plan/delta` appends plan text;
   `turn/plan/updated` creates the live `turnPlan` item;
   `turn/diff/updated` creates the live `turnDiff` item;
-  `command/exec/outputDelta`/`process/outputDelta` decode base64; a process id/handle belonging to the
-  standalone console appends to `m_ConsoleOutput` (200k cap) and raises `ConsoleChanged`, otherwise it
-  matches a live command by process id;
-  `process/exited` records the console exit or the live command's exit code. All live-turn paths go through
+  `command/exec/outputDelta`/`process/outputDelta` are routed only to the workspace's terminal session,
+  which matches its connection-scoped processId/processHandle and decodes base64 using independent
+  stdout/stderr UTF-8 decoders; `process/exited` finishes only a matching local shell. All live-turn paths go through
   `MarkTranscriptChanged`, so the existing 50 ms live throttle refreshes the Process group.
-- Standalone console: `CodexConsoleWindow` holds a `CodexWorkspace` reference and exposes a command line,
-  working directory, Sandboxed/Local mode, Run/Stop, Copy and Clear. `StartConsoleCommand` splits the line
-  into argv (quotes supported; no shell), then calls `CodexClient.ExecCommand` (`command/exec`,
-  `processId` + `streamStdoutStderr`) or `SpawnProcess` (`process/spawn`, `processHandle` +
-  `streamStdoutStderr`). The final `command/exec` response supplies the exit code; `process/exited` does the
-  same for local processes. `StopConsole` sends `command/exec/terminate` or `process/kill`. stdout and stderr
-  use separate UTF-8 decoders (a split multibyte character in one stream cannot consume the other's bytes);
-  `SplitCommandLine` preserves backslashes and UNC paths and only treats `\"` inside double quotes as an
-  escape. `CodexConsoleWindow` polls the assistant every second when its workspace is disconnected, so it
-  re-binds after the Assistant is closed and reopened. `stdin`, PTY mode, shell pipes/redirects and output
-  resize are not implemented yet.
-- The terminal input row is rendered by `RenderCommand` only when a running command has a `processId` and a
-  `sendTerminalInput` callback was supplied. The window calls `CodexClient.WriteCommandInput`, which sends
-  `command/exec/write { processId, deltaBase64 }`. This is for turn-level PTY commands, not a general
-  `process/spawn` console.
+- Terminal: the workspace owns `CodexTerminalSession`; `CodexConsoleWindow` binds its UI and remains the
+  serialized EditorWindow type, now titled Codex Terminal. Windows uses a persistent PowerShell PTY with
+  PSReadLine removed; macOS/Linux use bash. `StartSandboxedShell` uses `command/exec` and `StartLocalShell`
+  uses `process/spawn`, both with tty, initial size, no timeout and no server output cap. Commands/stdin
+  go directly to `command/exec/write` or `process/writeStdin`; no argv parser remains in the workspace.
+  The final `command/exec` response finishes a sandboxed shell; `process/exited` finishes a local shell.
+  Ctrl+C writes the PTY interrupt character. Restart terminates the old registered process before starting
+  its replacement, including requests made before registration. Generation checks ignore old callbacks.
+  A custom OSC prompt carries exit success and base64 UTF-8 cwd. `CodexTerminalBuffer` removes control
+  metadata, handles common VT cursor/erase/progress sequences and caps actual rendered text at 200k UTF-16
+  units (64 units per cell). It is a plain-text shell view, not a full TUI or SGR renderer.
+  The window polls for a replacement Assistant workspace every second while disconnected and snapshots
+  the old session's cwd before binding a new one. Folder selection can recover an exited shell, including
+  invalid initial cwd. Closing the window retains the shell; connection loss/domain reload creates a new
+  one and retains only the window's last cwd/draft/mode, not environment or running programs.
+- Conversation Process cards expose output and observed `terminalInput` history only. Their tool-owned
+  process ids are not connection-scoped standalone ids, so the former input field/callback was removed.
+  `CodexTextEditing.CaretAtEnd` shares the existing Unity text-editing utility reset between composer and
+  terminal input to clear stale cursor/selection indices after programmatic text changes.
 - `serverRequest/resolved` removes the matching question/approval by request id; this handles another client
   resolving the prompt and avoids a stale interaction card.
 - UI pass: `CodexPalette` now carries the dark/light surface hierarchy and accent colors. The toolbar uses a
@@ -401,9 +404,25 @@ remain present until history hydration succeeds. `Load earlier turns` uses the w
 The focused `Tools/Minerva/Codex/Check Changes Panel` smoke check opens and closes an isolated fixture
 window and sends no Codex message.
 
-Console runs argv, not shell text. The reported Windows `ls` case reached `program not found`; use
-`cmd.exe /c dir` or `powershell.exe -NoProfile -Command ls`. A direct `cmd.exe /c echo` was verified to
-stream output and exit 0 during Changes implementation. Do not turn an argv error into a silent shell fallback.
+Terminal accepts bare shell commands. Live Windows checks exercised `ls`, persistent variables and cwd,
+Unicode, actual input-field Enter, `Read-Host` stdin, Ctrl+C interrupt with the shell still alive, and both
+Sandboxed/Local modes. The bash path still needs a macOS/Linux host check. Reconnect cwd, shell
+exit/Folder recovery and combining-mark output bounds have targeted regressions. On this host, the app-server
+starts PowerShell in HOME for a missing initial cwd, so that case did not produce a real spawn failure.
+The exited-state recovery check uses an actual shell exit, then restarts at the selected valid directory.
+
+Use `style.unityFontDefinition = FontDefinition.FromFont(...)` for these native text surfaces: setting only
+`unityFont` resolved to Roboto Mono but still measured/rendered proportionally in 6000.3. Terminal's viewport
+must stretch inside its ScrollView, with stable scrollbar gutters. Otherwise output growth changes the PTY
+size and produces repeated ConPTY repaints. Character-cell dimensions are measured from the attached label;
+measuring before panel attachment produces DPI warnings. A real `ls` regression asserts each file row appears
+once, and repeated-i/repeated-M measurement asserts the font is actually monospaced.
+
+`CodexPatchView` is shared by Changes and transcript file/turn diffs. Native literal labels retain +/- and
+indentation; additions/deletions have green/red text and backgrounds, hunk headings blue, file headers
+neutral. Hunk line counts distinguish header-looking source lines. Original patch strings remain the copy
+source. Focused checks: `CodexPatchSmokeTest`, `CodexChangesSmokeTest`, `CodexTerminalBufferSmokeTest`,
+`CodexTerminalSmokeTest`. The last also offers an isolated live PTY fixture; always call StopProtocol when done.
 
 Unity CLI + Pipeline package are installed. Use them instead of killing the editor:
 

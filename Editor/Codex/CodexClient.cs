@@ -137,14 +137,17 @@ namespace Minerva.Codex
         }
 
         /// <summary>
-        /// Runs a one-off argv command in the server sandbox. The response is
-        /// deferred until the process exits; output arrives through
+        /// Runs a persistent PTY shell in the server sandbox. The response is
+        /// deferred until the shell exits; output arrives through
         /// <c>command/exec/outputDelta</c> notifications.
         /// </summary>
-        public void ExecCommand(
+        public void StartSandboxedShell(
             JArray command,
             string cwd,
             string processId,
+            JObject environment,
+            int columns,
+            int rows,
             Action<JObject> onResult,
             Action<string> onError)
         {
@@ -152,7 +155,11 @@ namespace Minerva.Codex
             {
                 ["command"] = command,
                 ["processId"] = processId,
-                ["streamStdoutStderr"] = true,
+                ["tty"] = true,
+                ["disableTimeout"] = true,
+                ["disableOutputCap"] = true,
+                ["env"] = environment,
+                ["size"] = new JObject { ["cols"] = columns, ["rows"] = rows },
             };
             if (!string.IsNullOrEmpty(cwd))
             {
@@ -163,14 +170,17 @@ namespace Minerva.Codex
         }
 
         /// <summary>
-        /// Spawns an unsandboxed process on the app-server host. Output and exit
+        /// Spawns an unsandboxed PTY shell on the app-server host. Output and exit
         /// are delivered through <c>process/outputDelta</c> and
         /// <c>process/exited</c>.
         /// </summary>
-        public void SpawnProcess(
+        public void StartLocalShell(
             JArray command,
             string cwd,
             string processHandle,
+            JObject environment,
+            int columns,
+            int rows,
             Action<JObject> onResult,
             Action<string> onError)
         {
@@ -179,9 +189,33 @@ namespace Minerva.Codex
                 ["command"] = command,
                 ["cwd"] = cwd ?? string.Empty,
                 ["processHandle"] = processHandle,
-                ["streamStdoutStderr"] = true,
+                ["tty"] = true,
+                ["timeoutMs"] = JValue.CreateNull(),
+                ["outputBytesCap"] = JValue.CreateNull(),
+                ["env"] = environment,
+                ["size"] = new JObject { ["cols"] = columns, ["rows"] = rows },
             };
             Request("process/spawn", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        /// <summary>Writes literal UTF-8 input to a client-owned local PTY shell.</summary>
+        public void WriteProcessInput(string processHandle, string text, Action onResult, Action<string> onError)
+        {
+            Request("process/writeStdin", new JObject
+            {
+                ["processHandle"] = processHandle,
+                ["deltaBase64"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(text)),
+            }, _ => onResult?.Invoke(), onError);
+        }
+
+        /// <summary>Updates the PTY viewport in character cells for a client-owned shell.</summary>
+        public void ResizeShell(string id, bool local, int columns, int rows, Action<string> onError)
+        {
+            Request(local ? "process/resizePty" : "command/exec/resize", new JObject
+            {
+                [local ? "processHandle" : "processId"] = id,
+                ["size"] = new JObject { ["cols"] = columns, ["rows"] = rows },
+            }, null, onError);
         }
 
         public void TerminateCommand(string processId, Action onResult, Action<string> onError)

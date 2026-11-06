@@ -36,15 +36,15 @@ namespace Minerva.Codex.Editor.Dev
                 turns.Add(older);
                 refresh();
                 Require(panel.Q("codex-change-list").childCount == 2, "repeated file paths remain separate records");
-                Require(panel.Q<Label>("codex-change-diff").text == "first patch", "newest turn selected initially");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "first patch", "newest turn selected initially");
 
                 var selector = panel.Q<DropdownField>("codex-changes-turn");
                 selector.index = 1;
-                Require(panel.Q<Label>("codex-change-diff").text == "older patch", "historical turn can be selected");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "older patch", "historical turn can be selected");
                 Require(panel.Q<Label>("codex-change-status").text.Contains("failed"), "failed patch is labelled");
                 ((JObject)((JArray)((JObject)((JArray)current["items"])[0])["changes"])[0])["diff"] = "streamed patch";
                 refresh();
-                Require(panel.Q<Label>("codex-change-diff").text == "older patch", "background updates preserve explicit selection");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "older patch", "background updates preserve explicit selection");
 
                 var live = (JObject)current.DeepClone();
                 ((JArray)live["items"]).Add(new JObject { ["id"] = "live-turn-diff", ["type"] = "turnDiff", ["diff"] = "aggregate live patch" });
@@ -56,24 +56,25 @@ namespace Minerva.Codex.Editor.Dev
                 selector.index = 0;
                 Require(panel.Q("codex-change-list").childCount == 3, "aggregate live patch has a separate entry");
                 panelType.GetMethod("SelectRecord", Fields).Invoke(panel, new object[] { "live-turn-diff" });
-                Require(panel.Q<Label>("codex-change-diff").text == "aggregate live patch", "live patch can be inspected");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "aggregate live patch", "live patch can be inspected");
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, false);
                 live["status"] = "completed";
                 refresh();
-                Require(panel.Q<Label>("codex-change-diff").text == "streamed patch", "completion hides live aggregate before history reload succeeds");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "streamed patch", "completion hides live aggregate before history reload succeeds");
                 typeof(CodexWorkspace).GetField("m_LiveTurn", Fields).SetValue(workspace, null);
                 refresh();
-                Require(panel.Q<Label>("codex-change-diff").text == "streamed patch", "completion removes stale live patch");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "streamed patch", "completion removes stale live patch");
 
                 JObject missing = Turn("missing", "declined", "");
                 turns.Insert(0, missing);
                 SelectThread(workspace, "another-thread");
                 refresh();
                 Require(panel.Q<Label>("codex-change-status").text.Contains("declined"), "declined patch retains status");
-                Require(panel.Q<Label>("codex-change-diff").text.Contains("No patch"), "missing patch has an explicit explanation");
+                Require(panel.Q<Label>("codex-change-no-patch").style.display.value == DisplayStyle.Flex, "missing patch has an explicit explanation");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "", "missing patch explanation does not become patch content");
                 turns.Clear();
                 refresh();
-                Require(panel.Q<Label>("codex-change-diff").text == "", "empty/thread transition clears old diff");
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "", "empty/thread transition clears old diff");
                 typeof(CodexWorkspace).GetField("m_HasMoreTurns", Fields).SetValue(workspace, true);
                 refresh();
                 Require(panel.Q<Button>("codex-changes-earlier").style.display.value == DisplayStyle.Flex, "earlier history remains accessible from an empty panel");

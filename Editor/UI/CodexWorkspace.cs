@@ -103,17 +103,7 @@ namespace Minerva.Codex
         readonly List<CodexSkillInfo> m_Skills = new List<CodexSkillInfo>();
         readonly List<Action<IReadOnlyList<CodexSkillInfo>>> m_SkillWaiters =
             new List<Action<IReadOnlyList<CodexSkillInfo>>>();
-        readonly StringBuilder m_ConsoleOutput = new StringBuilder();
-        readonly Decoder m_ConsoleStdoutDecoder = Encoding.UTF8.GetDecoder();
-        readonly Decoder m_ConsoleStderrDecoder = Encoding.UTF8.GetDecoder();
-        const int MaxConsoleCharacters = 200000;
-        string m_ConsoleProcessId;
-        string m_ConsoleProcessHandle;
-        bool m_ConsoleRunning;
-        bool m_ConsoleLocal;
-        int m_ConsoleGeneration;
-        int? m_ConsoleExitCode;
-        string m_ConsoleError;
+        CodexTerminalSession m_Terminal;
         string m_SkillsLoadedFor;
         bool m_SkillsLoading;
         string m_ArchiveVerifyingThreadId;
@@ -179,7 +169,6 @@ namespace Minerva.Codex
         public event Action TranscriptChanged;
         public event Action SettingsChanged;
         public event Action ContextChanged;
-        public event Action ConsoleChanged;
 
         public string Status { get; private set; } = "Not connected";
         public string Error { get; private set; }
@@ -248,11 +237,8 @@ namespace Minerva.Codex
         public bool HasPendingApproval => PendingApproval != null;
 
         public bool HasPendingInteraction => HasPendingQuestion || HasPendingApproval;
-        public string ConsoleOutput => m_ConsoleOutput.ToString();
-        public bool ConsoleRunning => m_ConsoleRunning;
-        public bool ConsoleLocal => m_ConsoleLocal;
-        public int? ConsoleExitCode => m_ConsoleExitCode;
-        public string ConsoleError => m_ConsoleError;
+        /// <summary>The connection-scoped shell session shared with the terminal window.</summary>
+        public CodexTerminalSession Terminal => m_Terminal;
         public IReadOnlyList<string> SandboxModes => s_SandboxModes;
         public bool SettingsLoaded => m_ConfigLoaded;
         public string SettingsError => m_SettingsError;
@@ -373,6 +359,7 @@ namespace Minerva.Codex
                 m_Connection.Notification += OnNotification;
                 m_Connection.ServerRequest += OnServerRequest;
                 m_Client = new CodexClient(m_Connection);
+                m_Terminal = new CodexTerminalSession(m_Client);
                 m_Client.Initialize(OnInitialized, OnFailed);
             }
             catch (Exception exception)
@@ -2165,10 +2152,10 @@ namespace Minerva.Codex
                     break;
                 case "command/exec/outputDelta":
                 case "process/outputDelta":
-                    OnProcessOutput(parameters);
+                    m_Terminal?.HandleOutput(parameters);
                     break;
                 case "process/exited":
-                    OnProcessExited(parameters);
+                    m_Terminal?.HandleExit(parameters);
                     break;
                 case "turn/completed":
                     OnTurnCompleted(parameters);
@@ -2696,71 +2683,6 @@ namespace Minerva.Codex
                     ? "Codex is waiting for your approval"
                     : IsRunning ? "Codex is working..." : Status;
             Changed?.Invoke();
-        }
-
-        void OnProcessOutput(JObject parameters)
-        {
-            if (TryHandleConsoleOutput(parameters))
-            {
-                return;
-            }
-
-            if (!TryGetLiveThread(parameters, out string threadId))
-            {
-                return;
-            }
-
-            string processId = parameters["processId"]?.Value<string>();
-            string handle = parameters["processHandle"]?.Value<string>();
-            string encoded = parameters["deltaBase64"]?.Value<string>();
-            if (string.IsNullOrEmpty(encoded))
-            {
-                return;
-            }
-
-            JObject item = FindLiveItem("processId", processId) ??
-                           FindLiveItem("processHandle", handle);
-            if (item == null)
-            {
-                return;
-            }
-
-            string delta;
-            try
-            {
-                delta = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
-            }
-            catch (FormatException)
-            {
-                return;
-            }
-
-            AppendLiveOutput(item, delta);
-            MarkTranscriptChanged(threadId);
-        }
-
-        void OnProcessExited(JObject parameters)
-        {
-            if (TryHandleConsoleExit(parameters))
-            {
-                return;
-            }
-
-            if (!TryGetLiveThread(parameters, out string threadId))
-            {
-                return;
-            }
-
-            string handle = parameters["processHandle"]?.Value<string>();
-            JObject item = FindLiveItem("processHandle", handle);
-            if (item == null)
-            {
-                return;
-            }
-
-            item["exitCode"] = parameters["exitCode"]?.DeepClone() ?? JValue.CreateNull();
-            item["status"] = "completed";
-            MarkTranscriptChanged(threadId);
         }
 
         JObject EnsureLiveItem(string itemId, string type)
@@ -3728,19 +3650,6 @@ namespace Minerva.Codex
             return true;
         }
 
-        public bool SendTerminalInput(string processId, string text)
-        {
-            if (string.IsNullOrEmpty(processId) ||
-                string.IsNullOrWhiteSpace(text) ||
-                m_Client == null)
-            {
-                return false;
-            }
-
-            m_Client.WriteCommandInput(processId, text.TrimEnd() + "\n", null, OnFailed);
-            return true;
-        }
-
         /// <summary>Answers a command/file/permission approval or an MCP elicitation.</summary>
         public bool RespondApproval(
             CodexApprovalRequest request,
@@ -3831,350 +3740,6 @@ namespace Minerva.Codex
             }
         }
 
-        /// <summary>
-        /// Starts a standalone command in the app-server sandbox
-        /// (<paramref name="local"/> false) or as an unsandboxed host process
-        /// (<paramref name="local"/> true). Output streams into
-        /// <see cref="ConsoleOutput"/>.
-        /// </summary>
-        public bool StartConsoleCommand(string commandLine, string cwd, bool local)
-        {
-            if (!m_Ready || m_Client == null)
-            {
-                m_ConsoleError = "Not connected to app-server.";
-                ConsoleChanged?.Invoke();
-                return false;
-            }
-
-            if (m_ConsoleRunning)
-            {
-                return false;
-            }
-
-            List<string> arguments = SplitCommandLine(commandLine);
-            if (arguments.Count == 0)
-            {
-                m_ConsoleError = "Enter a command.";
-                ConsoleChanged?.Invoke();
-                return false;
-            }
-
-            var argv = new JArray();
-            foreach (string argument in arguments)
-            {
-                argv.Add(argument);
-            }
-
-            string workingDirectory = string.IsNullOrWhiteSpace(cwd)
-                ? SelectedCwd ?? m_ProjectRoot
-                : cwd.Trim();
-            string processId = "console-" + Guid.NewGuid().ToString("N");
-            int generation = ++m_ConsoleGeneration;
-
-            m_ConsoleOutput.Clear();
-            m_ConsoleStdoutDecoder.Reset();
-            m_ConsoleStderrDecoder.Reset();
-            m_ConsoleProcessId = processId;
-            m_ConsoleProcessHandle = processId;
-            m_ConsoleRunning = true;
-            m_ConsoleLocal = local;
-            m_ConsoleExitCode = null;
-            m_ConsoleError = null;
-            ConsoleChanged?.Invoke();
-
-            if (local)
-            {
-                m_Client.SpawnProcess(
-                    argv,
-                    workingDirectory,
-                    processId,
-                    _ => { },
-                    message => FailConsole(generation, message));
-            }
-            else
-            {
-                m_Client.ExecCommand(
-                    argv,
-                    workingDirectory,
-                    processId,
-                    result => CompleteConsole(generation, result),
-                    message => FailConsole(generation, message));
-            }
-
-            return true;
-        }
-
-        /// <summary>Asks the server to terminate the running standalone command.</summary>
-        public bool StopConsole()
-        {
-            if (!m_ConsoleRunning || m_Client == null)
-            {
-                return false;
-            }
-
-            int generation = m_ConsoleGeneration;
-            if (m_ConsoleLocal)
-            {
-                m_Client.KillProcess(
-                    m_ConsoleProcessHandle,
-                    () => { },
-                    message => ReportConsoleStopError(generation, message));
-            }
-            else
-            {
-                m_Client.TerminateCommand(
-                    m_ConsoleProcessId,
-                    () => { },
-                    message => ReportConsoleStopError(generation, message));
-            }
-
-            return true;
-        }
-
-        void ReportConsoleStopError(int generation, string message)
-        {
-            if (generation != m_ConsoleGeneration || !m_ConsoleRunning)
-            {
-                return;
-            }
-
-            m_ConsoleError = string.IsNullOrEmpty(message)
-                ? "Could not stop the process."
-                : message;
-            ConsoleChanged?.Invoke();
-        }
-
-        public void ClearConsole()
-        {
-            m_ConsoleOutput.Clear();
-            m_ConsoleExitCode = null;
-            m_ConsoleError = null;
-            if (!m_ConsoleRunning)
-            {
-                m_ConsoleProcessId = null;
-                m_ConsoleProcessHandle = null;
-            }
-
-            ConsoleChanged?.Invoke();
-        }
-
-        bool IsConsoleProcess(string processId, string processHandle)
-        {
-            return (!string.IsNullOrEmpty(processId) && processId == m_ConsoleProcessId) ||
-                   (!string.IsNullOrEmpty(processHandle) && processHandle == m_ConsoleProcessHandle);
-        }
-
-        bool TryHandleConsoleOutput(JObject parameters)
-        {
-            if (!m_ConsoleRunning)
-            {
-                return false;
-            }
-
-            string processId = parameters["processId"]?.Value<string>();
-            string processHandle = parameters["processHandle"]?.Value<string>();
-            if (!IsConsoleProcess(processId, processHandle))
-            {
-                return false;
-            }
-
-            string encoded = parameters["deltaBase64"]?.Value<string>();
-            if (string.IsNullOrEmpty(encoded))
-            {
-                return true;
-            }
-
-            try
-            {
-                byte[] bytes = Convert.FromBase64String(encoded);
-                Decoder decoder = parameters["stream"]?.Value<string>() == "stderr"
-                    ? m_ConsoleStderrDecoder
-                    : m_ConsoleStdoutDecoder;
-                int charCount = decoder.GetCharCount(bytes, 0, bytes.Length, false);
-                var characters = new char[charCount];
-                decoder.GetChars(bytes, 0, bytes.Length, characters, 0, false);
-                AppendConsoleText(new string(characters));
-                ConsoleChanged?.Invoke();
-            }
-            catch (FormatException)
-            {
-            }
-
-            return true;
-        }
-
-        void FlushConsoleDecoders()
-        {
-            FlushConsoleDecoder(m_ConsoleStdoutDecoder);
-            FlushConsoleDecoder(m_ConsoleStderrDecoder);
-        }
-
-        void FlushConsoleDecoder(Decoder decoder)
-        {
-            int needed = decoder.GetCharCount(Array.Empty<byte>(), 0, 0, true);
-            if (needed <= 0)
-            {
-                return;
-            }
-
-            var characters = new char[needed];
-            int count = decoder.GetChars(Array.Empty<byte>(), 0, 0, characters, 0, true);
-            if (count > 0)
-            {
-                AppendConsoleText(new string(characters, 0, count));
-            }
-        }
-
-        bool TryHandleConsoleExit(JObject parameters)
-        {
-            if (!m_ConsoleRunning)
-            {
-                return false;
-            }
-
-            string processHandle = parameters["processHandle"]?.Value<string>();
-            if (string.IsNullOrEmpty(processHandle) || processHandle != m_ConsoleProcessHandle)
-            {
-                return false;
-            }
-
-            FlushConsoleDecoders();
-            AppendConsoleText(parameters["stdout"]?.Value<string>());
-            AppendConsoleText(parameters["stderr"]?.Value<string>());
-            m_ConsoleExitCode = parameters["exitCode"]?.Value<int?>() ?? 0;
-            m_ConsoleRunning = false;
-            m_ConsoleError = null;
-            m_ConsoleProcessId = null;
-            m_ConsoleProcessHandle = null;
-            ConsoleChanged?.Invoke();
-            return true;
-        }
-
-        void CompleteConsole(int generation, JObject result)
-        {
-            if (generation != m_ConsoleGeneration)
-            {
-                return;
-            }
-
-            FlushConsoleDecoders();
-            AppendConsoleText(result?["stdout"]?.Value<string>());
-            AppendConsoleText(result?["stderr"]?.Value<string>());
-            m_ConsoleExitCode = result?["exitCode"]?.Value<int?>() ?? 0;
-            m_ConsoleRunning = false;
-            m_ConsoleError = null;
-            m_ConsoleProcessId = null;
-            m_ConsoleProcessHandle = null;
-            ConsoleChanged?.Invoke();
-        }
-
-        void FailConsole(int generation, string message)
-        {
-            if (generation != m_ConsoleGeneration)
-            {
-                return;
-            }
-
-            m_ConsoleError = string.IsNullOrEmpty(message) ? "Command failed." : message;
-            m_ConsoleRunning = false;
-            m_ConsoleProcessId = null;
-            m_ConsoleProcessHandle = null;
-            ConsoleChanged?.Invoke();
-        }
-
-        void AppendConsoleText(string text)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                return;
-            }
-
-            m_ConsoleOutput.Append(text);
-            int excess = m_ConsoleOutput.Length - MaxConsoleCharacters;
-            if (excess > 0)
-            {
-                m_ConsoleOutput.Remove(0, excess);
-            }
-        }
-
-        void ResetConsole(string error)
-        {
-            bool wasRunning = m_ConsoleRunning;
-            m_ConsoleRunning = false;
-            m_ConsoleProcessId = null;
-            m_ConsoleProcessHandle = null;
-            if (wasRunning && !string.IsNullOrEmpty(error))
-            {
-                m_ConsoleError = error;
-            }
-
-            ConsoleChanged?.Invoke();
-        }
-
-        static List<string> SplitCommandLine(string line)
-        {
-            var arguments = new List<string>();
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                return arguments;
-            }
-
-            var token = new StringBuilder();
-            bool singleQuoted = false;
-            bool doubleQuoted = false;
-            bool hasToken = false;
-            for (int index = 0; index < line.Length; index++)
-            {
-                char character = line[index];
-                if (character == '\\' &&
-                    doubleQuoted &&
-                    index + 1 < line.Length &&
-                    line[index + 1] == '"')
-                {
-                    token.Append('"');
-                    index++;
-                    hasToken = true;
-                    continue;
-                }
-
-                if (character == '"' && !singleQuoted)
-                {
-                    doubleQuoted = !doubleQuoted;
-                    hasToken = true;
-                    continue;
-                }
-
-                if (character == '\'' && !doubleQuoted)
-                {
-                    singleQuoted = !singleQuoted;
-                    hasToken = true;
-                    continue;
-                }
-
-                if (char.IsWhiteSpace(character) && !singleQuoted && !doubleQuoted)
-                {
-                    if (hasToken)
-                    {
-                        arguments.Add(token.ToString());
-                        token.Clear();
-                        hasToken = false;
-                    }
-
-                    continue;
-                }
-
-                token.Append(character);
-                hasToken = true;
-            }
-
-            if (hasToken)
-            {
-                arguments.Add(token.ToString());
-            }
-
-            return arguments;
-        }
-
         void OnDisconnected(string reason)
         {
             m_Ready = false;
@@ -4190,7 +3755,7 @@ namespace Minerva.Codex
             ClearAutoTitle();
             StopStreamingUpdates();
             CancelSearchDebounce();
-            ResetConsole("Disconnected");
+            m_Terminal?.Disconnect("Disconnected");
             m_ContextUsage.Clear();
             Status = "Disconnected";
             Error = reason;
@@ -4651,8 +4216,7 @@ namespace Minerva.Codex
             ThreadsLoaded = false;
             m_InitialSelectionDone = false;
             StopStreamingUpdates();
-            m_ConsoleOutput.Clear();
-            ResetConsole("Connection changed");
+            m_Terminal?.Disconnect("Connection changed");
         }
 
         public void Dispose()
@@ -4685,8 +4249,7 @@ namespace Minerva.Codex
             ClearAutoTitle();
             StopStreamingUpdates();
             CancelSearchDebounce();
-            m_ConsoleOutput.Clear();
-            ResetConsole(null);
+            m_Terminal?.Disconnect("Connection closed");
             m_Connection?.Dispose();
             m_Connection = null;
             m_Client = null;
