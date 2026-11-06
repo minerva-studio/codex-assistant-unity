@@ -471,17 +471,23 @@ size and produces repeated ConPTY repaints. Character-cell dimensions are measur
 measuring before panel attachment produces DPI warnings. A real `ls` regression asserts each file row appears
 once, and repeated-i/repeated-M measurement asserts the font is actually monospaced.
 
-`CodexPatchView` is shared by Changes and transcript file/turn diffs. Native literal labels retain +/- and
-indentation; additions/deletions have green/red text and backgrounds, hunk headings blue, file headers
-neutral. Hunk line counts distinguish header-looking source lines. Original patch strings remain the copy
-source. Focused checks: `CodexPatchSmokeTest`, `CodexChangesSmokeTest`, `CodexTerminalBufferSmokeTest`,
+`CodexPatchView` is shared by Changes and transcript file/turn diffs. Parsed source rows separate old/new
+coordinates, diff markers and code text. Additions/deletions retain green/red backgrounds and markers;
+hunk headings are blue and file headers neutral. Source numbers follow hunk starts/counts, with blanks
+for unavailable sides. The existing ColorCode grammars/palette color reconstructed before/after streams
+independently, resetting at file/hunk gaps. Generated per-line color tags isolate every literal '<' using
+noparse, so source strings cannot become UI markup. Unknown languages remain plain. Runs of more than
+eight supplied context lines lazily fold the middle, retaining three at each end; expansion keys include
+file, segment and coordinates (or row position when coordinates are absent). No current-file reads fill
+missing history. Original patch strings remain the copy source. Focused checks: `CodexPatchSmokeTest`, `CodexChangesSmokeTest`, `CodexTerminalBufferSmokeTest`,
 `CodexTerminalSmokeTest`. The last also offers an isolated live PTY fixture; always call StopProtocol when done.
 
-`SetPatch(text, operation)` treats add/delete record payloads as whole-file content, with display-only +/−
+`SetPatch(text, operation, path)` treats add/delete record payloads as whole-file content, with display-only +/−
 markers and green/red rows for every actual line, including blanks and diff-looking source text. The final
 newline does not invent an extra line. Update/live aggregate payloads keep unified-diff parsing. Both callers
-pass the record operation, and the view's refresh comparison includes it so identical text can switch from
-add to delete. Copy still uses the unmodified record payload. Patch/Changes smoke checks cover both surfaces.
+pass the record operation and destination path; aggregate patches infer paths from headers. The view's
+refresh comparison includes operation, path and theme, so identical text can change presentation correctly.
+Copy still uses the unmodified record payload. Patch/Changes smoke checks cover both surfaces.
 
 Unity CLI + Pipeline package are installed. Use them instead of killing the editor:
 

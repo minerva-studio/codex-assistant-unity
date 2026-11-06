@@ -177,7 +177,7 @@ namespace Minerva.Codex
                     : record.Operation + " · " + record.Status + (edits > 1 ? " · edit " + edit + " / " + edits : "");
                 m_Toggle.tooltip = record.DisplayPath + "\n" + status + "\nClick to expand or collapse";
                 m_Name.tooltip = m_Toggle.tooltip;
-                Patch.SetPatch(record.Diff, record.Operation);
+                Patch.SetPatch(record.Diff, record.Operation, record.Live ? null : record.Path);
                 m_Added.text = "+" + Patch.Additions;
                 m_Removed.text = "−" + Patch.Deletions;
                 m_Copy.SetEnabled(!string.IsNullOrEmpty(record.Diff));

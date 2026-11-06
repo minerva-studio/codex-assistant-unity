@@ -60,7 +60,11 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   Open. Unity assets use Unity's opener; other files use their default application.
   Patches here and in the transcript show additions in green and deletions in red, with full-row backgrounds;
   new files mark every content line as added, deleted files mark every content line as removed, and updates
-  use unified-diff syntax. Copying retains the original text without synthesized display markers.
+  use unified-diff syntax. Compact old/new gutters show source line numbers where the patch supplies them.
+  Supported file extensions use syntax colors; other files stay literal plain text. Long supplied unchanged
+  regions fold their middle with an Expand/Collapse control, keeping three context lines at each end.
+  Omitted source is not fetched from the current file. Copying retains the original text without display
+  markers, gutters, syntax markup or folding changes.
 - Running work has a pulsing hint: a dot in the toolbar, a dot on the active sidebar conversation, and
   pulsing dots on running subagent rows. Static green/yellow/red dots mark completed/failed agents.
   A historical subagent with a stale “running” state is shown as **idle** unless it appears in the current

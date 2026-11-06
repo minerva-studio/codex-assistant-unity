@@ -6,6 +6,9 @@ All notable changes to this package are documented here.
 
 ### Added
 
+- Patch readers in Changes and the transcript now include old/new source line numbers, filename-based
+  syntax highlighting using the existing ColorCode dependency, and lazy expandable unchanged-context
+  regions. Source-looking markup stays literal; raw copy text and change totals remain unchanged.
 - Each Changes file header includes **Open** and raw patch **Copy**. Relative paths use
   conversation cwd, renamed records open their destination, and missing/aggregate targets are disabled.
 - A combined model control card with a discrete reasoning slider, separate Fast lightning button and
