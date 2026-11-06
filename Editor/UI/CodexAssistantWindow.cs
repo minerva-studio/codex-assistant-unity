@@ -96,6 +96,7 @@ namespace Minerva.Codex
         EventCallback<KeyUpEvent> m_PopupKeyUpHandler;
 
         bool m_FollowTranscript = true;
+        bool m_ProgrammaticTranscriptScroll;
         string m_LastTranscriptThreadId;
         int m_LastTurnCount;
         bool m_ShowContextIndicator;
@@ -753,7 +754,14 @@ namespace Minerva.Codex
             m_Transcript.verticalScrollerVisibility = ScrollerVisibility.Auto;
             m_Transcript.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             m_Transcript.verticalScroller.valueChanged += _ =>
-                m_FollowTranscript = IsTranscriptAtBottom();
+            {
+                if (!m_ProgrammaticTranscriptScroll)
+                {
+                    m_FollowTranscript = IsTranscriptAtBottom();
+                }
+            };
+            m_Transcript.RegisterCallback<GeometryChangedEvent>(OnTranscriptGeometryChanged);
+            m_Transcript.contentContainer.RegisterCallback<GeometryChangedEvent>(OnTranscriptGeometryChanged);
             content.Add(m_Transcript);
 
             m_QuestionPanel = new VisualElement();
@@ -4933,17 +4941,47 @@ namespace Minerva.Codex
             return scroller.highValue <= 0 || scroller.value >= scroller.highValue - 24;
         }
 
+        void OnTranscriptGeometryChanged(GeometryChangedEvent _)
+        {
+            // Layout can change after the single scheduled scroll in
+            // RestoreScroll (new message, markdown/image layout, composer
+            // resizing). While following, every geometry change is another
+            // chance to reach the real bottom.
+            if (m_FollowTranscript)
+            {
+                ScrollTranscriptToBottom();
+            }
+        }
+
+        void ScrollTranscriptToBottom()
+        {
+            float maxOffset = Math.Max(
+                m_Transcript.verticalScroller.highValue,
+                m_Transcript.contentContainer.layout.height - m_Transcript.layout.height);
+            SetTranscriptScrollOffset(maxOffset);
+        }
+
+        void SetTranscriptScrollOffset(float y)
+        {
+            m_ProgrammaticTranscriptScroll = true;
+            try
+            {
+                m_Transcript.scrollOffset = new Vector2(0, Math.Max(0f, y));
+            }
+            finally
+            {
+                m_ProgrammaticTranscriptScroll = false;
+            }
+        }
+
         void RestoreScroll(Vector2 previousOffset, bool stickToBottom, float previousContentHeight = -1f)
         {
             m_Transcript.schedule.Execute(() =>
             {
                 if (stickToBottom)
                 {
-                    float maxOffset = Math.Max(
-                        m_Transcript.verticalScroller.highValue,
-                        m_Transcript.contentContainer.layout.height - m_Transcript.layout.height);
-                    m_Transcript.scrollOffset = new Vector2(0, Math.Max(0, maxOffset));
                     m_FollowTranscript = true;
+                    ScrollTranscriptToBottom();
                 }
                 else
                 {
@@ -4954,7 +4992,7 @@ namespace Minerva.Codex
                         delta = Math.Max(0f, contentHeight - previousContentHeight);
                     }
 
-                    m_Transcript.scrollOffset = new Vector2(0, previousOffset.y + delta);
+                    SetTranscriptScrollOffset(previousOffset.y + delta);
                 }
             });
         }

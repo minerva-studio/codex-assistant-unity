@@ -56,6 +56,9 @@ All notable changes to this package are documented here.
   commands are sent unchanged, and queued rows show the user's text without the snapshot.
 - Clearing the composer after a send now resets the text-editing caret indices too; typing the next message
   no longer throws `ArgumentOutOfRangeException` from `TextEditingUtilities.ReplaceSelection`.
+- Transcript auto-follow now re-scrolls on content and viewport geometry changes instead of relying on one
+  scheduled pass. Long messages and composer resizing no longer leave the transcript above the bottom, and
+  programmatic scroll updates cannot turn follow off.
 - Optional JSON numbers are read as nullable (`Value<long?>()`), so a live item whose `completedAtMs` is
   still null no longer throws `InvalidCastException` during rendering.
 - The sidebar loads 50 threads and appends older pages with **Load more** (`thread/list` cursor); the

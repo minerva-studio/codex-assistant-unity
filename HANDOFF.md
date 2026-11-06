@@ -263,7 +263,12 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   model/`sandboxPolicy`/approval.
 - The transcript follows the bottom while `m_FollowTranscript` is true. It is reset on a thread change or
   send, and cleared when the user scrolls away from the bottom; streaming updates then preserve their
-  position instead of yanking them down.
+  position instead of yanking them down. A single scheduled `RestoreScroll` is not sufficient: markdown,
+  images and a growing composer can change height after that callback. `GeometryChangedEvent` on the
+  ScrollView and its content re-runs `ScrollTranscriptToBottom` while following, and
+  `m_ProgrammaticTranscriptScroll` keeps programmatic offset assignments from clearing follow through the
+  scroller's `valueChanged`. Verified by appending and removing a 900px probe: follow stayed true and the
+  offset tracked 947 -> 1847 -> 947.
 - Auto-title: `OnThreadStarted` marks a user-created thread. Once its first turn is hydrated and idle,
   `MaybeStartAutoTitle` creates a read-only **ephemeral** thread with `AutoTitleModel` (or the conversation
   model) and a title prompt, collects the final agent message, sanitizes it to <=64 chars, and calls
