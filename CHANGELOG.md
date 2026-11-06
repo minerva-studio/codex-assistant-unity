@@ -6,6 +6,9 @@ All notable changes to this package are documented here.
 
 ### Added
 
+- A Codex-style Fast mode card/switch in the model popup, driven by model service-tier metadata. Config,
+  resume and live settings sync speed independently of reasoning effort; thread/start, settings/update and
+  turn/start carry the selected tier. Off explicitly requests standard speed; unsupported models disable it.
 - Right-side **Changes / Subagents** tabs with a shared resizable column. Changes lists loaded turns and
   individual file edits with their status, read-only patch detail, copy and history pagination. Repeated
   paths remain separate; live aggregate patches disappear on completion. Selection and reading position

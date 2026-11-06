@@ -1533,7 +1533,74 @@ namespace Minerva.Codex
                 });
             }
 
-            ShowPopup(m_ModelButton, "Model", 300, items, true);
+            ShowPopup(m_ModelButton, "Model", 320, items, true, footer: BuildSpeedControl(m_Workspace));
+        }
+
+        static VisualElement BuildSpeedControl(CodexWorkspace workspace)
+        {
+            var card = new VisualElement { name = "codex-speed-card" };
+            card.style.height = 94;
+            card.style.flexShrink = 0;
+            card.style.paddingTop = 9;
+            card.style.borderTopWidth = 1;
+            card.style.borderTopColor = CodexPalette.Border;
+            var heading = new VisualElement();
+            heading.style.flexDirection = FlexDirection.Row;
+            heading.style.justifyContent = Justify.SpaceBetween;
+            card.Add(heading);
+            var title = new Label("Fast mode");
+            title.style.color = CodexPalette.Text;
+            title.style.fontSize = 11;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            heading.Add(title);
+            var status = new Label { name = "codex-fast-status" };
+            status.style.fontSize = 10;
+            heading.Add(status);
+            var description = new Label { enableRichText = false };
+            description.style.fontSize = 9;
+            description.style.color = CodexPalette.Muted;
+            description.style.whiteSpace = WhiteSpace.Normal;
+            description.style.marginBottom = 7;
+            card.Add(description);
+            var track = new Button(() => workspace.SetFastMode(!workspace.FastMode)) { name = "codex-fast-switch" };
+            track.style.height = 28;
+            track.style.flexShrink = 0;
+            track.style.marginLeft = track.style.marginRight = 2;
+            track.style.borderTopWidth = track.style.borderBottomWidth = 0;
+            track.style.borderLeftWidth = track.style.borderRightWidth = 0;
+            track.style.borderTopLeftRadius = track.style.borderTopRightRadius = 14;
+            track.style.borderBottomLeftRadius = track.style.borderBottomRightRadius = 14;
+            var thumb = new VisualElement { pickingMode = PickingMode.Ignore };
+            thumb.style.position = Position.Absolute;
+            thumb.style.width = thumb.style.height = 22;
+            thumb.style.top = 3;
+            thumb.style.backgroundColor = Color.white;
+            thumb.style.borderTopLeftRadius = thumb.style.borderTopRightRadius = 11;
+            thumb.style.borderBottomLeftRadius = thumb.style.borderBottomRightRadius = 11;
+            track.Add(thumb);
+            card.Add(track);
+            Action refresh = () =>
+            {
+                bool fast = workspace.FastMode;
+                Color accent = new Color(0.55f, 0.36f, 1f);
+                status.text = fast ? "On" : "Off";
+                status.style.color = fast ? accent : CodexPalette.Muted;
+                description.text = workspace.FastTier?.Description ?? "Unavailable for this model";
+                track.SetEnabled(workspace.SettingsLoaded && !workspace.IsRunning && (workspace.FastTier != null || fast));
+                track.tooltip = fast ? "Use standard speed" : "Use Fast speed · increased usage";
+                track.style.backgroundColor = fast ? accent : CodexPalette.PillBorder;
+                thumb.style.left = fast ? new StyleLength(StyleKeyword.Auto) : new StyleLength(3);
+                thumb.style.right = fast ? new StyleLength(3) : new StyleLength(StyleKeyword.Auto);
+            };
+            workspace.SettingsChanged += refresh;
+            workspace.Changed += refresh;
+            card.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                workspace.SettingsChanged -= refresh;
+                workspace.Changed -= refresh;
+            });
+            refresh();
+            return card;
         }
 
         void ShowEffortMenu()
@@ -1607,7 +1674,8 @@ namespace Minerva.Codex
             float width,
             List<PopupItem> items,
             bool searchable,
-            Vector2? at = null)
+            Vector2? at = null,
+            VisualElement footer = null)
         {
             ClosePopup();
             if (anchor == null && !at.HasValue)
@@ -1679,6 +1747,7 @@ namespace Minerva.Codex
             m_Popup.Add(list);
             m_PopupList = list;
             FillPopupList(list, items, string.Empty);
+            if (footer != null) m_Popup.Add(footer);
 
             m_Popup.RegisterCallback<KeyDownEvent>(OnPopupKeyDown, TrickleDown.TrickleDown);
             m_PopupKeyDownHandler ??= OnPopupKeyDown;
@@ -1709,6 +1778,7 @@ namespace Minerva.Codex
             }
 
             float popupHeight = 8 + 16 + 4 + (searchable ? 28 : 0) + listHeight + 8;
+            if (footer != null) popupHeight += footer.style.height.value.value;
             m_Popup.style.height = popupHeight;
 
             Rect rootBounds = rootVisualElement.worldBound;
@@ -2104,7 +2174,7 @@ namespace Minerva.Codex
             bool available = m_Workspace.SettingsLoaded && !m_Workspace.IsRunning;
 
             string modelLabel = ModelLabel(m_Workspace.SelectedModel);
-            m_ModelButton.text = $"{modelLabel}  ▾";
+            m_ModelButton.text = $"{modelLabel}{(m_Workspace.FastMode ? " · Fast" : "")}  ▾";
             m_ModelButton.SetEnabled(available && (m_Workspace.Models.Count > 0 || !string.IsNullOrEmpty(m_Workspace.SelectedModel)));
             m_ModelButton.tooltip = string.IsNullOrEmpty(m_Workspace.SelectedModel)
                 ? "Model"

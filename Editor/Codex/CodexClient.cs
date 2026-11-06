@@ -308,9 +308,11 @@ namespace Minerva.Codex
             Request("thread/resume", parameters, result => onResult?.Invoke(result as JObject), onError);
         }
 
+        /// <summary>Starts a thread. A null service tier inherits the server default; "default" requests standard speed.</summary>
         public void StartThread(
             string cwd,
             string model,
+            string serviceTier,
             string sandbox,
             JToken approvalPolicy,
             Action<JObject> onResult,
@@ -332,6 +334,8 @@ namespace Minerva.Codex
             {
                 parameters["sandbox"] = sandbox;
             }
+
+            if (serviceTier != null) parameters["serviceTier"] = serviceTier;
 
             AddIfPresent(parameters, "approvalPolicy", approvalPolicy);
             if (ephemeral)
@@ -428,29 +432,35 @@ namespace Minerva.Codex
         }
 
         /// <summary>
-        /// Updates the thread's sticky settings. This is the API path for changing
-        /// reasoning effort between turns; it avoids restarting the thread.
+        /// Updates sticky model, reasoning and speed settings without restarting the thread.
+        /// Null values are omitted; serviceTier "default" explicitly requests standard speed.
         /// </summary>
         public void UpdateThreadSettings(
             string threadId,
+            string model,
             string effort,
+            string serviceTier,
             Action<JObject> onResult,
             Action<string> onError)
         {
             var parameters = new JObject
             {
                 ["threadId"] = threadId,
-                ["effort"] = effort,
             };
+            if (model != null) parameters["model"] = model;
+            if (effort != null) parameters["effort"] = effort;
+            if (serviceTier != null) parameters["serviceTier"] = serviceTier;
 
             Request("thread/settings/update", parameters, result => onResult?.Invoke(result as JObject), onError);
         }
 
+        /// <summary>Starts a turn. A null service tier inherits the thread setting; "default" requests standard speed.</summary>
         public void StartTurn(
             string threadId,
             string text,
             string cwd,
             string model,
+            string serviceTier,
             string effort,
             JObject sandboxPolicy,
             JToken approvalPolicy,
@@ -478,6 +488,8 @@ namespace Minerva.Codex
             {
                 parameters["effort"] = effort;
             }
+
+            if (serviceTier != null) parameters["serviceTier"] = serviceTier;
 
             // Without this, GPT-family models can run with encrypted reasoning
             // and no plaintext summary in the persisted turn.

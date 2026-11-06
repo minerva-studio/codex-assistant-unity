@@ -56,15 +56,25 @@ namespace Minerva.Codex
         public bool IsRunning => Status == "running" || Status == "pending";
     }
 
+    /// <summary>A model-advertised speed tier; its id is sent unchanged to the app-server.</summary>
+    internal sealed class CodexServiceTier
+    {
+        public string Id;
+        public string Name;
+        public string Description;
+    }
+
     internal sealed class CodexModelInfo
     {
         public string Id;
         public string CatalogId;
         public string DisplayName;
         public string DefaultEffort;
+        public string DefaultServiceTier;
         public bool Hidden;
         public bool IsDefault;
         public readonly List<string> Efforts = new List<string>();
+        public readonly List<CodexServiceTier> ServiceTiers = new List<CodexServiceTier>();
 
         public bool Matches(string value)
         {
@@ -79,6 +89,23 @@ namespace Minerva.Codex
     /// </summary>
     internal sealed class CodexWorkspace : IDisposable
     {
+        // One in-flight write per thread; Next is the latest immutable intent captured while it runs.
+        sealed class SettingsWrite
+        {
+            public readonly string Model;
+            public readonly string Effort;
+            public readonly string Tier;
+            public SettingsWrite Next;
+
+            public SettingsWrite(string model, string effort, string tier)
+            {
+                Model = model;
+                Effort = effort;
+                Tier = tier;
+            }
+        }
+
+        readonly Dictionary<string, SettingsWrite> m_SettingsWrites = new Dictionary<string, SettingsWrite>();
         const string LocalUserItemId = "local-user";
         const double StreamIntervalSeconds = 0.05;
         const double SearchDebounceSeconds = 0.25;
@@ -149,6 +176,7 @@ namespace Minerva.Codex
         string m_SettingsSource = "config";
         JToken m_ApprovalPolicy;
         string m_EffortSyncedThreadId;
+        string m_ServiceTier;
 
         int m_QueueGeneration;
 
@@ -245,6 +273,10 @@ namespace Minerva.Codex
         public string SettingsSource => m_SettingsSource;
         public string SelectedModel { get; private set; }
         public string SelectedEffort { get; private set; }
+        /// <summary>Effective speed: config/thread override, then catalog default, then standard.</summary>
+        public string SelectedServiceTier => m_ServiceTier ?? FindModel(SelectedModel)?.DefaultServiceTier ?? "default";
+        public CodexServiceTier FastTier => FindModel(SelectedModel)?.ServiceTiers.Find(tier => tier.Id == "priority" || tier.Id == "fast");
+        public bool FastMode => SelectedServiceTier == "priority" || SelectedServiceTier == "fast";
         public string SelectedSandbox { get; private set; }
         public string ApprovalDisplay => FormatApproval(m_ApprovalPolicy);
 
@@ -327,6 +359,8 @@ namespace Minerva.Codex
             m_ApprovalPolicy = null;
             SelectedModel = null;
             SelectedEffort = null;
+            m_ServiceTier = null;
+            m_SettingsWrites.Clear();
             SelectedSandbox = null;
             m_Models.Clear();
             m_Efforts.Clear();
@@ -1279,6 +1313,7 @@ namespace Minerva.Codex
 
             SelectedModel = model;
             CodexModelInfo info = FindModel(model);
+            if (FastMode) m_ServiceTier = FastTier?.Id ?? "default";
             if (info != null && !string.IsNullOrEmpty(info.DefaultEffort))
             {
                 SelectedEffort = info.DefaultEffort;
@@ -1288,7 +1323,7 @@ namespace Minerva.Codex
             m_EffortSyncedThreadId = null;
             RebuildEfforts();
             SettingsChanged?.Invoke();
-            ApplyEffortToThread();
+            ApplySelectedSettings();
         }
 
         public void SetEffort(string effort)
@@ -1302,7 +1337,19 @@ namespace Minerva.Codex
             m_SettingsSource = "custom";
             m_EffortSyncedThreadId = null;
             SettingsChanged?.Invoke();
-            ApplyEffortToThread();
+            ApplySelectedSettings();
+        }
+
+        /// <summary>Selects advertised Fast speed or explicit standard speed, preserving model and reasoning effort.</summary>
+        public void SetFastMode(bool enabled)
+        {
+            if (IsRunning) return;
+            string tier = enabled ? FastTier?.Id : "default";
+            if (tier == null || tier == SelectedServiceTier) return;
+            m_ServiceTier = tier;
+            m_SettingsSource = "custom";
+            SettingsChanged?.Invoke();
+            ApplySelectedSettings();
         }
 
         /// <summary>
@@ -1310,38 +1357,50 @@ namespace Minerva.Codex
         /// turns. The next turn can then omit the effort override, which keeps
         /// Codex's prompt cache path stable.
         /// </summary>
-        void ApplyEffortToThread()
+        void ApplySelectedSettings()
         {
-            if (!m_Ready || m_Client == null || string.IsNullOrEmpty(SelectedThreadId) ||
-                string.IsNullOrEmpty(SelectedEffort))
+            if (!m_Ready || m_Client == null || string.IsNullOrEmpty(SelectedThreadId))
             {
                 return;
             }
 
             string threadId = SelectedThreadId;
-            string effort = SelectedEffort;
+            var write = new SettingsWrite(SelectedModel, SelectedEffort, SelectedServiceTier);
+            if (m_SettingsWrites.TryGetValue(threadId, out SettingsWrite pending))
+            {
+                pending.Next = write;
+                return;
+            }
+            m_SettingsWrites.Add(threadId, write);
+            WriteThreadSettings(threadId, write);
+        }
+
+        void WriteThreadSettings(string threadId, SettingsWrite write)
+        {
             m_Client.UpdateThreadSettings(
                 threadId,
-                effort,
-                _ =>
-                {
-                    if (SelectedThreadId == threadId && SelectedEffort == effort)
-                    {
-                        m_EffortSyncedThreadId = threadId;
-                    }
-                },
-                message =>
-                {
-                    if (SelectedThreadId != threadId)
-                    {
-                        return;
-                    }
+                write.Model,
+                write.Effort,
+                write.Tier,
+                _ => CompleteSettingsWrite(threadId, write, null),
+                message => CompleteSettingsWrite(threadId, write, message));
+        }
 
-                    m_EffortSyncedThreadId = null;
-                    m_SettingsError = "Reasoning effort will apply on the next turn.";
-                    Debug.LogWarning($"[Codex] thread/settings/update failed: {message}");
-                    SettingsChanged?.Invoke();
-                });
+        void CompleteSettingsWrite(string threadId, SettingsWrite write, string error)
+        {
+            if (!m_SettingsWrites.TryGetValue(threadId, out SettingsWrite current) || !ReferenceEquals(current, write)) return;
+            if (write.Next != null)
+            {
+                m_SettingsWrites[threadId] = write.Next;
+                WriteThreadSettings(threadId, write.Next);
+                return;
+            }
+            m_SettingsWrites.Remove(threadId);
+            if (SelectedThreadId != threadId || SelectedModel != write.Model || SelectedEffort != write.Effort || SelectedServiceTier != write.Tier) return;
+            m_EffortSyncedThreadId = error == null ? threadId : null;
+            m_SettingsError = error == null ? null : "Model settings will apply on the next manually started turn.";
+            if (error != null) Debug.LogWarning($"[Codex] thread/settings/update failed: {error}");
+            SettingsChanged?.Invoke();
         }
 
         public void SetSandbox(string sandbox)
@@ -1378,6 +1437,7 @@ namespace Minerva.Codex
                 }
 
                 string effort = config?["model_reasoning_effort"]?.Value<string>();
+                m_ServiceTier = config?["service_tier"]?.Value<string>();
                 if (!string.IsNullOrEmpty(effort))
                 {
                     SelectedEffort = effort;
@@ -1422,6 +1482,7 @@ namespace Minerva.Codex
                         CatalogId = model["id"]?.Value<string>(),
                         DisplayName = model["displayName"]?.Value<string>(),
                         DefaultEffort = model["defaultReasoningEffort"]?.Value<string>(),
+                        DefaultServiceTier = model["defaultServiceTier"]?.Value<string>(),
                         Hidden = model["hidden"]?.Value<bool?>() ?? false,
                         IsDefault = model["isDefault"]?.Value<bool?>() ?? false,
                     };
@@ -1430,6 +1491,14 @@ namespace Minerva.Codex
                     {
                         info.DisplayName = info.Id;
                     }
+
+                    if (model["serviceTiers"] is JArray tiers)
+                        foreach (JToken tier in tiers)
+                            info.ServiceTiers.Add(new CodexServiceTier
+                            {
+                                Id = tier["id"]?.Value<string>(), Name = tier["name"]?.Value<string>(),
+                                Description = tier["description"]?.Value<string>(),
+                            });
 
                     if (model["supportedReasoningEfforts"] is JArray efforts)
                     {
@@ -1560,17 +1629,22 @@ namespace Minerva.Codex
                 return;
             }
 
-            string model = resume["model"]?.Value<string>();
+            // A late resume must not overwrite an edit that is still being written for this thread.
+            m_SettingsWrites.TryGetValue(threadId, out SettingsWrite pending);
+            SettingsWrite desired = pending?.Next ?? pending;
+            m_ServiceTier = desired != null ? desired.Tier : resume["serviceTier"]?.Value<string>();
+
+            string model = desired != null ? desired.Model : resume["model"]?.Value<string>();
             if (!string.IsNullOrEmpty(model))
             {
                 SelectedModel = model;
             }
 
-            string effort = resume["reasoningEffort"]?.Value<string>();
+            string effort = desired != null ? desired.Effort : resume["reasoningEffort"]?.Value<string>();
             if (!string.IsNullOrEmpty(effort))
             {
                 SelectedEffort = effort;
-                m_EffortSyncedThreadId = threadId;
+                m_EffortSyncedThreadId = desired == null ? threadId : null;
             }
 
             string sandbox = MapSandboxPolicy(resume["sandbox"]);
@@ -1645,6 +1719,7 @@ namespace Minerva.Codex
             m_Client.StartThread(
                 m_ProjectRoot,
                 SelectedModel,
+                SelectedServiceTier,
                 SelectedSandbox,
                 m_ApprovalPolicy,
                 result => OnThreadStarted(result, text, imagePaths),
@@ -1834,6 +1909,7 @@ namespace Minerva.Codex
             m_Client.StartThread(
                 m_ProjectRoot,
                 model,
+                null,
                 "read-only",
                 new JValue("never"),
                 result => OnTitleThreadStarted(result, prompt),
@@ -1856,6 +1932,7 @@ namespace Minerva.Codex
                 prompt,
                 m_ProjectRoot,
                 m_TitleModel,
+                null,
                 null,
                 null,
                 null,
@@ -2033,6 +2110,7 @@ namespace Minerva.Codex
                 text,
                 SelectedCwd,
                 SelectedModel,
+                SelectedServiceTier,
                 effort,
                 sandboxPolicy,
                 m_ApprovalPolicy,
@@ -2231,15 +2309,21 @@ namespace Minerva.Codex
                 return;
             }
 
-            JObject settings = parameters["threadSettings"] as JObject;
-            string effort = settings?["effort"]?.Value<string>();
-            if (string.IsNullOrEmpty(effort))
-            {
-                return;
-            }
+            // Notifications contain server snapshots, which can precede a newer coalesced local intent.
+            if (m_SettingsWrites.ContainsKey(threadId)) return;
 
-            SelectedEffort = effort;
-            m_EffortSyncedThreadId = threadId;
+            JObject settings = parameters["threadSettings"] as JObject;
+            if (settings == null) return;
+            string model = settings["model"]?.Value<string>();
+            if (!string.IsNullOrEmpty(model)) SelectedModel = model;
+            m_ServiceTier = settings["serviceTier"]?.Value<string>();
+            string effort = settings?["effort"]?.Value<string>();
+            if (!string.IsNullOrEmpty(effort))
+            {
+                SelectedEffort = effort;
+                m_EffortSyncedThreadId = threadId;
+            }
+            RebuildEfforts();
             m_SettingsError = null;
             m_SettingsSource = "thread";
             SettingsChanged?.Invoke();
@@ -3743,6 +3827,7 @@ namespace Minerva.Codex
 
         void OnDisconnected(string reason)
         {
+            m_SettingsWrites.Clear();
             m_Ready = false;
             IsRunning = false;
             IsForking = false;
@@ -4222,6 +4307,7 @@ namespace Minerva.Codex
 
         public void Dispose()
         {
+            m_SettingsWrites.Clear();
             m_Ready = false;
             ThreadsLoaded = false;
             IsRunning = false;

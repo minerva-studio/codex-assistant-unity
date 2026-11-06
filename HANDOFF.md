@@ -397,6 +397,25 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 
 ## Workflow that works on this machine
 
+Fast mode is derived from workspace service-tier state, not a separate saved boolean. Model metadata stores
+serviceTiers/defaultServiceTier; Fast uses the advertised priority/fast id. Config service_tier, thread resume
+and settings notifications update the override. Effective null falls through to the catalog default, then
+"default" (standard); Off is explicit "default" so it can override a Fast catalog default. Model changes
+clear Fast when the new model does not advertise it. Sticky settings update model/effort/tier together for
+queued turns, while explicit starts also send the effective tier. Request failures report application on the
+next manually started turn. Auto-title turns keep their prior inherited-speed behavior.
+Settings writes serialize per thread and coalesce waiting changes to the latest immutable intent. While a
+write is pending, server snapshots cannot overwrite that local selection; late resume uses the pending
+intent too. Acknowledgment drains the queued write even after navigation to another thread. Disconnect
+invalidates pending entries. This prevents rapid Fast On/Off from being reverted by an older notification.
+
+The model popup footer observes workspace SettingsChanged/Changed and removes both handlers on detach.
+It reuses the popup's search, focus and dismissal behavior; footer height participates in popup positioning.
+CodexFastModeSmokeTest covers metadata/defaults, switch submission, effort independence, unsupported models,
+resume/notification sync and the active-turn guard. Protocol capture uses an inert local pipe sink for start
+requests; the real app-server accepts Fast/standard settings on an isolated ephemeral thread without any
+turn generation. Do not infer latency or billing measurements from these checks.
+
 The right column now hosts Changes/Subagents tabs. `CodexAssistantWindow` owns its tab, visibility and
 width (the existing `Minerva.Codex.AgentsWidth` preference key is retained). `CodexChangesPanel.Refresh`
 reads workspace turns and retains only UI selection/scroll state. Each file record is keyed by item id

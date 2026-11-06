@@ -14,6 +14,8 @@
 - Model, reasoning effort and sandbox selectors, seeded from `config/read`, synced from `thread/resume`, and
   sent on `thread/start` / `turn/start`. Effort changes use `thread/settings/update` to keep the cache path
   stable; the transcript follows the bottom unless the reader scrolls up.
+- Model-popup Fast mode with an advertised-tier switch, independent of reasoning effort. Speed syncs
+  from config/resume/notifications and is applied to thread settings and explicit turn requests.
 - Thread navigation: content search, current-project/all-projects scope, titles, archive, fork, and a new
   conversation action. New conversations get a generated title after the first turn, using an optional
   dedicated title model.
@@ -63,6 +65,7 @@
 - MCP device verification and non-standard OpenAI elicitation forms.
 - Investigate persisted plan history separately; aggregate turn diffs remain live-only.
 - Verify composer IME placement on 6000.6+ (the workaround compiles out there) and on macOS.
+- Verify the terminal bash path on macOS/Linux; Windows PowerShell has live protocol/UI checks.
 
 ## Later
 
