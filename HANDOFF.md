@@ -404,13 +404,16 @@ remain present until history hydration succeeds. `Load earlier turns` uses the w
 The focused `Tools/Minerva/Codex/Check Changes Panel` smoke check opens and closes an isolated fixture
 window and sends no Codex message.
 
-Changes navigation is an accordion: turn headers show cleaned user text (shared
-`CodexWorkspace.ExtractUserText`), local time and record count; only the selected turn can be expanded.
-Collapsing its header retains the selected patch. File rows put the basename first, directory second,
+Changes navigation has a fixed current-turn selector with cleaned user text (shared
+`CodexWorkspace.ExtractUserText`), position, local time and record count, plus newer/older buttons.
+The selector reuses the window-owned searchable popup (eight visible rows); all loaded turns remain
+available there. The prior all-turn accordion was replaced because long histories made it hard to navigate.
+Only current-turn files are permanent rows. File rows put the basename first, directory second,
 with M/A/D operation markers, exceptional status and per-path edit numbering for repeated records.
-Raw ids remain internal keys. The navigation ScrollView uses maxHeight 42%, and earlier-history loading
-is its final row. Refresh signatures cover all turn summaries/record metadata; patch-only updates do not
-rebuild navigation. Native button submission is exercised by the focused Changes smoke check.
+Raw ids remain internal keys. The file ScrollView uses maxHeight 32%; earlier-history loading is a separate
+button below it and remains reachable from an empty panel. Refresh signatures cover current-turn record
+metadata; other turns and patch-only updates do not rebuild the file list. Native button submission and
+200-turn constant-size navigation are exercised by the focused Changes smoke check.
 
 Terminal accepts bare shell commands. Live Windows checks exercised `ls`, persistent variables and cwd,
 Unicode, actual input-field Enter, `Read-Host` stdin, Ctrl+C interrupt with the shell still alive, and both

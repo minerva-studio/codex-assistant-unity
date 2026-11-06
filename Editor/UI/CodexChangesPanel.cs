@@ -32,7 +32,12 @@ namespace Minerva.Codex
             public bool Live;
         }
 
-        readonly Label m_Count;
+        readonly Action<VisualElement, List<CodexAssistantWindow.PopupItem>> m_ShowTurnMenu;
+        readonly Button m_TurnButton;
+        readonly Label m_TurnTitle;
+        readonly Label m_TurnInfo;
+        readonly Button m_Newer;
+        readonly Button m_Older;
         readonly Label m_Empty;
         readonly Button m_Earlier;
         readonly ScrollView m_Files;
@@ -49,13 +54,14 @@ namespace Minerva.Codex
         string m_TurnId;
         string m_RecordKey;
         string m_RowSignature;
-        bool m_TurnExpanded = true;
         bool m_RestoreScroll;
         Vector2 m_FileOffset;
         Vector2 m_PatchOffset;
 
-        public CodexChangesPanel()
+        /// <param name="showTurnMenu">Shows searchable turn actions in the owning window's popup layer.</param>
+        public CodexChangesPanel(Action<VisualElement, List<CodexAssistantWindow.PopupItem>> showTurnMenu)
         {
+            m_ShowTurnMenu = showTurnMenu;
             name = "codex-changes";
             style.flexGrow = 1;
             style.minHeight = 0;
@@ -64,10 +70,53 @@ namespace Minerva.Codex
             style.paddingTop = 10;
             style.paddingBottom = 10;
 
-            m_Count = Text("Change history", 10, CodexPalette.Muted);
-            m_Count.style.marginBottom = 8;
-            m_Count.style.flexShrink = 0;
-            Add(m_Count);
+            var navigation = new VisualElement { name = "codex-changes-turn-navigation" };
+            navigation.style.flexDirection = FlexDirection.Row;
+            navigation.style.alignItems = Align.Center;
+            navigation.style.flexShrink = 0;
+            navigation.style.marginBottom = 6;
+            m_TurnButton = new Button(ShowTurnMenu) { name = "codex-change-turn-selector", tooltip = "Search recorded turns" };
+            m_TurnButton.style.flexDirection = FlexDirection.Row;
+            m_TurnButton.style.alignItems = Align.Center;
+            m_TurnButton.style.flexGrow = 1;
+            m_TurnButton.style.minWidth = 0;
+            m_TurnButton.style.marginLeft = m_TurnButton.style.marginRight = 0;
+            m_TurnButton.style.paddingTop = m_TurnButton.style.paddingBottom = 6;
+            m_TurnButton.style.backgroundColor = CodexPalette.SurfaceRaised;
+            m_TurnButton.style.borderTopWidth = m_TurnButton.style.borderBottomWidth = 0;
+            m_TurnButton.style.borderLeftWidth = m_TurnButton.style.borderRightWidth = 0;
+            var summary = new VisualElement();
+            summary.style.flexGrow = 1;
+            summary.style.minWidth = 0;
+            m_TurnTitle = Text("No recorded changes", 11, CodexPalette.Text);
+            m_TurnTitle.style.whiteSpace = WhiteSpace.NoWrap;
+            m_TurnTitle.style.overflow = Overflow.Hidden;
+            m_TurnTitle.style.textOverflow = TextOverflow.Ellipsis;
+            m_TurnTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_TurnInfo = Text("", 9, CodexPalette.Muted);
+            m_TurnInfo.style.whiteSpace = WhiteSpace.NoWrap;
+            m_TurnInfo.style.overflow = Overflow.Hidden;
+            m_TurnInfo.style.textOverflow = TextOverflow.Ellipsis;
+            summary.Add(m_TurnTitle);
+            summary.Add(m_TurnInfo);
+            m_TurnButton.Add(summary);
+            m_TurnButton.Add(Text("▾", 11, CodexPalette.Muted));
+            navigation.Add(m_TurnButton);
+            m_Newer = new Button(() => SelectTurn(m_Turns[m_Turns.FindIndex(turn => turn.Id == m_TurnId) - 1].Id))
+                { name = "codex-changes-newer", text = "‹", tooltip = "Newer turn" };
+            m_Older = new Button(() => SelectTurn(m_Turns[m_Turns.FindIndex(turn => turn.Id == m_TurnId) + 1].Id))
+                { name = "codex-changes-older", text = "›", tooltip = "Older turn" };
+            foreach (Button button in new[] { m_Newer, m_Older })
+            {
+                button.style.width = 24;
+                button.style.height = 30;
+                button.style.flexShrink = 0;
+                button.style.marginLeft = 3;
+                button.style.marginRight = 0;
+                button.style.fontSize = 16;
+                navigation.Add(button);
+            }
+            Add(navigation);
 
             m_Empty = Text("No recorded file changes in the loaded turns.", 11, CodexPalette.Muted);
             m_Empty.name = "codex-changes-empty";
@@ -82,13 +131,14 @@ namespace Minerva.Codex
 
             m_Files = new ScrollView(ScrollViewMode.Vertical);
             m_Files.name = "codex-changes-navigation";
-            m_Files.style.maxHeight = Length.Percent(42);
+            m_Files.style.maxHeight = Length.Percent(32);
             m_Files.style.minHeight = 0;
             m_Files.style.flexShrink = 1;
             m_Files.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             m_FileList = new VisualElement { name = "codex-change-list" };
             m_Files.Add(m_FileList);
             Add(m_Files);
+            Add(m_Earlier);
 
             var detailHeader = new VisualElement();
             detailHeader.style.flexDirection = FlexDirection.Row;
@@ -149,7 +199,6 @@ namespace Minerva.Codex
             {
                 m_ThreadId = threadId;
                 m_TurnId = null;
-                m_TurnExpanded = true;
                 m_RecordKey = null;
                 m_FileOffset = m_PatchOffset = Vector2.zero;
                 m_Files.scrollOffset = m_Patch.scrollOffset = Vector2.zero;
@@ -175,11 +224,9 @@ namespace Minerva.Codex
             {
                 selected = m_Turns.Count > 0 ? 0 : -1;
                 m_TurnId = selected >= 0 ? m_Turns[selected].Id : null;
-                m_TurnExpanded = true;
                 m_RecordKey = null;
             }
 
-            m_Count.text = m_Turns.Count == 0 ? "Change history" : "Change history · " + m_Turns.Count + (m_Turns.Count == 1 ? " turn" : " turns");
             m_Empty.style.display = selected >= 0 ? DisplayStyle.None : DisplayStyle.Flex;
             m_Empty.text = string.IsNullOrEmpty(threadId)
                 ? "Open a conversation to inspect its recorded changes."
@@ -272,6 +319,14 @@ namespace Minerva.Codex
         void RenderTurn()
         {
             ChangeTurn turn = m_Turns.Find(candidate => candidate.Id == m_TurnId);
+            int turnIndex = m_Turns.IndexOf(turn);
+            m_TurnButton.SetEnabled(turn != null);
+            m_TurnTitle.text = turn?.Title ?? "No recorded changes";
+            m_TurnButton.tooltip = turn == null ? "No recorded changes" : turn.Title + "\nClick to search recorded turns";
+            m_TurnInfo.text = turn == null ? "" : (turn.Live ? "LIVE · " : "") + (turnIndex + 1) + " / " + m_Turns.Count
+                + " · " + turn.Time + " · " + turn.Records.Count + (turn.Records.Count == 1 ? " change" : " changes");
+            m_Newer.SetEnabled(turnIndex > 0);
+            m_Older.SetEnabled(turnIndex >= 0 && turnIndex < m_Turns.Count - 1);
             if (turn == null || !turn.Records.Exists(record => record.Key == m_RecordKey))
             {
                 string next = turn?.Records[0].Key;
@@ -284,11 +339,10 @@ namespace Minerva.Codex
             }
 
             var signature = new StringBuilder(m_TurnId);
-            signature.Append('\n').Append(m_RecordKey).Append('|').Append(m_TurnExpanded);
-            foreach (ChangeTurn group in m_Turns)
+            signature.Append('\n').Append(m_RecordKey);
+            if (turn != null)
             {
-                signature.Append('\n').Append(group.Id).Append('|').Append(group.Title).Append('|').Append(group.Time).Append('|').Append(group.Live);
-                foreach (ChangeRecord record in group.Records)
+                foreach (ChangeRecord record in turn.Records)
                     signature.Append('\n').Append(record.Key).Append('|').Append(record.Path).Append('|').Append(record.Operation).Append('|').Append(record.Status);
             }
 
@@ -298,26 +352,23 @@ namespace Minerva.Codex
                 m_RowSignature = rows;
                 Vector2 offset = m_Files.scrollOffset;
                 m_FileList.Clear();
-                foreach (ChangeTurn group in m_Turns)
+                if (turn != null)
                 {
-                    AddTurnHeader(group);
-                    if (group.Id != m_TurnId || !m_TurnExpanded) continue;
-                    for (int index = 0; index < group.Records.Count; index++)
+                    for (int index = 0; index < turn.Records.Count; index++)
                     {
-                        ChangeRecord record = group.Records[index];
+                        ChangeRecord record = turn.Records[index];
                         int edit = 0;
-                        if (group.Records.Exists(candidate => !ReferenceEquals(candidate, record) && candidate.Path == record.Path))
+                        if (turn.Records.Exists(candidate => !ReferenceEquals(candidate, record) && candidate.Path == record.Path))
                             for (int previous = 0; previous <= index; previous++)
-                                if (group.Records[previous].Path == record.Path) edit++;
+                                if (turn.Records[previous].Path == record.Path) edit++;
                         AddRow(record, edit);
                     }
                 }
-                m_FileList.Add(m_Earlier);
                 m_Files.schedule.Execute(() => m_Files.scrollOffset = offset);
             }
 
             ChangeRecord selected = SelectedRecord();
-            m_Files.style.display = m_Turns.Count > 0 || m_Earlier.style.display.value != DisplayStyle.None ? DisplayStyle.Flex : DisplayStyle.None;
+            m_Files.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Patch.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.SetEnabled(!string.IsNullOrEmpty(selected?.Diff));
@@ -347,47 +398,27 @@ namespace Minerva.Codex
             RenderTurn();
         }
 
-        void AddTurnHeader(ChangeTurn turn)
+        void SelectTurn(string id)
         {
-            bool selected = turn.Id == m_TurnId;
-            var header = new Button(() =>
-            {
-                if (m_TurnId == turn.Id) m_TurnExpanded = !m_TurnExpanded;
-                else
+            if (m_TurnId == id || !m_Turns.Exists(turn => turn.Id == id)) return;
+            m_TurnId = id;
+            m_RecordKey = null;
+            m_FileOffset = Vector2.zero;
+            m_Files.scrollOffset = Vector2.zero;
+            RenderTurn();
+        }
+
+        void ShowTurnMenu()
+        {
+            var items = new List<CodexAssistantWindow.PopupItem>();
+            foreach (ChangeTurn turn in m_Turns)
+                items.Add(new CodexAssistantWindow.PopupItem
                 {
-                    m_TurnId = turn.Id;
-                    m_TurnExpanded = true;
-                    m_RecordKey = null;
-                }
-                RenderTurn();
-            }) { name = "codex-change-turn", userData = turn.Id, tooltip = turn.Title + "\n" + turn.Time };
-            header.style.flexDirection = FlexDirection.Row;
-            header.style.alignItems = Align.Center;
-            header.style.paddingTop = header.style.paddingBottom = 6;
-            header.style.paddingLeft = 4;
-            header.style.marginTop = 2;
-            header.style.marginBottom = 2;
-            header.style.marginLeft = header.style.marginRight = 0;
-            header.style.backgroundColor = selected ? CodexPalette.SurfaceRaised : Color.clear;
-            header.style.borderTopWidth = header.style.borderBottomWidth = 0;
-            header.style.borderLeftWidth = header.style.borderRightWidth = 0;
-            var arrow = Text(selected && m_TurnExpanded ? "▾" : "▸", 11, CodexPalette.Muted);
-            arrow.style.width = 16;
-            arrow.style.flexShrink = 0;
-            header.Add(arrow);
-            var body = new VisualElement();
-            body.style.flexGrow = 1;
-            body.style.minWidth = 0;
-            var title = Text(turn.Title, 11, CodexPalette.Text);
-            title.style.whiteSpace = WhiteSpace.NoWrap;
-            title.style.overflow = Overflow.Hidden;
-            title.style.textOverflow = TextOverflow.Ellipsis;
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            body.Add(title);
-            body.Add(Text((turn.Live ? "LIVE · " : "") + turn.Time + " · " + turn.Records.Count + (turn.Records.Count == 1 ? " change" : " changes"), 9,
-                turn.Live ? CodexPalette.Accent : CodexPalette.Muted));
-            header.Add(body);
-            m_FileList.Add(header);
+                    Label = (turn.Live ? "LIVE · " : "") + turn.Time + " · " + turn.Title,
+                    Selected = turn.Id == m_TurnId,
+                    Action = () => SelectTurn(turn.Id),
+                });
+            m_ShowTurnMenu(m_TurnButton, items);
         }
 
         void AddRow(ChangeRecord record, int edit)
@@ -398,7 +429,7 @@ namespace Minerva.Codex
             button.style.paddingTop = 4;
             button.style.paddingBottom = 4;
             button.style.paddingLeft = 6;
-            button.style.marginLeft = 16;
+            button.style.marginLeft = 0;
             button.style.marginRight = 0;
             button.style.marginBottom = 1;
             button.style.backgroundColor = record.Key == m_RecordKey ? CodexPalette.Selected : Color.clear;

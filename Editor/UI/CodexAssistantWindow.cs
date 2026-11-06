@@ -114,7 +114,8 @@ namespace Minerva.Codex
         enum RightPanelTab { Changes, Subagents }
         enum RightPanelDisplay { Automatic, Open, Closed }
 
-        sealed class PopupItem
+        /// <summary>A labeled action for the window-owned searchable popup.</summary>
+        internal sealed class PopupItem
         {
             public string Label;
             public bool Selected;
@@ -893,7 +894,8 @@ namespace Minerva.Codex
             m_AgentsList.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
 
             m_RightPanel.Add(header);
-            m_ChangesPanel = new CodexChangesPanel();
+            m_ChangesPanel = new CodexChangesPanel((anchor, items) =>
+                ShowPopup(anchor, "Change history", Mathf.Min(440f, rootVisualElement.layout.width - 16f), items, true));
             m_RightPanel.Add(m_ChangesPanel);
             m_SubagentsView = new VisualElement { name = "codex-subagents-view" };
             m_SubagentsView.style.flexGrow = 1;
@@ -1725,6 +1727,7 @@ namespace Minerva.Codex
                 Rect anchorBounds = anchor.worldBound;
                 left = anchorBounds.x - rootBounds.x;
                 top = anchorBounds.y - rootBounds.y - popupHeight - 6f;
+                if (top < 8f) top = anchorBounds.yMax - rootBounds.y + 6f;
             }
 
             left = Mathf.Clamp(left, 8f, Mathf.Max(8f, rootVisualElement.layout.width - width - 8f));
@@ -1757,6 +1760,7 @@ namespace Minerva.Codex
                 })
                 {
                     text = (captured.Selected ? "✓  " : "     ") + captured.Label,
+                    tooltip = captured.Label,
                 };
 
                 row.style.height = 26;
@@ -1770,6 +1774,9 @@ namespace Minerva.Codex
                 row.style.color = CodexPalette.Text;
                 row.style.fontSize = 11;
                 row.style.unityTextAlign = TextAnchor.MiddleLeft;
+                row.style.whiteSpace = WhiteSpace.NoWrap;
+                row.style.overflow = Overflow.Hidden;
+                row.style.textOverflow = TextOverflow.Ellipsis;
                 row.style.borderTopLeftRadius = 5;
                 row.style.borderTopRightRadius = 5;
                 row.style.borderBottomLeftRadius = 5;
