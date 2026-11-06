@@ -6,7 +6,7 @@ All notable changes to this package are documented here.
 
 ### Added
 
-- Changes details include **Open file**, also available by double-clicking a file row. Relative paths use
+- Changes details include **Open file** for the selected record. Relative paths use
   conversation cwd, renamed records open their destination, and missing/aggregate targets are disabled.
 - A combined model control card with a discrete reasoning slider, separate Fast lightning button and
   model-default reasoning reset. The model button opens searchable selection and returns to the card.
@@ -19,9 +19,9 @@ All notable changes to this package are documented here.
   survive tab switches and background updates. Patches in Changes and the transcript use green/red text
   and row backgrounds for additions/deletions. File add/delete operations mark every raw content line
   (including blanks) as added/removed; updates use unified syntax. Copy retains the original text.
-- Changes history uses a fixed current-turn summary with newer/older navigation and a searchable turn
-  popup. Long histories do not add permanent sidebar rows. Current-turn files use left-aligned filenames,
-  secondary directories, compact operation markers and repeated-edit numbering, with a bounded height.
+- Changes uses one searchable file-change picker across loaded turns, with filename and turn context in
+  the header and previous/next navigation through individual records. Long histories do not add permanent
+  sidebar rows or a second file list; repeated edits retain distinct record positions.
 
 - JSON-RPC over newline-delimited JSON transport for `codex app-server`, with the reader on a
   background thread and callbacks dispatched to the Unity main thread.

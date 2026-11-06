@@ -432,22 +432,20 @@ remain present until history hydration succeeds. `Load earlier turns` uses the w
 The focused `Tools/Minerva/Codex/Check Changes Panel` smoke check opens and closes an isolated fixture
 window and sends no Codex message.
 
-Changes navigation has a fixed current-turn selector with cleaned user text (shared
-`CodexWorkspace.ExtractUserText`), position, local time and record count, plus newer/older buttons.
-The selector reuses the window-owned searchable popup (eight visible rows); all loaded turns remain
-available there. The prior all-turn accordion was replaced because long histories made it hard to navigate.
-Only current-turn files are permanent rows. File rows put the basename first, directory second,
-with M/A/D operation markers, exceptional status and per-path edit numbering for repeated records.
-Raw ids remain internal keys. The file ScrollView uses maxHeight 32%; earlier-history loading is a separate
-button below it and remains reachable from an empty panel. Refresh signatures cover current-turn record
-metadata; other turns and patch-only updates do not rebuild the file list. Native button submission and
-200-turn constant-size navigation are exercised by the focused Changes smoke check.
-Changes also provides Open file and double-click row opening. Record paths remain actual file paths;
+Changes navigation has one file-change selector with filename, record position and cleaned turn text
+(shared `CodexWorkspace.ExtractUserText`). It reuses the window-owned searchable popup (eight visible
+rows), listing every loaded file record with turn context, operation and path. Previous/next moves through
+individual records, including repeated edits of the same path. There is no permanent secondary file list.
+Selection remains a turn-id/record-key pair; flattened entries are derived locally from the turn records.
+Earlier-history loading is a separate button and remains reachable from an empty panel. Only patch
+scroll position needs preservation. Native button submission, direct jumps and 200-turn constant-size
+navigation are exercised by the focused Changes smoke check.
+Changes also provides Open file for the selected record. Record paths remain actual file paths;
 PreviousPath is retained separately for rename display, while opening uses the destination. The shared
 CodexMarkdown.ResolveLocalPath resolves against SelectedCwd (or project root), handles file URIs and rejects
 malformed paths. Open rechecks file existence at activation, and aggregate diffs have no target. OpenLink
 only maps paths inside this project's exact Assets root to AssetDatabase, avoiding same-name asset opens
-from another project. Focused checks validate availability, relative/absolute/rename targets and double-click
+from another project. Focused checks validate availability, relative/absolute/rename targets and activation
 after file disappearance without launching an external editor.
 
 Terminal accepts bare shell commands. Live Windows checks exercised `ls`, persistent variables and cwd,

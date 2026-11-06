@@ -43,21 +43,21 @@ namespace Minerva.Codex.Editor.Dev
                 turns.Add(current);
                 turns.Add(older);
                 refresh();
-                Require(panel.Query<Button>("codex-change-record").ToList().Count == 2, "repeated file paths remain separate records");
-                var currentHeader = panel.Q<Button>("codex-change-turn-selector");
-                Require(currentHeader.Query<Label>().ToList().Exists(label => label.text == "Fix the roof"), "turn navigation uses user text without attached Unity context");
+                var currentHeader = panel.Q<Button>("codex-change-file-selector");
+                Require(currentHeader.Query<Label>().ToList().Exists(label => label.text == "Example.cs"), "file name is the primary navigation label");
+                Require(currentHeader.Query<Label>().ToList().Exists(label => label.text.Contains("Fix the roof")), "file navigation includes cleaned turn context");
                 Require(!panel.Q<Button>("codex-changes-newer").enabledSelf && panel.Q<Button>("codex-changes-older").enabledSelf,
-                    "newest turn disables newer navigation and enables older");
-                var rows = panel.Query<Button>("codex-change-record").ToList();
-                Require(rows[0].Query<Label>().ToList().Exists(label => label.text == "Example.cs"), "file basename is the primary navigation label");
-                Require(rows[0].Query<Label>().ToList().Exists(label => label.text == "Assets · edit 1")
-                    && rows[1].Query<Label>().ToList().Exists(label => label.text == "Assets · edit 2"), "repeated paths show distinct edit order");
+                    "first change disables previous navigation and enables next");
+                Submit(currentHeader);
+                Require(menu.Count == 3 && menu[0].Label != menu[1].Label, "one picker includes every file record, keeping repeated paths distinct");
+                Require(menu[0].Label.Contains("Fix the roof") && !menu[0].Label.Contains("unity-context"), "searchable records retain human turn context without Unity metadata");
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "first patch", "newest turn selected initially");
                 Submit(panel.Q<Button>("codex-changes-older"));
+                Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "second patch", "adjacent navigation visits a repeated edit in the same turn");
+                Submit(panel.Q<Button>("codex-changes-older"));
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "older patch", "historical turn can be selected");
-                Require(panel.Query<Button>("codex-change-record").ToList().Count == 1, "only the selected turn has file rows");
                 Require(!panel.Q<Button>("codex-changes-older").enabledSelf && panel.Q<Button>("codex-changes-newer").enabledSelf,
-                    "oldest turn disables older navigation and enables newer");
+                    "last change disables next navigation and enables previous");
                 Require(panel.Q<Label>("codex-change-status").text.Contains("failed"), "failed patch is labelled");
                 ((JObject)((JArray)((JObject)((JArray)current["items"])[0])["changes"])[0])["diff"] = "streamed patch";
                 refresh();
@@ -70,10 +70,8 @@ namespace Minerva.Codex.Editor.Dev
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, true);
                 refresh();
                 Submit(currentHeader);
-                Require(menu.Count == 2, "live turn deduplicates history turn with same id in the picker");
-                menu[0].Action();
-                Require(panel.Query<Button>("codex-change-record").ToList().Count == 3, "aggregate live patch has a separate entry");
-                panelType.GetMethod("SelectRecord", Fields).Invoke(panel, new object[] { "live-turn-diff" });
+                Require(menu.Count == 4, "live turn deduplicates its history copy and includes aggregate as a separate record");
+                menu[2].Action();
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "aggregate live patch", "live patch can be inspected");
                 Require(!panel.Q<Button>("codex-change-open").enabledSelf, "aggregate diff has no single file to open");
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, false);
@@ -102,10 +100,10 @@ namespace Minerva.Codex.Editor.Dev
                 SelectThread(workspace, "long-history");
                 refresh();
                 int buttonCount = panel.Query<Button>().ToList().Count;
-                Require(buttonCount <= 7 && panel.Query<Button>("codex-change-record").ToList().Count == 1,
+                Require(buttonCount <= 6,
                     "200 turns do not create a growing permanent menu");
                 Submit(currentHeader);
-                Require(menu.Count == 200 && menu[0].Selected, "all recorded turns remain available in the search popup");
+                Require(menu.Count == 200 && menu[0].Selected, "all file records remain available in the single search popup");
                 menu[199].Action();
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "patch-199", "picker can jump directly to the last of 200 turns");
                 Submit(panel.Q<Button>("codex-changes-newer"));
@@ -148,15 +146,7 @@ namespace Minerva.Codex.Editor.Dev
                     refresh();
                     Require(open.enabledSelf && open.tooltip == renamed, "renamed record opens the destination rather than its display text or source");
                     System.IO.File.Delete(renamed);
-                    var fileRow = panel.Q<Button>("codex-change-record");
-                    using (var evt = PointerDownEvent.GetPooled(new UnityEngine.Event
-                    {
-                        type = UnityEngine.EventType.MouseDown, button = 0, clickCount = 2,
-                    }))
-                    {
-                        evt.target = fileRow;
-                        fileRow.SendEvent(evt);
-                    }
+                    Submit(open);
                     Require(!open.enabledSelf, "a file removed after render disables Open without launching an application");
                     refresh();
                     Require(!open.enabledSelf, "missing files remain unavailable");

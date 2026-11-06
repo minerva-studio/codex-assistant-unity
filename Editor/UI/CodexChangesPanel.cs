@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -29,23 +29,21 @@ namespace Minerva.Codex
             public string Path;
             public string PreviousPath;
             public string DisplayPath => PreviousPath == null ? Path : PreviousPath + " → " + Path;
+            public string FileName => System.IO.Path.GetFileName(Path.Replace('\\', '/'));
             public string Operation;
             public string Status;
             public string Diff;
             public bool Live;
         }
 
-        readonly Action<VisualElement, List<CodexAssistantWindow.PopupItem>> m_ShowTurnMenu;
-        readonly Button m_TurnButton;
-        readonly Label m_TurnTitle;
-        readonly Label m_TurnInfo;
+        readonly Action<VisualElement, List<CodexAssistantWindow.PopupItem>> m_ShowFileMenu;
+        readonly Button m_FileButton;
+        readonly Label m_FileTitle;
+        readonly Label m_FileInfo;
         readonly Button m_Newer;
         readonly Button m_Older;
         readonly Label m_Empty;
         readonly Button m_Earlier;
-        readonly ScrollView m_Files;
-        readonly VisualElement m_FileList;
-        readonly Label m_Path;
         readonly Label m_Status;
         readonly CodexPatchView m_Diff;
         readonly Label m_NoPatch;
@@ -57,15 +55,13 @@ namespace Minerva.Codex
         string m_ThreadId;
         string m_TurnId;
         string m_RecordKey;
-        string m_RowSignature;
         bool m_RestoreScroll;
-        Vector2 m_FileOffset;
         Vector2 m_PatchOffset;
 
-        /// <param name="showTurnMenu">Shows searchable turn actions in the owning window's popup layer.</param>
-        public CodexChangesPanel(Action<VisualElement, List<CodexAssistantWindow.PopupItem>> showTurnMenu)
+        /// <param name="showFileMenu">Shows searchable file-change actions in the owning window's popup layer.</param>
+        public CodexChangesPanel(Action<VisualElement, List<CodexAssistantWindow.PopupItem>> showFileMenu)
         {
-            m_ShowTurnMenu = showTurnMenu;
+            m_ShowFileMenu = showFileMenu;
             name = "codex-changes";
             style.flexGrow = 1;
             style.minHeight = 0;
@@ -74,42 +70,43 @@ namespace Minerva.Codex
             style.paddingTop = 10;
             style.paddingBottom = 10;
 
-            var navigation = new VisualElement { name = "codex-changes-turn-navigation" };
+            var navigation = new VisualElement { name = "codex-changes-file-navigation" };
             navigation.style.flexDirection = FlexDirection.Row;
             navigation.style.alignItems = Align.Center;
             navigation.style.flexShrink = 0;
             navigation.style.marginBottom = 6;
-            m_TurnButton = new Button(ShowTurnMenu) { name = "codex-change-turn-selector", tooltip = "Search recorded turns" };
-            m_TurnButton.style.flexDirection = FlexDirection.Row;
-            m_TurnButton.style.alignItems = Align.Center;
-            m_TurnButton.style.flexGrow = 1;
-            m_TurnButton.style.minWidth = 0;
-            m_TurnButton.style.marginLeft = m_TurnButton.style.marginRight = 0;
-            m_TurnButton.style.paddingTop = m_TurnButton.style.paddingBottom = 6;
-            m_TurnButton.style.backgroundColor = CodexPalette.SurfaceRaised;
-            m_TurnButton.style.borderTopWidth = m_TurnButton.style.borderBottomWidth = 0;
-            m_TurnButton.style.borderLeftWidth = m_TurnButton.style.borderRightWidth = 0;
+            m_FileButton = new Button(ShowFileMenu) { name = "codex-change-file-selector", tooltip = "Search files and changes" };
+            m_FileButton.style.flexDirection = FlexDirection.Row;
+            m_FileButton.style.alignItems = Align.Center;
+            m_FileButton.style.flexGrow = 1;
+            m_FileButton.style.flexShrink = 1;
+            m_FileButton.style.minWidth = 0;
+            m_FileButton.style.marginLeft = m_FileButton.style.marginRight = 0;
+            m_FileButton.style.paddingTop = m_FileButton.style.paddingBottom = 6;
+            m_FileButton.style.backgroundColor = CodexPalette.SurfaceRaised;
+            m_FileButton.style.borderTopWidth = m_FileButton.style.borderBottomWidth = 0;
+            m_FileButton.style.borderLeftWidth = m_FileButton.style.borderRightWidth = 0;
             var summary = new VisualElement();
             summary.style.flexGrow = 1;
             summary.style.minWidth = 0;
-            m_TurnTitle = Text("No recorded changes", 11, CodexPalette.Text);
-            m_TurnTitle.style.whiteSpace = WhiteSpace.NoWrap;
-            m_TurnTitle.style.overflow = Overflow.Hidden;
-            m_TurnTitle.style.textOverflow = TextOverflow.Ellipsis;
-            m_TurnTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-            m_TurnInfo = Text("", 9, CodexPalette.Muted);
-            m_TurnInfo.style.whiteSpace = WhiteSpace.NoWrap;
-            m_TurnInfo.style.overflow = Overflow.Hidden;
-            m_TurnInfo.style.textOverflow = TextOverflow.Ellipsis;
-            summary.Add(m_TurnTitle);
-            summary.Add(m_TurnInfo);
-            m_TurnButton.Add(summary);
-            m_TurnButton.Add(Text("▾", 11, CodexPalette.Muted));
-            navigation.Add(m_TurnButton);
-            m_Newer = new Button(() => SelectTurn(m_Turns[m_Turns.FindIndex(turn => turn.Id == m_TurnId) - 1].Id))
-                { name = "codex-changes-newer", text = "‹", tooltip = "Newer turn" };
-            m_Older = new Button(() => SelectTurn(m_Turns[m_Turns.FindIndex(turn => turn.Id == m_TurnId) + 1].Id))
-                { name = "codex-changes-older", text = "›", tooltip = "Older turn" };
+            m_FileTitle = Text("No recorded changes", 11, CodexPalette.Text);
+            m_FileTitle.style.whiteSpace = WhiteSpace.NoWrap;
+            m_FileTitle.style.overflow = Overflow.Hidden;
+            m_FileTitle.style.textOverflow = TextOverflow.Ellipsis;
+            m_FileTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_FileInfo = Text("", 9, CodexPalette.Muted);
+            m_FileInfo.style.whiteSpace = WhiteSpace.NoWrap;
+            m_FileInfo.style.overflow = Overflow.Hidden;
+            m_FileInfo.style.textOverflow = TextOverflow.Ellipsis;
+            summary.Add(m_FileTitle);
+            summary.Add(m_FileInfo);
+            m_FileButton.Add(summary);
+            m_FileButton.Add(Text("▾", 11, CodexPalette.Muted));
+            navigation.Add(m_FileButton);
+            m_Newer = new Button(() => SelectAdjacent(-1))
+                { name = "codex-changes-newer", text = "‹", tooltip = "Previous change" };
+            m_Older = new Button(() => SelectAdjacent(1))
+                { name = "codex-changes-older", text = "›", tooltip = "Next change" };
             foreach (Button button in new[] { m_Newer, m_Older })
             {
                 button.style.width = 24;
@@ -133,15 +130,6 @@ namespace Minerva.Codex
             };
             m_Earlier.style.marginBottom = 6;
 
-            m_Files = new ScrollView(ScrollViewMode.Vertical);
-            m_Files.name = "codex-changes-navigation";
-            m_Files.style.maxHeight = Length.Percent(32);
-            m_Files.style.minHeight = 0;
-            m_Files.style.flexShrink = 1;
-            m_Files.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-            m_FileList = new VisualElement { name = "codex-change-list" };
-            m_Files.Add(m_FileList);
-            Add(m_Files);
             Add(m_Earlier);
 
             var detailHeader = new VisualElement();
@@ -149,14 +137,12 @@ namespace Minerva.Codex
             detailHeader.style.alignItems = Align.Center;
             detailHeader.style.marginTop = 10;
             detailHeader.style.marginBottom = 3;
-            m_Path = Text("", 11, CodexPalette.Text);
-            m_Path.style.flexGrow = 1;
-            m_Path.style.flexShrink = 1;
-            m_Path.style.unityFontStyleAndWeight = FontStyle.Bold;
-            m_Path.style.whiteSpace = WhiteSpace.NoWrap;
-            m_Path.style.overflow = Overflow.Hidden;
-            m_Path.style.textOverflow = TextOverflow.Ellipsis;
-            detailHeader.Add(m_Path);
+            m_Status = Text("", 9, CodexPalette.Muted);
+            m_Status.name = "codex-change-status";
+            m_Status.style.flexGrow = 1;
+            m_Status.style.flexShrink = 1;
+            m_Status.style.minWidth = 0;
+            detailHeader.Add(m_Status);
             m_Open = new Button(OpenSelectedFile) { name = "codex-change-open", text = "Open file" };
             m_Open.style.flexShrink = 0;
             m_Open.style.fontSize = 9;
@@ -169,11 +155,6 @@ namespace Minerva.Codex
             m_Copy.style.fontSize = 9;
             detailHeader.Add(m_Copy);
             Add(detailHeader);
-            m_Status = Text("", 9, CodexPalette.Muted);
-            m_Status.name = "codex-change-status";
-            m_Status.style.marginBottom = 6;
-            Add(m_Status);
-
             m_Patch = new ScrollView(ScrollViewMode.VerticalAndHorizontal) { name = "codex-change-patch" };
             m_Patch.style.flexGrow = 1;
             m_Patch.style.minHeight = 0;
@@ -208,8 +189,8 @@ namespace Minerva.Codex
                 m_ThreadId = threadId;
                 m_TurnId = null;
                 m_RecordKey = null;
-                m_FileOffset = m_PatchOffset = Vector2.zero;
-                m_Files.scrollOffset = m_Patch.scrollOffset = Vector2.zero;
+                m_PatchOffset = Vector2.zero;
+                m_Patch.scrollOffset = Vector2.zero;
             }
 
             m_Turns.Clear();
@@ -253,7 +234,6 @@ namespace Minerva.Codex
             if (visible == wasVisible) return;
             if (!visible)
             {
-                m_FileOffset = m_Files.scrollOffset;
                 m_PatchOffset = m_Patch.scrollOffset;
             }
 
@@ -269,7 +249,6 @@ namespace Minerva.Codex
         {
             if (!m_RestoreScroll || style.display.value == DisplayStyle.None || m_Patch.contentViewport.layout.height <= 0) return;
             m_RestoreScroll = false;
-            m_Files.scrollOffset = m_FileOffset;
             m_Patch.scrollOffset = m_PatchOffset;
         }
 
@@ -325,17 +304,16 @@ namespace Minerva.Codex
             m_Turns.Add(turn);
         }
 
+        IEnumerable<(ChangeTurn Turn, ChangeRecord Record)> Entries()
+        {
+            foreach (ChangeTurn turn in m_Turns)
+                foreach (ChangeRecord record in turn.Records)
+                    yield return (turn, record);
+        }
+
         void RenderTurn()
         {
             ChangeTurn turn = m_Turns.Find(candidate => candidate.Id == m_TurnId);
-            int turnIndex = m_Turns.IndexOf(turn);
-            m_TurnButton.SetEnabled(turn != null);
-            m_TurnTitle.text = turn?.Title ?? "No recorded changes";
-            m_TurnButton.tooltip = turn == null ? "No recorded changes" : turn.Title + "\nClick to search recorded turns";
-            m_TurnInfo.text = turn == null ? "" : (turn.Live ? "LIVE · " : "") + (turnIndex + 1) + " / " + m_Turns.Count
-                + " · " + turn.Time + " · " + turn.Records.Count + (turn.Records.Count == 1 ? " change" : " changes");
-            m_Newer.SetEnabled(turnIndex > 0);
-            m_Older.SetEnabled(turnIndex >= 0 && turnIndex < m_Turns.Count - 1);
             if (turn == null || !turn.Records.Exists(record => record.Key == m_RecordKey))
             {
                 string next = turn?.Records[0].Key;
@@ -347,37 +325,17 @@ namespace Minerva.Codex
                 }
             }
 
-            var signature = new StringBuilder(m_TurnId);
-            signature.Append('\n').Append(m_RecordKey);
-            if (turn != null)
-            {
-                foreach (ChangeRecord record in turn.Records)
-                    signature.Append('\n').Append(record.Key).Append('|').Append(record.DisplayPath).Append('|').Append(record.Operation).Append('|').Append(record.Status);
-            }
-
-            string rows = signature.ToString();
-            if (rows != m_RowSignature)
-            {
-                m_RowSignature = rows;
-                Vector2 offset = m_Files.scrollOffset;
-                m_FileList.Clear();
-                if (turn != null)
-                {
-                    for (int index = 0; index < turn.Records.Count; index++)
-                    {
-                        ChangeRecord record = turn.Records[index];
-                        int edit = 0;
-                        if (turn.Records.Exists(candidate => !ReferenceEquals(candidate, record) && candidate.Path == record.Path))
-                            for (int previous = 0; previous <= index; previous++)
-                                if (turn.Records[previous].Path == record.Path) edit++;
-                        AddRow(record, edit);
-                    }
-                }
-                m_Files.schedule.Execute(() => m_Files.scrollOffset = offset);
-            }
-
             ChangeRecord selected = SelectedRecord();
-            m_Files.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
+            var entries = Entries().ToList();
+            int index = entries.FindIndex(entry => entry.Turn.Id == m_TurnId && entry.Record.Key == m_RecordKey);
+            m_FileButton.SetEnabled(selected != null);
+            m_FileTitle.text = selected?.FileName ?? "No recorded changes";
+            m_FileButton.tooltip = selected == null ? "No recorded changes"
+                : selected.DisplayPath + "\n" + turn.Time + " · " + turn.Title + "\nClick to search files and changes";
+            m_FileInfo.text = selected == null ? "" : (index + 1) + " / " + entries.Count + " · "
+                + (turn.Live ? "LIVE · " : "") + turn.Title;
+            m_Newer.SetEnabled(index > 0);
+            m_Older.SetEnabled(index >= 0 && index < entries.Count - 1);
             m_Patch.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.SetEnabled(!string.IsNullOrEmpty(selected?.Diff));
@@ -385,8 +343,6 @@ namespace Minerva.Codex
             m_Open.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Open.SetEnabled(file != null);
             m_Open.tooltip = file ?? (selected?.Live == true ? "Aggregate diff has no single file" : "File is not available on this computer");
-            m_Path.text = selected?.DisplayPath ?? "";
-            m_Path.tooltip = m_Path.text;
             m_Status.text = selected == null ? "" : selected.Live
                 ? "Live snapshot · available while this turn is running"
                 : selected.Operation + " · " + selected.Status;
@@ -418,95 +374,43 @@ namespace Minerva.Codex
             else m_Open.SetEnabled(false);
         }
 
-        void SelectRecord(string key)
+        void SelectRecord(string turnId, string key)
         {
-            if (m_RecordKey == key) return;
+            if (m_TurnId == turnId && m_RecordKey == key) return;
+            if (m_Turns.Find(turn => turn.Id == turnId)?.Records.Exists(record => record.Key == key) != true) return;
+            m_TurnId = turnId;
             m_RecordKey = key;
             m_PatchOffset = Vector2.zero;
             m_Patch.scrollOffset = Vector2.zero;
             RenderTurn();
         }
 
-        void SelectTurn(string id)
+        void SelectAdjacent(int offset)
         {
-            if (m_TurnId == id || !m_Turns.Exists(turn => turn.Id == id)) return;
-            m_TurnId = id;
-            m_RecordKey = null;
-            m_FileOffset = Vector2.zero;
-            m_Files.scrollOffset = Vector2.zero;
-            RenderTurn();
+            var entries = Entries().ToList();
+            int index = entries.FindIndex(entry => entry.Turn.Id == m_TurnId && entry.Record.Key == m_RecordKey);
+            int next = index + offset;
+            if (index < 0 || next < 0 || next >= entries.Count) return;
+            SelectRecord(entries[next].Turn.Id, entries[next].Record.Key);
         }
 
-        void ShowTurnMenu()
+        void ShowFileMenu()
         {
             var items = new List<CodexAssistantWindow.PopupItem>();
-            foreach (ChangeTurn turn in m_Turns)
+            int index = 0;
+            foreach (var entry in Entries())
+            {
+                ChangeTurn turn = entry.Turn;
+                ChangeRecord record = entry.Record;
                 items.Add(new CodexAssistantWindow.PopupItem
                 {
-                    Label = (turn.Live ? "LIVE · " : "") + turn.Time + " · " + turn.Title,
-                    Selected = turn.Id == m_TurnId,
-                    Action = () => SelectTurn(turn.Id),
+                    Label = (++index) + ". " + record.FileName + " · " + turn.Time + " · " + turn.Title
+                        + " · " + record.Operation + " · " + record.DisplayPath,
+                    Selected = turn.Id == m_TurnId && record.Key == m_RecordKey,
+                    Action = () => SelectRecord(turn.Id, record.Key),
                 });
-            m_ShowTurnMenu(m_TurnButton, items);
-        }
-
-        void AddRow(ChangeRecord record, int edit)
-        {
-            var button = new Button(() => SelectRecord(record.Key)) { name = "codex-change-record", tooltip = record.DisplayPath };
-            button.RegisterCallback<PointerDownEvent>(evt =>
-            {
-                if (evt.button != 0 || evt.clickCount != 2) return;
-                SelectRecord(record.Key);
-                OpenSelectedFile();
-            }, TrickleDown.TrickleDown);
-            button.style.flexDirection = FlexDirection.Row;
-            button.style.alignItems = Align.Center;
-            button.style.paddingTop = 4;
-            button.style.paddingBottom = 4;
-            button.style.paddingLeft = 6;
-            button.style.marginLeft = 0;
-            button.style.marginRight = 0;
-            button.style.marginBottom = 1;
-            button.style.backgroundColor = record.Key == m_RecordKey ? CodexPalette.Selected : Color.clear;
-            button.style.borderTopWidth = button.style.borderBottomWidth = 0;
-            button.style.borderLeftWidth = 2;
-            button.style.borderLeftColor = record.Key == m_RecordKey ? CodexPalette.Accent : Color.clear;
-            button.style.borderRightWidth = 0;
-            string operation = record.Live ? "●" : record.Operation switch { "add" => "A", "delete" => "D", "update" => "M", _ => "~" };
-            var badge = Text(operation, 10, record.Operation == "delete" ? CodexPalette.Error : record.Operation == "add" ? CodexPalette.Success : CodexPalette.Accent);
-            badge.style.width = 20;
-            badge.style.flexShrink = 0;
-            button.Add(badge);
-            var body = new VisualElement();
-            body.style.flexGrow = 1;
-            body.style.flexShrink = 1;
-            body.style.minWidth = 0;
-            string path = record.Path.Replace('\\', '/');
-            int slash = path.LastIndexOf('/');
-            var file = Text(path.Substring(slash + 1), 11, CodexPalette.Text);
-            file.style.whiteSpace = WhiteSpace.NoWrap;
-            file.style.overflow = Overflow.Hidden;
-            file.style.textOverflow = TextOverflow.Ellipsis;
-            body.Add(file);
-            string directory = slash >= 0 ? path.Substring(0, slash) : "";
-            if (edit > 0) directory += (directory.Length > 0 ? " · " : "") + "edit " + edit;
-            if (!string.IsNullOrEmpty(directory))
-            {
-                var location = Text(directory, 9, CodexPalette.Muted);
-                location.style.whiteSpace = WhiteSpace.NoWrap;
-                location.style.overflow = Overflow.Hidden;
-                location.style.textOverflow = TextOverflow.Ellipsis;
-                body.Add(location);
             }
-            button.Add(body);
-            if (record.Status != "completed" && !record.Live)
-            {
-                var status = Text(record.Status, 9, StatusColor(record.Status));
-                status.style.flexShrink = 0;
-                status.style.marginLeft = 4;
-                button.Add(status);
-            }
-            m_FileList.Add(button);
+            m_ShowFileMenu(m_FileButton, items);
         }
 
         static Label Text(string text, int size, Color color)
