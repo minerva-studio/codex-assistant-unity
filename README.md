@@ -33,6 +33,8 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   right. Slider stops come from the selected model's advertised levels. Fast uses the advertised speed tier
   and shows its usage description on hover; it is disabled for unsupported models. Speed is independent
   of reasoning and follows config/resume/settings updates. Off explicitly selects standard speed.
+  Its collapsed entry shows a white lightning when Fast is enabled, followed by the model name,
+  effort label in its level color and matching chevron; it does not append a separate Fast text label.
 - **Fork** copies the selected conversation into a new thread and opens it. The source conversation is
   unchanged.
 - Subagent tool calls and activity render as **Subagent** sections with **Open** buttons. Subagent threads

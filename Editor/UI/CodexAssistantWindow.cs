@@ -1298,8 +1298,8 @@ namespace Minerva.Codex
             m_ContextIndicator.Add(m_ContextLabel);
             actions.Add(m_ContextIndicator);
 
-            m_ModelButton = AddPill(actions, "codex-model", "Model");
-            m_ModelButton.clicked += ShowModelControl;
+            m_ModelButton = new CodexModelButton(m_Workspace, ShowModelControl);
+            actions.Add(m_ModelButton);
 
             m_ActionButton = new Button(OnComposerAction) { text = "Send", name = "codex-action" };
             m_ActionButton.style.height = 30;
@@ -1935,16 +1935,6 @@ namespace Minerva.Codex
             m_PopupSelectionIndex = -1;
         }
 
-        static string FormatEffort(string effort)
-        {
-            if (string.IsNullOrEmpty(effort))
-            {
-                return "Default";
-            }
-
-            return char.ToUpperInvariant(effort[0]) + effort.Substring(1);
-        }
-
         static string FormatSandbox(string sandbox)
         {
             return sandbox switch
@@ -2103,13 +2093,6 @@ namespace Minerva.Codex
 
             bool available = m_Workspace.SettingsLoaded && !m_Workspace.IsRunning;
 
-            string modelLabel = ModelLabel(m_Workspace.SelectedModel);
-            m_ModelButton.text = $"{modelLabel} · {FormatEffort(m_Workspace.SelectedEffort)}{(m_Workspace.FastMode ? " · Fast" : "")}  ▾";
-            m_ModelButton.SetEnabled(available && (m_Workspace.Models.Count > 0 || !string.IsNullOrEmpty(m_Workspace.SelectedModel)));
-            m_ModelButton.tooltip = string.IsNullOrEmpty(m_Workspace.SelectedModel)
-                ? "Model"
-                : $"Model: {m_Workspace.SelectedModel} · reasoning effort: {FormatEffort(m_Workspace.SelectedEffort)}";
-
             m_SandboxButton.text = $"{FormatSandbox(m_Workspace.SelectedSandbox)}  ▾";
             m_SandboxButton.SetEnabled(available);
             m_SandboxButton.tooltip = "Sandbox";
@@ -2130,24 +2113,6 @@ namespace Minerva.Codex
                     $"{m_Workspace.SettingsSource} · approval {m_Workspace.ApprovalDisplay}";
                 m_SettingsSourceLabel.tooltip = string.Empty;
             }
-        }
-
-        string ModelLabel(string id)
-        {
-            if (string.IsNullOrEmpty(id))
-            {
-                return "Model";
-            }
-
-            foreach (CodexModelInfo model in m_Workspace.Models)
-            {
-                if (model.Matches(id) && !string.IsNullOrEmpty(model.DisplayName))
-                {
-                    return model.DisplayName;
-                }
-            }
-
-            return id;
         }
 
         void UpdateContextIndicator()

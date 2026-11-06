@@ -37,19 +37,7 @@ namespace Minerva.Codex
             heading.style.alignItems = Align.Center;
             heading.style.height = 24;
             Add(heading);
-            m_Fast = IconButton("codex-fast-switch", () => workspace.SetFastMode(!workspace.FastMode), painter =>
-            {
-                painter.BeginPath();
-                painter.MoveTo(new Vector2(13, 3));
-                painter.LineTo(new Vector2(6, 13));
-                painter.LineTo(new Vector2(11, 13));
-                painter.LineTo(new Vector2(10, 21));
-                painter.LineTo(new Vector2(19, 10));
-                painter.LineTo(new Vector2(14, 10));
-                painter.ClosePath();
-                if (workspace.FastMode) painter.Fill();
-                painter.Stroke();
-            });
+            m_Fast = IconButton("codex-fast-switch", () => workspace.SetFastMode(!workspace.FastMode), painter => DrawFastIcon(painter, workspace.FastMode));
             heading.Add(m_Fast);
             m_Effort = new Label { name = "codex-reasoning-label", enableRichText = false };
             m_Effort.style.flexGrow = 1;
@@ -140,8 +128,8 @@ namespace Minerva.Codex
         {
             bool available = m_Workspace.SettingsLoaded && !m_Workspace.IsRunning;
             string effort = m_Workspace.SelectedEffort;
-            Color accent = effort == "ultra" || effort == "max" ? new Color(.58f, .31f, 1f) : new Color(0, .46f, .9f);
-            m_Effort.text = string.IsNullOrEmpty(effort) ? "Default" : char.ToUpperInvariant(effort[0]) + effort.Substring(1);
+            Color accent = EffortColor(effort);
+            m_Effort.text = EffortName(effort);
             m_Effort.style.color = accent;
             var model = m_Workspace.Models.FirstOrDefault(candidate => candidate.Matches(m_Workspace.SelectedModel));
             m_Model.text = (model?.DisplayName ?? m_Workspace.SelectedModel ?? "Model") + " ›";
@@ -200,6 +188,26 @@ namespace Minerva.Codex
             }
             var border = m_Slider.Q(className: "unity-base-slider__dragger-border");
             if (border != null) border.style.display = DisplayStyle.None;
+        }
+
+        internal static string EffortName(string effort) => string.IsNullOrEmpty(effort)
+            ? "Default" : char.ToUpperInvariant(effort[0]) + effort.Substring(1);
+
+        internal static Color EffortColor(string effort) => effort == "ultra" || effort == "max"
+            ? new Color(.58f, .31f, 1f) : new Color(0, .46f, .9f);
+
+        internal static void DrawFastIcon(Painter2D painter, bool filled)
+        {
+            painter.BeginPath();
+            painter.MoveTo(new Vector2(13, 3));
+            painter.LineTo(new Vector2(6, 13));
+            painter.LineTo(new Vector2(11, 13));
+            painter.LineTo(new Vector2(10, 21));
+            painter.LineTo(new Vector2(19, 10));
+            painter.LineTo(new Vector2(14, 10));
+            painter.ClosePath();
+            if (filled) painter.Fill();
+            painter.Stroke();
         }
 
         static Button IconButton(string name, Action action, Action<Painter2D> draw)

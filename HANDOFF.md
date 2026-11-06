@@ -415,6 +415,9 @@ lightning toggles Fast, top-right reset selects DefaultEffort, and the center mo
 selection then returns to the card. CreatePopup/PositionPopup share overlay ownership and placement between
 the custom card and searchable lists. The card leaves native slider keyboard handling intact and handles
 Escape locally. Range binding resets silently before a shrink so clamping cannot change workspace effort.
+`CodexModelButton` owns the collapsed entry's binding: optional white Fast lightning, literal model name,
+colored reasoning label and chevron. It observes workspace events only while attached; the window no longer
+builds a combined text label. Both entry and card share reasoning colors and lightning geometry.
 CodexFastModeSmokeTest covers metadata/defaults, switch submission, effort independence, unsupported models,
 resume/notification sync and the active-turn guard. Protocol capture uses an inert local pipe sink for start
 requests; the real app-server accepts Fast/standard settings on an isolated ephemeral thread without any
