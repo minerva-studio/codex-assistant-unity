@@ -46,8 +46,10 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   menu defaults to **Latest turn**, following new recorded turns; choose a historical turn to pin it.
   Each file header shows its path and addition/deletion counts, with independent folding, **Open** and
   **Copy** actions. Repeated edits remain separate and show their order; failed/declined changes keep
-  their status. The toolbar offers optional file jumps and collapse/expand all. Long lines wrap while
-  preserving source whitespace. Earlier turns use the same history pagination as the transcript.
+  their status in an inline indicator. Colored operation symbols sit beside the filename; completed
+  status adds no extra row, and repeated-edit numbers stay in the title. The toolbar offers optional
+  file jumps and collapse/expand all. Long lines wrap while preserving source whitespace.
+  Earlier turns use the same history pagination as the transcript.
   A running turn's aggregate snapshot starts folded, is excluded from per-file totals, and disappears
   when the turn ends. Totals describe recorded edits, not a cumulative working-tree comparison.
   Closing or switching right-side tabs preserves the Changes scope, folding and reading position. The column is resizable

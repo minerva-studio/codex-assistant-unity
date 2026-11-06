@@ -49,8 +49,8 @@ namespace Minerva.Codex.Editor.Dev
                 var scope = panel.Q<Button>("codex-change-scope");
                 Require(scope.text.Contains("Latest"), "default scope follows latest turn");
                 Require(panel.Q<Label>("codex-changes-summary").text.Contains("Fix the roof"), "summary strips attached Unity context");
-                Require(sections[0].Q<Label>("codex-change-status").text.Contains("edit 1 / 2")
-                    && sections[1].Q<Label>("codex-change-status").text.Contains("edit 2 / 2"), "repeated edits keep distinct order");
+                Require(sections[0].Q<Label>("codex-change-filename").text.EndsWith("1/2")
+                    && sections[1].Q<Label>("codex-change-filename").text.EndsWith("2/2"), "repeated edits keep distinct order in file titles");
                 Submit(sections[0].Q<Button>("codex-change-toggle"));
                 Require(sections[0].Q("codex-change-body").style.display.value == DisplayStyle.None
                     && sections[1].Q("codex-change-body").style.display.value == DisplayStyle.Flex, "files fold independently");
@@ -77,7 +77,9 @@ namespace Minerva.Codex.Editor.Dev
                     && !menu[1].Label.Contains("unity-context"), "scope menu has latest plus searchable loaded turns");
                 menu[2].Action();
                 Require(panel.Q<CodexPatchView>().Patch == "older patch"
-                    && panel.Q<Label>("codex-change-status").text.Contains("failed"), "historical scope displays its patches and status");
+                    && panel.Q<Label>("codex-change-status").tooltip.Contains("failed")
+                    && panel.Q<Label>("codex-change-status").style.display.value == DisplayStyle.Flex,
+                    "historical scope displays its patches and inline failure indicator");
                 staleFileJump();
                 Require(panel.Q<CodexPatchView>().Patch == "older patch", "a stale file jump cannot change historical scope");
                 turns.Insert(0, Turn("newest", "completed", "newest patch"));
@@ -110,7 +112,7 @@ namespace Minerva.Codex.Editor.Dev
                 turns.Insert(0, Turn("missing", "declined", ""));
                 SelectThread(workspace, "another-thread");
                 refresh();
-                Require(panel.Q<Label>("codex-change-status").text.Contains("declined"), "declined patch retains status");
+                Require(panel.Q<Label>("codex-change-status").tooltip.Contains("declined"), "declined patch retains status in its inline indicator");
                 Require(panel.Q<Label>("codex-change-no-patch").style.display.value == DisplayStyle.Flex
                     && panel.Q<CodexPatchView>().Patch == "", "missing patch explains absence without inventing copy content");
                 turns.Clear();

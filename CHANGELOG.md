@@ -23,6 +23,8 @@ All notable changes to this package are documented here.
   foldable headers, paths, addition/deletion counts and wrapping. Latest scope follows new recorded turns;
   historical scope stays pinned. File jumps and collapse/expand all are optional navigation aids.
   Repeated edits remain separate; a folded live aggregate is excluded from the recorded-edit totals.
+  File operations use colored symbols beside the filename; exceptional status stays inline, and completed
+  status no longer consumes a separate row. Repeated-edit numbering is part of the filename title.
 
 - JSON-RPC over newline-delimited JSON transport for `codex app-server`, with the reader on a
   background thread and callbacks dispatched to the Unity main thread.

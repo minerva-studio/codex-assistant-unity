@@ -41,6 +41,7 @@ namespace Minerva.Codex
             readonly CodexChangesPanel m_Owner;
             readonly Button m_Toggle;
             readonly Label m_Arrow;
+            readonly Label m_Operation;
             readonly Label m_Name;
             readonly Label m_Location;
             readonly Label m_Status;
@@ -84,10 +85,17 @@ namespace Minerva.Codex
                 m_Arrow.style.width = 14;
                 m_Arrow.style.flexShrink = 0;
                 m_Toggle.Add(m_Arrow);
+                m_Operation = Text("", 12, CodexPalette.Muted);
+                m_Operation.name = "codex-change-operation";
+                m_Operation.style.width = 16;
+                m_Operation.style.flexShrink = 0;
+                m_Operation.style.unityFontStyleAndWeight = FontStyle.Bold;
+                m_Toggle.Add(m_Operation);
                 var title = new VisualElement();
                 title.style.flexGrow = 1;
                 title.style.minWidth = 0;
                 m_Name = Text("", 11, CodexPalette.Text);
+                m_Name.name = "codex-change-filename";
                 m_Name.style.unityFontStyleAndWeight = FontStyle.Bold;
                 Ellipsis(m_Name);
                 m_Location = Text("", 9, CodexPalette.Muted);
@@ -96,6 +104,11 @@ namespace Minerva.Codex
                 title.Add(m_Location);
                 m_Toggle.Add(title);
                 header.Add(m_Toggle);
+                m_Status = Text("", 11, CodexPalette.Muted);
+                m_Status.name = "codex-change-status";
+                m_Status.style.flexShrink = 0;
+                m_Status.style.marginRight = 5;
+                header.Add(m_Status);
                 m_Added = Text("", 10, CodexPalette.Success);
                 m_Removed = Text("", 10, CodexPalette.Error);
                 foreach (Label count in new[] { m_Added, m_Removed })
@@ -120,11 +133,6 @@ namespace Minerva.Codex
                     header.Add(action);
                 }
                 Add(header);
-                m_Status = Text("", 9, CodexPalette.Muted);
-                m_Status.name = "codex-change-status";
-                m_Status.style.paddingLeft = 18;
-                m_Status.style.marginBottom = 4;
-                Add(m_Status);
                 m_Body = new VisualElement { name = "codex-change-body" };
                 m_Body.style.flexShrink = 0;
                 m_Body.style.minWidth = 0;
@@ -142,9 +150,24 @@ namespace Minerva.Codex
             public void Update(ChangeRecord record, int edit, int edits)
             {
                 m_Record = record;
-                m_Name.text = record.FileName;
+                m_Name.text = record.FileName + (edits > 1 ? " · " + edit + "/" + edits : "");
+                m_Operation.text = record.Live ? "●" : record.PreviousPath != null ? "→" : record.Operation switch
+                {
+                    "add" => "+",
+                    "delete" => "−",
+                    _ => "●",
+                };
+                m_Operation.style.color = record.Live || record.PreviousPath != null ? CodexPalette.Accent : record.Operation switch
+                {
+                    "add" => CodexPalette.Success,
+                    "delete" => CodexPalette.Error,
+                    _ => CodexPalette.Warning,
+                };
+                m_Operation.tooltip = record.Live ? "Live aggregate snapshot" : record.PreviousPath != null ? "Renamed file" : record.Operation;
                 m_Location.text = record.Live ? "Combined snapshot · overlaps individual edits" : record.DisplayPath;
-                m_Toggle.tooltip = record.DisplayPath + "\nClick to expand or collapse";
+                string status = record.Live ? "Live snapshot · available while this turn is running"
+                    : record.Operation + " · " + record.Status + (edits > 1 ? " · edit " + edit + " / " + edits : "");
+                m_Toggle.tooltip = record.DisplayPath + "\n" + status + "\nClick to expand or collapse";
                 Patch.SetPatch(record.Diff, record.Operation);
                 m_Added.text = "+" + Patch.Additions;
                 m_Removed.text = "−" + Patch.Deletions;
@@ -152,8 +175,9 @@ namespace Minerva.Codex
                 string file = m_Owner.FilePath(record);
                 m_Open.SetEnabled(file != null);
                 m_Open.tooltip = file ?? (record.Live ? "Aggregate diff has no single file" : "File is not available on this computer");
-                m_Status.text = record.Live ? "Live snapshot · available while this turn is running"
-                    : record.Operation + " · " + record.Status + (edits > 1 ? " · edit " + edit + " / " + edits : "");
+                m_Status.text = record.Status == "failed" || record.Status == "declined" ? "!" : "…";
+                m_Status.tooltip = status;
+                m_Status.style.display = record.Live || record.Status == "completed" ? DisplayStyle.None : DisplayStyle.Flex;
                 m_Status.style.color = StatusColor(record.Status);
                 bool hasPatch = !string.IsNullOrEmpty(record.Diff);
                 Patch.style.display = hasPatch ? DisplayStyle.Flex : DisplayStyle.None;
