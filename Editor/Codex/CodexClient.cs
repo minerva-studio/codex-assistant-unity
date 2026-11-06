@@ -136,6 +136,72 @@ namespace Minerva.Codex
             Request("command/exec/write", parameters, _ => onResult?.Invoke(), onError);
         }
 
+        /// <summary>
+        /// Runs a one-off argv command in the server sandbox. The response is
+        /// deferred until the process exits; output arrives through
+        /// <c>command/exec/outputDelta</c> notifications.
+        /// </summary>
+        public void ExecCommand(
+            JArray command,
+            string cwd,
+            string processId,
+            Action<JObject> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["command"] = command,
+                ["processId"] = processId,
+                ["streamStdoutStderr"] = true,
+            };
+            if (!string.IsNullOrEmpty(cwd))
+            {
+                parameters["cwd"] = cwd;
+            }
+
+            Request("command/exec", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        /// <summary>
+        /// Spawns an unsandboxed process on the app-server host. Output and exit
+        /// are delivered through <c>process/outputDelta</c> and
+        /// <c>process/exited</c>.
+        /// </summary>
+        public void SpawnProcess(
+            JArray command,
+            string cwd,
+            string processHandle,
+            Action<JObject> onResult,
+            Action<string> onError)
+        {
+            var parameters = new JObject
+            {
+                ["command"] = command,
+                ["cwd"] = cwd ?? string.Empty,
+                ["processHandle"] = processHandle,
+                ["streamStdoutStderr"] = true,
+            };
+            Request("process/spawn", parameters, result => onResult?.Invoke(result as JObject), onError);
+        }
+
+        public void TerminateCommand(string processId, Action onResult, Action<string> onError)
+        {
+            Request(
+                "command/exec/terminate",
+                new JObject { ["processId"] = processId },
+                _ => onResult?.Invoke(),
+                onError);
+        }
+
+        public void KillProcess(string processHandle, Action onResult, Action<string> onError)
+        {
+            Request(
+                "process/kill",
+                new JObject { ["processHandle"] = processHandle },
+                _ => onResult?.Invoke(),
+                onError);
+        }
+
         public void ArchiveThread(string threadId, Action onResult, Action<string> onError)
         {
             var parameters = new JObject { ["threadId"] = threadId };

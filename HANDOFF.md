@@ -93,9 +93,18 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   `item/plan/delta` appends plan text;
   `turn/plan/updated` creates the live `turnPlan` item;
   `turn/diff/updated` creates the live `turnDiff` item;
-  `command/exec/outputDelta`/`process/outputDelta` decode base64 and match a live command by process id;
-  `process/exited` records the exit code. All go through `MarkTranscriptChanged`, so the existing 50 ms
-  live throttle refreshes the Process group.
+  `command/exec/outputDelta`/`process/outputDelta` decode base64; a process id/handle belonging to the
+  standalone console appends to `m_ConsoleOutput` (200k cap) and raises `ConsoleChanged`, otherwise it
+  matches a live command by process id;
+  `process/exited` records the console exit or the live command's exit code. All live-turn paths go through
+  `MarkTranscriptChanged`, so the existing 50 ms live throttle refreshes the Process group.
+- Standalone console: `CodexConsoleWindow` holds a `CodexWorkspace` reference and exposes a command line,
+  working directory, Sandboxed/Local mode, Run/Stop, Copy and Clear. `StartConsoleCommand` splits the line
+  into argv (quotes supported; no shell), then calls `CodexClient.ExecCommand` (`command/exec`,
+  `processId` + `streamStdoutStderr`) or `SpawnProcess` (`process/spawn`, `processHandle` +
+  `streamStdoutStderr`). The final `command/exec` response supplies the exit code; `process/exited` does the
+  same for local processes. `StopConsole` sends `command/exec/terminate` or `process/kill`. `stdin`, PTY
+  mode, shell pipes/redirects and output resize are not implemented yet.
 - The terminal input row is rendered by `RenderCommand` only when a running command has a `processId` and a
   `sendTerminalInput` callback was supplied. The window calls `CodexClient.WriteCommandInput`, which sends
   `command/exec/write { processId, deltaBase64 }`. This is for turn-level PTY commands, not a general
@@ -369,14 +378,12 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 
 ## Next tasks
 
-1. Thread-list paging: `thread/list` returns a cursor too; the sidebar still asks for 50 and drops the rest.
-   Add a **Load more** row at the bottom of the sidebar. (`thread/turns/list` paging is done.)
-2. Legacy `execCommandApproval` / `applyPatchApproval`, MCP device verification and non-standard OpenAI
-   elicitation forms.
-3. Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
-4. The IMM32 IME workaround is compiled out from 6000.6 on (`UNITY_6000_6_OR_NEWER`) on the assumption that
+1. MCP device verification and non-standard OpenAI elicitation forms.
+2. Persisted plan/diff history panels.
+3. The IMM32 IME workaround is compiled out from 6000.6 on (`UNITY_6000_6_OR_NEWER`) on the assumption that
    UUM-143713 covers the candidate-window position; that assumption has not been checked on a 6.6+ editor.
-   Verify it there and remove the workaround if the position is correct; check macOS separately.
+   Verify it there and remove the workaround if the position is correct. macOS is not available on this
+   machine, so leave the macOS check for whoever can run it.
 
 ## Workflow that works on this machine
 

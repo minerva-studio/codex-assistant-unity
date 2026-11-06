@@ -44,9 +44,15 @@ tools are next.
   Stored `send_user_message_question_reply` messages render as a question / answer card instead of raw JSON.
 - Command, file-change and permission approval requests, plus MCP form/URL elicitations, use the same
   interaction card. The card shows the command/cwd, changed files or requested permissions and sends the
-  decision back to the app-server.
+  decision back to the app-server. Legacy `execCommandApproval` and `applyPatchApproval` requests use the
+  same cards.
 - Live command/file output, MCP progress, plan steps and the turn diff update inside Process while the turn
   runs. A running command with a PTY process id gets an inline terminal input row.
+- **Console** in the toolbar opens a standalone command window, independent of conversations. Sandboxed mode
+  uses `command/exec`; Local mode uses `process/spawn` on the app-server host. Output streams live; Run
+  becomes Stop while the process is alive; Copy, Clear and the working-directory field are available. The
+  command line is split into argv (double/single quotes supported), not passed through a shell, so pipes,
+  redirects and stdin/PTY sessions are not available yet.
 - Codex output is plain document text; only user input uses a compact, right-aligned bubble (max 68% of the
   transcript width). Process and approval/question surfaces remain cards because they are interaction
   containers.

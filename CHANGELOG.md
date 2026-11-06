@@ -33,6 +33,9 @@ All notable changes to this package are documented here.
   `execCommandApproval`/`applyPatchApproval` requests use the same cards and send `ReviewDecision` responses.
 - P1 live updates: command/file output, MCP progress, plan steps, turn diff and resolved server requests;
   running PTY commands accept terminal input.
+- Standalone **Console** window: `command/exec` in the sandbox or `process/spawn` on the host, with live
+  stdout/stderr, exit code, stop, copy and clear. It is not tied to a conversation; the command line is
+  parsed as argv rather than run through a shell, so stdin/PTY and shell syntax are not supported yet.
 - Visual refresh of the window: palette, toolbar, compact sidebar rows, card surfaces, composer, empty state
   and a stable leading active-thread indicator.
 - Codex output is no longer wrapped in a bubble; user input keeps a compact right-aligned bubble.

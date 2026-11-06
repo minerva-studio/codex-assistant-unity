@@ -144,6 +144,13 @@ namespace Minerva.Codex
             window.Show();
         }
 
+        internal CodexWorkspace Workspace => m_Workspace;
+
+        void OpenConsole()
+        {
+            CodexConsoleWindow.Open(m_Workspace);
+        }
+
         void OnEnable()
         {
             m_ShowContextIndicator = CodexPreferences.ShowContextIndicator;
@@ -270,6 +277,11 @@ namespace Minerva.Codex
             StyleGhostButton(m_SettingsButton);
             m_SettingsButton.tooltip = "Display and composer preferences";
             toolbar.Add(m_SettingsButton);
+
+            var consoleButton = new Button(OpenConsole) { text = "Console" };
+            StyleGhostButton(consoleButton);
+            consoleButton.tooltip = "Run standalone commands through app-server";
+            toolbar.Add(consoleButton);
 
             m_AgentsButton = new Button(ToggleAgentsPanel) { text = "Agents" };
             StyleAccentSoftButton(m_AgentsButton);

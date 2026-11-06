@@ -51,11 +51,13 @@
   IMM32 (the workaround compiles out from 6000.6 on).
 - Unity context attachments: a composer toggle prepends the active scene/prefab, selection, compile state and
   the latest console errors/warnings to each normal message, captured at send time.
+- Standalone console: `command/exec` (sandboxed) and `process/spawn` (local), with live output, stop, copy
+  and clear.
 
 ## Next
 
 - MCP device verification and non-standard OpenAI elicitation forms.
-- Standalone `command/exec` / `process/spawn` consoles and persisted plan/diff history panels.
+- Persisted plan/diff history panels.
 - Verify composer IME placement on 6000.6+ (the workaround compiles out there) and on macOS.
 
 ## Later
