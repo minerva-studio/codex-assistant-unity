@@ -208,6 +208,10 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   set the `*NoValidation` indices instead. Do not "fix" this by setting only the text: the text is synced by
   `SetValueWithoutNotify`, but the caret is not, and the next insert then throws
   `ArgumentOutOfRangeException` from `DeleteSelection`.
+  The same reset now runs immediately after `SendComposer` clears the field (`PlaceComposerCaretAtEnd` plus a
+  scheduled repeat). Verified through reflection: after clearing a six-character draft the utilities reported
+  `cursor=6, select=6`; the reset moves both to 0, so the next typed character inserts at the start instead of
+  throwing from `ReplaceSelection`.
 - Markdown: `CodexMarkdownFactory` overrides `CodeBlock` and sets `WhiteSpace.PreWrap` on the `CodeContent`
   label. UI Toolkit's default `WhiteSpace.Normal` was collapsing every leading code indentation. Rich text
   stays enabled so UMarkdown's syntax color tags still render. `DecorateSkillTokens` wraps bare `$name`

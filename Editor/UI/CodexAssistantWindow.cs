@@ -4281,6 +4281,11 @@ namespace Minerva.Codex
 
             m_FollowTranscript = true;
             m_Composer.SetValueWithoutNotify(string.Empty);
+            // SetValueWithoutNotify changes the visible text but leaves the
+            // text-editing indices at the old position. The next typed character
+            // then inserts at a stale index and throws from ReplaceSelection.
+            PlaceComposerCaretAtEnd();
+            m_Composer.schedule.Execute(PlaceComposerCaretAtEnd);
             ClearAttachments();
             RebuildReferenceChips();
             UpdateComposer();

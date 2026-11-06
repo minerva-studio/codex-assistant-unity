@@ -54,6 +54,8 @@ All notable changes to this package are documented here.
   selection, compile state and recent console errors/warnings. Reading the console temporarily clears the
   Console toolbar/search filters so hidden severities still produce entry text, then restores them; slash
   commands are sent unchanged, and queued rows show the user's text without the snapshot.
+- Clearing the composer after a send now resets the text-editing caret indices too; typing the next message
+  no longer throws `ArgumentOutOfRangeException` from `TextEditingUtilities.ReplaceSelection`.
 - Optional JSON numbers are read as nullable (`Value<long?>()`), so a live item whose `completedAtMs` is
   still null no longer throws `InvalidCastException` during rendering.
 - The sidebar loads 50 threads and appends older pages with **Load more** (`thread/list` cursor); the
