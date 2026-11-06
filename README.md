@@ -28,10 +28,11 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   and keeps the archived id filtered, so a stale list response cannot bring the conversation back.
 - **New conversation** starts a thread on the first message without creating a zero-turn thread. After the
   first turn it generates a short title, using the conversation model or a separate title model from Settings.
-- The model menu includes a **Fast mode** capsule switch. It uses the selected model's advertised Fast tier,
-  shows its usage description, and is disabled for unsupported models. Speed is independent of reasoning
-  effort and follows config, thread resume and settings updates. Off explicitly selects standard speed.
-  Changes apply to subsequent turns; the switch is disabled during an active turn.
+- The combined model/effort control opens a compact card: current reasoning level above the model picker,
+  a discrete reasoning slider below, a **Fast** lightning button at top left, and default-effort reset at top
+  right. Slider stops come from the selected model's advertised levels. Fast uses the advertised speed tier
+  and shows its usage description on hover; it is disabled for unsupported models. Speed is independent
+  of reasoning and follows config/resume/settings updates. Off explicitly selects standard speed.
 - **Fork** copies the selected conversation into a new thread and opens it. The source conversation is
   unchanged.
 - Subagent tool calls and activity render as **Subagent** sections with **Open** buttons. Subagent threads

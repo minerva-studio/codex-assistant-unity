@@ -14,7 +14,7 @@
 - Model, reasoning effort and sandbox selectors, seeded from `config/read`, synced from `thread/resume`, and
   sent on `thread/start` / `turn/start`. Effort changes use `thread/settings/update` to keep the cache path
   stable; the transcript follows the bottom unless the reader scrolls up.
-- Model-popup Fast mode with an advertised-tier switch, independent of reasoning effort. Speed syncs
+- Model control card with discrete reasoning slider, default-effort reset and independent Fast lightning. Speed syncs
   from config/resume/notifications and is applied to thread settings and explicit turn requests.
 - Thread navigation: content search, current-project/all-projects scope, titles, archive, fork, and a new
   conversation action. New conversations get a generated title after the first turn, using an optional

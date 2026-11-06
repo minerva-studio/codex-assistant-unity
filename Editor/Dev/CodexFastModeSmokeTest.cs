@@ -16,6 +16,10 @@ namespace Minerva.Codex.Editor.Dev
         public static string Run()
         {
             var models = new JArray(Model("fast-model", true), Model("plain-model", false), Model("catalog-default", true));
+            var levels = new JArray();
+            foreach (string level in new[] { "low", "medium", "high", "xhigh", "max", "ultra" })
+                levels.Add(new JObject { ["reasoningEffort"] = level });
+            models[0]["supportedReasoningEfforts"] = levels;
             models[2]["defaultServiceTier"] = "priority";
             var workspace = new CodexWorkspace();
             Load(workspace, models, "fast-model", null);
@@ -29,19 +33,33 @@ namespace Minerva.Codex.Editor.Dev
             var host = ScriptableObject.CreateInstance<EditorWindow>();
             try
             {
-                var card = (VisualElement)typeof(CodexAssistantWindow).GetMethod("BuildSpeedControl", BindingFlags.NonPublic | BindingFlags.Static)
-                    .Invoke(null, new object[] { workspace });
+                bool modelPickerOpened = false;
+                var card = new CodexModelControl(workspace, () => modelPickerOpened = true);
                 host.rootVisualElement.Add(card);
                 host.ShowUtility();
                 var toggle = card.Q<Button>("codex-fast-switch");
+                var slider = card.Q<SliderInt>("codex-reasoning-slider");
+                Require(slider.highValue == 5 && slider.value == 5 && card.Q("codex-reasoning-ticks").childCount == 6,
+                    "reasoning slider uses the model's six advertised levels");
                 Submit(toggle);
                 Require(!workspace.FastMode && workspace.SelectedServiceTier == "default"
-                    && card.Q<Label>("codex-fast-status").text == "Off", "switch explicitly selects standard and observes workspace state");
+                    && !toggle.ClassListContains("codex-fast-enabled") && workspace.SelectedEffort == "ultra",
+                    "Fast icon explicitly selects standard without changing reasoning");
+                slider.value = 3;
+                Require(workspace.SelectedEffort == "xhigh" && !workspace.FastMode, "reasoning slider changes effort without changing speed");
+                Submit(card.Q<Button>("codex-reasoning-reset"));
+                Require(workspace.SelectedEffort == "high" && slider.value == 2 && !workspace.FastMode,
+                    "reset restores the model's default reasoning level without changing speed");
+                Submit(card.Q<Button>("codex-control-model"));
+                Require(modelPickerOpened, "model button opens the model selector");
                 Submit(toggle);
-                Require(workspace.FastMode && card.Q<Label>("codex-fast-status").text == "On", "switch enables advertised Fast speed");
+                Require(workspace.FastMode && toggle.ClassListContains("codex-fast-enabled"), "Fast icon enables advertised speed");
+                workspace.SetEffort("ultra");
                 workspace.SetModel("plain-model");
                 Require(!workspace.FastMode && workspace.FastTier == null && !toggle.enabledSelf,
                     "changing to an unsupported model selects standard and disables the switch");
+                Require(workspace.SelectedEffort == "high" && slider.highValue == 1 && slider.value == 0,
+                    "shrinking the model's reasoning range does not overwrite its default with a clamped old index");
                 workspace.SetFastMode(true);
                 Require(!workspace.FastMode, "unsupported models cannot enable Fast");
                 workspace.SetModel("fast-model");
@@ -50,7 +68,7 @@ namespace Minerva.Codex.Editor.Dev
                 {
                     ["model"] = "fast-model", ["serviceTier"] = "priority", ["reasoningEffort"] = "high",
                 });
-                Require(workspace.FastMode && card.Q<Label>("codex-fast-status").text == "On", "thread resume restores speed and refreshes the switch");
+                Require(workspace.FastMode && toggle.ClassListContains("codex-fast-enabled"), "thread resume restores speed and refreshes the icon");
                 Invoke(workspace, "OnThreadSettingsUpdated", new JObject
                 {
                     ["threadId"] = "thread-one", ["threadSettings"] = new JObject
@@ -84,7 +102,7 @@ namespace Minerva.Codex.Editor.Dev
             typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(configured, true);
             configured.SetFastMode(false);
             Require(configured.FastMode, "speed cannot change during an active turn");
-            return "PASS: advertised capabilities, config/catalog defaults, explicit Off, independent effort, real switch, unsupported models, resume/notification sync and active-turn guard";
+            return "PASS: model control card, discrete reasoning slider/reset, independent Fast icon, model-range changes, config/defaults, resume/notification sync and active-turn guard";
         }
 
         static JObject Model(string id, bool fast) => new JObject

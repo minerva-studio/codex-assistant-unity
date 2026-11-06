@@ -6,7 +6,9 @@ All notable changes to this package are documented here.
 
 ### Added
 
-- A Codex-style Fast mode card/switch in the model popup, driven by model service-tier metadata. Config,
+- A combined model control card with a discrete reasoning slider, separate Fast lightning button and
+  model-default reasoning reset. The model button opens searchable selection and returns to the card.
+  Fast is driven by model service-tier metadata. Config,
   resume and live settings sync speed independently of reasoning effort; thread/start, settings/update and
   turn/start carry the selected tier. Off explicitly requests standard speed; unsupported models disable it.
 - Right-side **Changes / Subagents** tabs with a shared resizable column. Changes lists loaded turns and

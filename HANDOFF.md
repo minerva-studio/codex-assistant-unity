@@ -409,8 +409,12 @@ write is pending, server snapshots cannot overwrite that local selection; late r
 intent too. Acknowledgment drains the queued write even after navigation to another thread. Disconnect
 invalidates pending entries. This prevents rapid Fast On/Off from being reverted by an older notification.
 
-The model popup footer observes workspace SettingsChanged/Changed and removes both handlers on detach.
-It reuses the popup's search, focus and dismissal behavior; footer height participates in popup positioning.
+`CodexModelControl` observes workspace SettingsChanged/Changed while attached and removes both on detach.
+Its bottom SliderInt selects reasoning effort by advertised index; it never changes serviceTier. The top-left
+lightning toggles Fast, top-right reset selects DefaultEffort, and the center model button opens searchable
+selection then returns to the card. CreatePopup/PositionPopup share overlay ownership and placement between
+the custom card and searchable lists. The card leaves native slider keyboard handling intact and handles
+Escape locally. Range binding resets silently before a shrink so clamping cannot change workspace effort.
 CodexFastModeSmokeTest covers metadata/defaults, switch submission, effort independence, unsupported models,
 resume/notification sync and the active-turn guard. Protocol capture uses an inert local pipe sink for start
 requests; the real app-server accepts Fast/standard settings on an isolated ephemeral thread without any
