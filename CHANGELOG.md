@@ -11,6 +11,9 @@ All notable changes to this package are documented here.
   paths remain separate; live aggregate patches disappear on completion. Selection and reading position
   survive tab switches and background updates. Patches in Changes and the transcript use green/red text
   and row backgrounds for additions/deletions, keeping their signs and original copy text.
+- Changes history uses collapsible turn summaries instead of timestamp/id dropdown navigation, with
+  left-aligned filenames, secondary directories, compact operation markers and repeated-edit numbering.
+  Its navigation height is bounded so patch detail retains most of the sidebar.
 
 - JSON-RPC over newline-delimited JSON transport for `codex app-server`, with the reader on a
   background thread and callbacks dispatched to the Unity main thread.

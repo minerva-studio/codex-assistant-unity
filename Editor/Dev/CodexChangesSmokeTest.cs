@@ -32,15 +32,32 @@ namespace Minerva.Codex.Editor.Dev
 
                 JObject current = Turn("current", "completed", "first patch", "second patch");
                 JObject older = Turn("older", "failed", "older patch");
+                ((JArray)current["items"]).Add(new JObject
+                {
+                    ["type"] = "userMessage", ["content"] = new JArray(new JObject
+                    {
+                        ["type"] = "text", ["text"] = "<unity-context>\nEditor snapshot\n</unity-context>\nFix the roof",
+                    }),
+                });
                 turns.Add(current);
                 turns.Add(older);
                 refresh();
-                Require(panel.Q("codex-change-list").childCount == 2, "repeated file paths remain separate records");
+                Require(panel.Query<Button>("codex-change-record").ToList().Count == 2, "repeated file paths remain separate records");
+                var currentHeader = TurnButton(panel, "current");
+                Require(currentHeader.Query<Label>().ToList().Exists(label => label.text == "Fix the roof"), "turn navigation uses user text without attached Unity context");
+                var rows = panel.Query<Button>("codex-change-record").ToList();
+                Require(rows[0].Query<Label>().ToList().Exists(label => label.text == "Example.cs"), "file basename is the primary navigation label");
+                Require(rows[0].Query<Label>().ToList().Exists(label => label.text == "Assets · edit 1")
+                    && rows[1].Query<Label>().ToList().Exists(label => label.text == "Assets · edit 2"), "repeated paths show distinct edit order");
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "first patch", "newest turn selected initially");
+                Submit(TurnButton(panel, "current"));
+                Require(panel.Query<Button>("codex-change-record").ToList().Count == 0
+                    && panel.Q<CodexPatchView>("codex-change-diff").Patch == "first patch", "collapsing the selected group keeps its patch open");
+                Submit(TurnButton(panel, "current"));
 
-                var selector = panel.Q<DropdownField>("codex-changes-turn");
-                selector.index = 1;
+                Submit(TurnButton(panel, "older"));
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "older patch", "historical turn can be selected");
+                Require(panel.Query<Button>("codex-change-record").ToList().Count == 1, "only the selected turn expands its file rows");
                 Require(panel.Q<Label>("codex-change-status").text.Contains("failed"), "failed patch is labelled");
                 ((JObject)((JArray)((JObject)((JArray)current["items"])[0])["changes"])[0])["diff"] = "streamed patch";
                 refresh();
@@ -52,9 +69,9 @@ namespace Minerva.Codex.Editor.Dev
                 typeof(CodexWorkspace).GetField("m_LiveThreadId", Fields).SetValue(workspace, "smoke-thread");
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, true);
                 refresh();
-                Require(selector.choices.Count == 2, "live turn deduplicates history turn with same id");
-                selector.index = 0;
-                Require(panel.Q("codex-change-list").childCount == 3, "aggregate live patch has a separate entry");
+                Require(panel.Query<Button>("codex-change-turn").ToList().Count == 2, "live turn deduplicates history turn with same id");
+                Submit(TurnButton(panel, "current"));
+                Require(panel.Query<Button>("codex-change-record").ToList().Count == 3, "aggregate live patch has a separate entry");
                 panelType.GetMethod("SelectRecord", Fields).Invoke(panel, new object[] { "live-turn-diff" });
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "aggregate live patch", "live patch can be inspected");
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, false);
@@ -78,12 +95,22 @@ namespace Minerva.Codex.Editor.Dev
                 typeof(CodexWorkspace).GetField("m_HasMoreTurns", Fields).SetValue(workspace, true);
                 refresh();
                 Require(panel.Q<Button>("codex-changes-earlier").style.display.value == DisplayStyle.Flex, "earlier history remains accessible from an empty panel");
-                return "PASS: empty, repeated paths, historical selection, failed/declined status, live deduplication, live completion, missing patch, thread switching and pagination";
+                return "PASS: readable turn summaries, context stripping, filename/directory hierarchy, repeated edit order, accordion navigation, selection retention, live deduplication/completion, missing patch and pagination";
             }
             finally
             {
                 host.Close();
             }
+        }
+
+        static Button TurnButton(VisualElement panel, string id) =>
+            panel.Query<Button>("codex-change-turn").ToList().Find(button => (string)button.userData == id);
+
+        static void Submit(Button button)
+        {
+            using var evt = NavigationSubmitEvent.GetPooled();
+            evt.target = button;
+            button.SendEvent(evt);
         }
 
         static void SelectThread(CodexWorkspace workspace, string id)

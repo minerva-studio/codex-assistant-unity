@@ -16,7 +16,9 @@ namespace Minerva.Codex
         sealed class ChangeTurn
         {
             public string Id;
-            public string Label;
+            public string Title;
+            public string Time;
+            public bool Live;
             public readonly List<ChangeRecord> Records = new List<ChangeRecord>();
         }
 
@@ -30,7 +32,7 @@ namespace Minerva.Codex
             public bool Live;
         }
 
-        readonly DropdownField m_Turn;
+        readonly Label m_Count;
         readonly Label m_Empty;
         readonly Button m_Earlier;
         readonly ScrollView m_Files;
@@ -47,7 +49,7 @@ namespace Minerva.Codex
         string m_TurnId;
         string m_RecordKey;
         string m_RowSignature;
-        bool m_Refreshing;
+        bool m_TurnExpanded = true;
         bool m_RestoreScroll;
         Vector2 m_FileOffset;
         Vector2 m_PatchOffset;
@@ -62,22 +64,10 @@ namespace Minerva.Codex
             style.paddingTop = 10;
             style.paddingBottom = 10;
 
-            var hint = Text("File edits recorded by Codex", 10, CodexPalette.Muted);
-            hint.style.marginBottom = 8;
-            Add(hint);
-            m_Turn = new DropdownField { name = "codex-changes-turn" };
-            m_Turn.style.flexShrink = 0;
-            m_Turn.style.marginBottom = 6;
-            m_Turn.RegisterValueChangedCallback(evt =>
-            {
-                if (m_Refreshing) return;
-                int index = m_Turn.choices.IndexOf(evt.newValue);
-                if (index < 0 || index >= m_Turns.Count) return;
-                m_TurnId = m_Turns[index].Id;
-                m_RecordKey = null;
-                RenderTurn();
-            });
-            Add(m_Turn);
+            m_Count = Text("Change history", 10, CodexPalette.Muted);
+            m_Count.style.marginBottom = 8;
+            m_Count.style.flexShrink = 0;
+            Add(m_Count);
 
             m_Empty = Text("No recorded file changes in the loaded turns.", 11, CodexPalette.Muted);
             m_Empty.name = "codex-changes-empty";
@@ -89,10 +79,11 @@ namespace Minerva.Codex
                 name = "codex-changes-earlier", text = "Load earlier turns",
             };
             m_Earlier.style.marginBottom = 6;
-            Add(m_Earlier);
 
             m_Files = new ScrollView(ScrollViewMode.Vertical);
-            m_Files.style.maxHeight = 220;
+            m_Files.name = "codex-changes-navigation";
+            m_Files.style.maxHeight = Length.Percent(42);
+            m_Files.style.minHeight = 0;
             m_Files.style.flexShrink = 1;
             m_Files.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             m_FileList = new VisualElement { name = "codex-change-list" };
@@ -108,6 +99,9 @@ namespace Minerva.Codex
             m_Path.style.flexGrow = 1;
             m_Path.style.flexShrink = 1;
             m_Path.style.unityFontStyleAndWeight = FontStyle.Bold;
+            m_Path.style.whiteSpace = WhiteSpace.NoWrap;
+            m_Path.style.overflow = Overflow.Hidden;
+            m_Path.style.textOverflow = TextOverflow.Ellipsis;
             detailHeader.Add(m_Path);
             m_Copy = new Button(() => UnityEditor.EditorGUIUtility.systemCopyBuffer = SelectedRecord()?.Diff ?? "")
             {
@@ -155,6 +149,7 @@ namespace Minerva.Codex
             {
                 m_ThreadId = threadId;
                 m_TurnId = null;
+                m_TurnExpanded = true;
                 m_RecordKey = null;
                 m_FileOffset = m_PatchOffset = Vector2.zero;
                 m_Files.scrollOffset = m_Patch.scrollOffset = Vector2.zero;
@@ -180,16 +175,11 @@ namespace Minerva.Codex
             {
                 selected = m_Turns.Count > 0 ? 0 : -1;
                 m_TurnId = selected >= 0 ? m_Turns[selected].Id : null;
+                m_TurnExpanded = true;
                 m_RecordKey = null;
             }
 
-            var choices = new List<string>();
-            foreach (ChangeTurn turn in m_Turns) choices.Add(turn.Label);
-            m_Refreshing = true;
-            m_Turn.choices = choices;
-            m_Turn.SetValueWithoutNotify(selected >= 0 ? choices[selected] : "No recorded changes");
-            m_Refreshing = false;
-            m_Turn.SetEnabled(selected >= 0);
+            m_Count.text = m_Turns.Count == 0 ? "Change history" : "Change history · " + m_Turns.Count + (m_Turns.Count == 1 ? " turn" : " turns");
             m_Empty.style.display = selected >= 0 ? DisplayStyle.None : DisplayStyle.Flex;
             m_Empty.text = string.IsNullOrEmpty(threadId)
                 ? "Open a conversation to inspect its recorded changes."
@@ -237,6 +227,8 @@ namespace Minerva.Codex
             foreach (JToken item in items)
             {
                 string type = item["type"]?.Value<string>();
+                if (type == "userMessage" && string.IsNullOrEmpty(turn.Title) && item is JObject message)
+                    turn.Title = CodexWorkspace.ExtractUserText(message);
                 string itemId = item["id"]?.Value<string>();
                 if (type == "fileChange" && item["changes"] is JArray changes)
                 {
@@ -269,10 +261,11 @@ namespace Minerva.Codex
 
             if (turn.Records.Count == 0) return;
             long timestamp = source["startedAtMs"]?.Value<long?>() ?? 0;
-            string caption = timestamp > 0
-                ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime.ToString("MM-dd HH:mm:ss")
-                : "Turn";
-            turn.Label = (live ? "Live · " : "") + caption + " · " + id;
+            turn.Time = timestamp > 0
+                ? DateTimeOffset.FromUnixTimeMilliseconds(timestamp).LocalDateTime.ToString("MM-dd HH:mm")
+                : "Recorded turn";
+            turn.Title = string.IsNullOrWhiteSpace(turn.Title) ? "File changes" : turn.Title.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            turn.Live = live;
             m_Turns.Add(turn);
         }
 
@@ -291,10 +284,11 @@ namespace Minerva.Codex
             }
 
             var signature = new StringBuilder(m_TurnId);
-            signature.Append('\n').Append(m_RecordKey);
-            if (turn != null)
+            signature.Append('\n').Append(m_RecordKey).Append('|').Append(m_TurnExpanded);
+            foreach (ChangeTurn group in m_Turns)
             {
-                foreach (ChangeRecord record in turn.Records)
+                signature.Append('\n').Append(group.Id).Append('|').Append(group.Title).Append('|').Append(group.Time).Append('|').Append(group.Live);
+                foreach (ChangeRecord record in group.Records)
                     signature.Append('\n').Append(record.Key).Append('|').Append(record.Path).Append('|').Append(record.Operation).Append('|').Append(record.Status);
             }
 
@@ -302,16 +296,33 @@ namespace Minerva.Codex
             if (rows != m_RowSignature)
             {
                 m_RowSignature = rows;
+                Vector2 offset = m_Files.scrollOffset;
                 m_FileList.Clear();
-                if (turn != null) foreach (ChangeRecord record in turn.Records) AddRow(record);
+                foreach (ChangeTurn group in m_Turns)
+                {
+                    AddTurnHeader(group);
+                    if (group.Id != m_TurnId || !m_TurnExpanded) continue;
+                    for (int index = 0; index < group.Records.Count; index++)
+                    {
+                        ChangeRecord record = group.Records[index];
+                        int edit = 0;
+                        if (group.Records.Exists(candidate => !ReferenceEquals(candidate, record) && candidate.Path == record.Path))
+                            for (int previous = 0; previous <= index; previous++)
+                                if (group.Records[previous].Path == record.Path) edit++;
+                        AddRow(record, edit);
+                    }
+                }
+                m_FileList.Add(m_Earlier);
+                m_Files.schedule.Execute(() => m_Files.scrollOffset = offset);
             }
 
             ChangeRecord selected = SelectedRecord();
-            m_Files.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
+            m_Files.style.display = m_Turns.Count > 0 || m_Earlier.style.display.value != DisplayStyle.None ? DisplayStyle.Flex : DisplayStyle.None;
             m_Patch.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.SetEnabled(!string.IsNullOrEmpty(selected?.Diff));
             m_Path.text = selected?.Path ?? "";
+            m_Path.tooltip = m_Path.text;
             m_Status.text = selected == null ? "" : selected.Live
                 ? "Live snapshot · available while this turn is running"
                 : selected.Operation + " · " + selected.Status;
@@ -336,26 +347,99 @@ namespace Minerva.Codex
             RenderTurn();
         }
 
-        void AddRow(ChangeRecord record)
+        void AddTurnHeader(ChangeTurn turn)
+        {
+            bool selected = turn.Id == m_TurnId;
+            var header = new Button(() =>
+            {
+                if (m_TurnId == turn.Id) m_TurnExpanded = !m_TurnExpanded;
+                else
+                {
+                    m_TurnId = turn.Id;
+                    m_TurnExpanded = true;
+                    m_RecordKey = null;
+                }
+                RenderTurn();
+            }) { name = "codex-change-turn", userData = turn.Id, tooltip = turn.Title + "\n" + turn.Time };
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+            header.style.paddingTop = header.style.paddingBottom = 6;
+            header.style.paddingLeft = 4;
+            header.style.marginTop = 2;
+            header.style.marginBottom = 2;
+            header.style.marginLeft = header.style.marginRight = 0;
+            header.style.backgroundColor = selected ? CodexPalette.SurfaceRaised : Color.clear;
+            header.style.borderTopWidth = header.style.borderBottomWidth = 0;
+            header.style.borderLeftWidth = header.style.borderRightWidth = 0;
+            var arrow = Text(selected && m_TurnExpanded ? "▾" : "▸", 11, CodexPalette.Muted);
+            arrow.style.width = 16;
+            arrow.style.flexShrink = 0;
+            header.Add(arrow);
+            var body = new VisualElement();
+            body.style.flexGrow = 1;
+            body.style.minWidth = 0;
+            var title = Text(turn.Title, 11, CodexPalette.Text);
+            title.style.whiteSpace = WhiteSpace.NoWrap;
+            title.style.overflow = Overflow.Hidden;
+            title.style.textOverflow = TextOverflow.Ellipsis;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            body.Add(title);
+            body.Add(Text((turn.Live ? "LIVE · " : "") + turn.Time + " · " + turn.Records.Count + (turn.Records.Count == 1 ? " change" : " changes"), 9,
+                turn.Live ? CodexPalette.Accent : CodexPalette.Muted));
+            header.Add(body);
+            m_FileList.Add(header);
+        }
+
+        void AddRow(ChangeRecord record, int edit)
         {
             var button = new Button(() => SelectRecord(record.Key)) { name = "codex-change-record", tooltip = record.Path };
             button.style.flexDirection = FlexDirection.Row;
-            button.style.paddingTop = 7;
-            button.style.paddingBottom = 7;
-            button.style.marginBottom = 4;
-            button.style.backgroundColor = record.Key == m_RecordKey ? CodexPalette.Selected : CodexPalette.Surface;
+            button.style.alignItems = Align.Center;
+            button.style.paddingTop = 4;
+            button.style.paddingBottom = 4;
+            button.style.paddingLeft = 6;
+            button.style.marginLeft = 16;
+            button.style.marginRight = 0;
+            button.style.marginBottom = 1;
+            button.style.backgroundColor = record.Key == m_RecordKey ? CodexPalette.Selected : Color.clear;
             button.style.borderTopWidth = button.style.borderBottomWidth = 0;
-            button.style.borderLeftWidth = button.style.borderRightWidth = 0;
-            var badge = Text(record.Live ? "LIVE" : record.Operation.ToUpperInvariant(), 8, record.Operation == "delete" ? CodexPalette.Error : CodexPalette.Accent);
-            badge.style.width = 48;
+            button.style.borderLeftWidth = 2;
+            button.style.borderLeftColor = record.Key == m_RecordKey ? CodexPalette.Accent : Color.clear;
+            button.style.borderRightWidth = 0;
+            string operation = record.Live ? "●" : record.Operation switch { "add" => "A", "delete" => "D", "update" => "M", _ => "~" };
+            var badge = Text(operation, 10, record.Operation == "delete" ? CodexPalette.Error : record.Operation == "add" ? CodexPalette.Success : CodexPalette.Accent);
+            badge.style.width = 20;
             badge.style.flexShrink = 0;
             button.Add(badge);
             var body = new VisualElement();
             body.style.flexGrow = 1;
             body.style.flexShrink = 1;
-            body.Add(Text(record.Path, 10, CodexPalette.Text));
-            body.Add(Text(record.Status, 9, StatusColor(record.Status)));
+            body.style.minWidth = 0;
+            string path = record.Path.Replace('\\', '/');
+            int slash = path.LastIndexOf('/');
+            var file = Text(path.Substring(slash + 1), 11, CodexPalette.Text);
+            file.style.whiteSpace = WhiteSpace.NoWrap;
+            file.style.overflow = Overflow.Hidden;
+            file.style.textOverflow = TextOverflow.Ellipsis;
+            body.Add(file);
+            string directory = slash >= 0 ? path.Substring(0, slash) : "";
+            if (edit > 0) directory += (directory.Length > 0 ? " · " : "") + "edit " + edit;
+            if (!string.IsNullOrEmpty(directory))
+            {
+                var location = Text(directory, 9, CodexPalette.Muted);
+                location.style.whiteSpace = WhiteSpace.NoWrap;
+                location.style.overflow = Overflow.Hidden;
+                location.style.textOverflow = TextOverflow.Ellipsis;
+                body.Add(location);
+            }
             button.Add(body);
+            if (record.Status != "completed" && !record.Live)
+            {
+                var status = Text(record.Status, 9, StatusColor(record.Status));
+                status.style.flexShrink = 0;
+                status.style.marginLeft = 4;
+                button.Add(status);
+            }
             m_FileList.Add(button);
         }
 
@@ -365,6 +449,8 @@ namespace Minerva.Codex
             label.style.fontSize = size;
             label.style.color = color;
             label.style.whiteSpace = WhiteSpace.Normal;
+            label.style.unityTextAlign = TextAnchor.MiddleLeft;
+            label.style.marginTop = label.style.marginBottom = 0;
             return label;
         }
 

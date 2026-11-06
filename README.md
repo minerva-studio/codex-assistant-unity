@@ -35,8 +35,10 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   **← Parent** while viewing one.
 - The right column has **Changes / Subagents** tabs. Subagents lists the selected conversation's agents
   with status, model and current activity. Click a row to open that agent; **Agents N** opens its tab.
-- **Changes** opens recorded file edits for the selected conversation. Pick a turn, then a file-change
-  record to read and copy its patch. Repeated edits to the same path remain separate, and failed/declined
+- **Changes** opens recorded file edits for the selected conversation. Its compact history groups changes
+  under the user's turn summary, time and record count. Click a group to expand its filename/directory rows,
+  then select a record to read and copy its patch; collapsing a group keeps the patch open. Navigation uses
+  at most 42% of the panel height. Repeated edits show their order and remain separate, and failed/declined
   changes keep their status. Earlier turns use the same history pagination as the transcript. A running
   turn's aggregate diff appears separately while available; it is removed when the turn ends. Closing or
   switching right-side tabs preserves the Changes selection and reading position. The column is resizable.

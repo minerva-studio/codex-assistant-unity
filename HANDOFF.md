@@ -404,6 +404,14 @@ remain present until history hydration succeeds. `Load earlier turns` uses the w
 The focused `Tools/Minerva/Codex/Check Changes Panel` smoke check opens and closes an isolated fixture
 window and sends no Codex message.
 
+Changes navigation is an accordion: turn headers show cleaned user text (shared
+`CodexWorkspace.ExtractUserText`), local time and record count; only the selected turn can be expanded.
+Collapsing its header retains the selected patch. File rows put the basename first, directory second,
+with M/A/D operation markers, exceptional status and per-path edit numbering for repeated records.
+Raw ids remain internal keys. The navigation ScrollView uses maxHeight 42%, and earlier-history loading
+is its final row. Refresh signatures cover all turn summaries/record metadata; patch-only updates do not
+rebuild navigation. Native button submission is exercised by the focused Changes smoke check.
+
 Terminal accepts bare shell commands. Live Windows checks exercised `ls`, persistent variables and cwd,
 Unicode, actual input-field Enter, `Read-Host` stdin, Ctrl+C interrupt with the shell still alive, and both
 Sandboxed/Local modes. The bash path still needs a macOS/Linux host check. Reconnect cwd, shell

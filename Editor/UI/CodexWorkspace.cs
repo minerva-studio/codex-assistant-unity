@@ -1790,7 +1790,7 @@ namespace Minerva.Codex
                     string type = item["type"]?.Value<string>();
                     if (userText == null && type == "userMessage")
                     {
-                        userText = ExtractTitleUserText(item);
+                        userText = ExtractUserText(item);
                     }
                     else if (assistantText == null && type == "agentMessage")
                     {
@@ -1933,7 +1933,8 @@ namespace Minerva.Codex
             }
         }
 
-        static string ExtractTitleUserText(JObject item)
+        /// <summary>Extracts message text for titles and navigation, removing annotations and attached Unity state.</summary>
+        internal static string ExtractUserText(JObject item)
         {
             if (item["content"] is not JArray content)
             {
