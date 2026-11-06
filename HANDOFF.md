@@ -442,6 +442,13 @@ Raw ids remain internal keys. The file ScrollView uses maxHeight 32%; earlier-hi
 button below it and remains reachable from an empty panel. Refresh signatures cover current-turn record
 metadata; other turns and patch-only updates do not rebuild the file list. Native button submission and
 200-turn constant-size navigation are exercised by the focused Changes smoke check.
+Changes also provides Open file and double-click row opening. Record paths remain actual file paths;
+PreviousPath is retained separately for rename display, while opening uses the destination. The shared
+CodexMarkdown.ResolveLocalPath resolves against SelectedCwd (or project root), handles file URIs and rejects
+malformed paths. Open rechecks file existence at activation, and aggregate diffs have no target. OpenLink
+only maps paths inside this project's exact Assets root to AssetDatabase, avoiding same-name asset opens
+from another project. Focused checks validate availability, relative/absolute/rename targets and double-click
+after file disappearance without launching an external editor.
 
 Terminal accepts bare shell commands. Live Windows checks exercised `ls`, persistent variables and cwd,
 Unicode, actual input-field Enter, `Read-Host` stdin, Ctrl+C interrupt with the shell still alive, and both

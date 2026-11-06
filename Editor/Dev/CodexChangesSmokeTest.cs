@@ -75,6 +75,7 @@ namespace Minerva.Codex.Editor.Dev
                 Require(panel.Query<Button>("codex-change-record").ToList().Count == 3, "aggregate live patch has a separate entry");
                 panelType.GetMethod("SelectRecord", Fields).Invoke(panel, new object[] { "live-turn-diff" });
                 Require(panel.Q<CodexPatchView>("codex-change-diff").Patch == "aggregate live patch", "live patch can be inspected");
+                Require(!panel.Q<Button>("codex-change-open").enabledSelf, "aggregate diff has no single file to open");
                 typeof(CodexWorkspace).GetProperty("IsRunning").SetValue(workspace, false);
                 live["status"] = "completed";
                 refresh();
@@ -101,7 +102,7 @@ namespace Minerva.Codex.Editor.Dev
                 SelectThread(workspace, "long-history");
                 refresh();
                 int buttonCount = panel.Query<Button>().ToList().Count;
-                Require(buttonCount <= 6 && panel.Query<Button>("codex-change-record").ToList().Count == 1,
+                Require(buttonCount <= 7 && panel.Query<Button>("codex-change-record").ToList().Count == 1,
                     "200 turns do not create a growing permanent menu");
                 Submit(currentHeader);
                 Require(menu.Count == 200 && menu[0].Selected, "all recorded turns remain available in the search popup");
@@ -125,7 +126,51 @@ namespace Minerva.Codex.Editor.Dev
                 refresh();
                 Require(patch[0].ClassListContains("codex-patch-deletion") && patch.Patch == "class Example {}\n\n",
                     "Changes treats whole deleted files as removed while preserving raw copy text");
-                return "PASS: fixed navigation with 200 turns, picker jumps, adjacent navigation/endpoints, context stripping, filename hierarchy, repeat edits, selection retention, live deduplication/completion and pagination";
+
+                string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "codex-open-file-" + Guid.NewGuid().ToString("N"));
+                System.IO.Directory.CreateDirectory(directory);
+                string original = System.IO.Path.Combine(directory, "Original.cs");
+                string renamed = System.IO.Path.Combine(directory, "Renamed.cs");
+                try
+                {
+                    System.IO.File.WriteAllText(original, "// fixture");
+                    System.IO.File.WriteAllText(renamed, "// fixture");
+                    typeof(CodexWorkspace).GetProperty("SelectedCwd").SetValue(workspace, directory);
+                    change["path"] = "Original.cs";
+                    change["kind"] = new JObject { ["type"] = "update" };
+                    refresh();
+                    var open = panel.Q<Button>("codex-change-open");
+                    Require(open.enabledSelf && open.tooltip == original, "relative file path resolves against the conversation cwd");
+                    change["path"] = original;
+                    refresh();
+                    Require(open.enabledSelf && open.tooltip == original, "absolute file path stays absolute");
+                    change["kind"] = new JObject { ["type"] = "update", ["move_path"] = "Renamed.cs" };
+                    refresh();
+                    Require(open.enabledSelf && open.tooltip == renamed, "renamed record opens the destination rather than its display text or source");
+                    System.IO.File.Delete(renamed);
+                    var fileRow = panel.Q<Button>("codex-change-record");
+                    using (var evt = PointerDownEvent.GetPooled(new UnityEngine.Event
+                    {
+                        type = UnityEngine.EventType.MouseDown, button = 0, clickCount = 2,
+                    }))
+                    {
+                        evt.target = fileRow;
+                        fileRow.SendEvent(evt);
+                    }
+                    Require(!open.enabledSelf, "a file removed after render disables Open without launching an application");
+                    refresh();
+                    Require(!open.enabledSelf, "missing files remain unavailable");
+                    Require(CodexMarkdown.ResolveLocalPath(new Uri(original).AbsoluteUri, directory) == original,
+                        "the shared resolver accepts a file URI");
+                    Require(CodexMarkdown.ResolveLocalPath("bad\0path", directory) == null, "malformed local paths cannot break the panel");
+                }
+                finally
+                {
+                    System.IO.File.Delete(original);
+                    System.IO.File.Delete(renamed);
+                    System.IO.Directory.Delete(directory);
+                }
+                return "PASS: navigation/history, raw patches, Open file availability, absolute/relative/renamed paths, file disappearance, aggregate guard and shared URI resolution";
             }
             finally
             {

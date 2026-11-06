@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -26,6 +27,8 @@ namespace Minerva.Codex
         {
             public string Key;
             public string Path;
+            public string PreviousPath;
+            public string DisplayPath => PreviousPath == null ? Path : PreviousPath + " → " + Path;
             public string Operation;
             public string Status;
             public string Diff;
@@ -47,6 +50,7 @@ namespace Minerva.Codex
         readonly CodexPatchView m_Diff;
         readonly Label m_NoPatch;
         readonly Button m_Copy;
+        readonly Button m_Open;
         readonly ScrollView m_Patch;
         readonly List<ChangeTurn> m_Turns = new List<ChangeTurn>();
         CodexWorkspace m_Workspace;
@@ -153,6 +157,10 @@ namespace Minerva.Codex
             m_Path.style.overflow = Overflow.Hidden;
             m_Path.style.textOverflow = TextOverflow.Ellipsis;
             detailHeader.Add(m_Path);
+            m_Open = new Button(OpenSelectedFile) { name = "codex-change-open", text = "Open file" };
+            m_Open.style.flexShrink = 0;
+            m_Open.style.fontSize = 9;
+            detailHeader.Add(m_Open);
             m_Copy = new Button(() => UnityEditor.EditorGUIUtility.systemCopyBuffer = SelectedRecord()?.Diff ?? "")
             {
                 name = "codex-change-copy", text = "Copy patch",
@@ -289,7 +297,8 @@ namespace Minerva.Codex
                         turn.Records.Add(new ChangeRecord
                         {
                             Key = itemId + "#" + index,
-                            Path = string.IsNullOrEmpty(move) ? path : path + " → " + move,
+                            Path = string.IsNullOrEmpty(move) ? path : move,
+                            PreviousPath = string.IsNullOrEmpty(move) ? null : path,
                             Operation = operationName ?? "change",
                             Status = item["status"]?.Value<string>() ?? "unknown",
                             Diff = change["diff"]?.Value<string>() ?? "",
@@ -343,7 +352,7 @@ namespace Minerva.Codex
             if (turn != null)
             {
                 foreach (ChangeRecord record in turn.Records)
-                    signature.Append('\n').Append(record.Key).Append('|').Append(record.Path).Append('|').Append(record.Operation).Append('|').Append(record.Status);
+                    signature.Append('\n').Append(record.Key).Append('|').Append(record.DisplayPath).Append('|').Append(record.Operation).Append('|').Append(record.Status);
             }
 
             string rows = signature.ToString();
@@ -372,7 +381,11 @@ namespace Minerva.Codex
             m_Patch.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
             m_Copy.SetEnabled(!string.IsNullOrEmpty(selected?.Diff));
-            m_Path.text = selected?.Path ?? "";
+            string file = SelectedFilePath();
+            m_Open.style.display = selected != null ? DisplayStyle.Flex : DisplayStyle.None;
+            m_Open.SetEnabled(file != null);
+            m_Open.tooltip = file ?? (selected?.Live == true ? "Aggregate diff has no single file" : "File is not available on this computer");
+            m_Path.text = selected?.DisplayPath ?? "";
             m_Path.tooltip = m_Path.text;
             m_Status.text = selected == null ? "" : selected.Live
                 ? "Live snapshot · available while this turn is running"
@@ -387,6 +400,22 @@ namespace Minerva.Codex
         ChangeRecord SelectedRecord()
         {
             return m_Turns.Find(turn => turn.Id == m_TurnId)?.Records.Find(record => record.Key == m_RecordKey);
+        }
+
+        string SelectedFilePath()
+        {
+            ChangeRecord record = SelectedRecord();
+            if (record == null || record.Live) return null;
+            string directory = m_Workspace?.SelectedCwd ?? Path.GetDirectoryName(Application.dataPath);
+            string file = CodexMarkdown.ResolveLocalPath(record.Path, directory);
+            return File.Exists(file) ? file : null;
+        }
+
+        void OpenSelectedFile()
+        {
+            string file = SelectedFilePath();
+            if (file != null) CodexMarkdown.OpenLink(file, m_Workspace?.SelectedCwd ?? Path.GetDirectoryName(Application.dataPath));
+            else m_Open.SetEnabled(false);
         }
 
         void SelectRecord(string key)
@@ -423,7 +452,13 @@ namespace Minerva.Codex
 
         void AddRow(ChangeRecord record, int edit)
         {
-            var button = new Button(() => SelectRecord(record.Key)) { name = "codex-change-record", tooltip = record.Path };
+            var button = new Button(() => SelectRecord(record.Key)) { name = "codex-change-record", tooltip = record.DisplayPath };
+            button.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                if (evt.button != 0 || evt.clickCount != 2) return;
+                SelectRecord(record.Key);
+                OpenSelectedFile();
+            }, TrickleDown.TrickleDown);
             button.style.flexDirection = FlexDirection.Row;
             button.style.alignItems = Align.Center;
             button.style.paddingTop = 4;

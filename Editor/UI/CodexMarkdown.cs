@@ -86,7 +86,8 @@ namespace Minerva.Codex
             return string.Join("\n", lines);
         }
 
-        static void OpenLink(string link, string baseDirectory)
+        /// <summary>Opens a URL, local directory, Unity asset or local file using its existing application association.</summary>
+        internal static void OpenLink(string link, string baseDirectory)
         {
             if (string.IsNullOrEmpty(link) || link[0] == '#')
             {
@@ -101,17 +102,7 @@ namespace Minerva.Codex
                 return;
             }
 
-            string path = link;
-            if (link.StartsWith("file://", StringComparison.OrdinalIgnoreCase) &&
-                Uri.TryCreate(link, UriKind.Absolute, out Uri uri))
-            {
-                path = uri.LocalPath;
-            }
-
-            if (!Path.IsPathRooted(path))
-            {
-                path = Path.GetFullPath(Path.Combine(baseDirectory, path));
-            }
+            string path = ResolveLocalPath(link, baseDirectory);
 
             if (Directory.Exists(path))
             {
@@ -125,11 +116,12 @@ namespace Minerva.Codex
                 return;
             }
 
-            string assetPath = path.Replace('\\', '/');
-            int assetsIndex = assetPath.IndexOf("/Assets/", StringComparison.OrdinalIgnoreCase);
-            if (assetsIndex >= 0)
+            string assetsRoot = Path.GetFullPath(Application.dataPath).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+            StringComparison comparison = Application.platform == RuntimePlatform.WindowsEditor
+                ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (path.StartsWith(assetsRoot, comparison))
             {
-                assetPath = assetPath.Substring(assetsIndex + 1);
+                string assetPath = "Assets/" + path.Substring(assetsRoot.Length).Replace('\\', '/');
                 Object asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
                 if (asset != null)
                 {
@@ -139,6 +131,20 @@ namespace Minerva.Codex
             }
 
             EditorUtility.OpenWithDefaultApp(path);
+        }
+
+        /// <summary>Resolves a file URI or path against its conversation directory; malformed paths return null.</summary>
+        internal static string ResolveLocalPath(string path, string baseDirectory)
+        {
+            try
+            {
+                if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                    && Uri.TryCreate(path, UriKind.Absolute, out Uri uri)) path = uri.LocalPath;
+                return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(baseDirectory, path));
+            }
+            catch (ArgumentException) { return null; }
+            catch (NotSupportedException) { return null; }
+            catch (PathTooLongException) { return null; }
         }
 
         sealed class CodexMarkdownFactory : DefaultMarkdownVisualElementFactory

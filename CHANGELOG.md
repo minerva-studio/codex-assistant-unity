@@ -6,6 +6,8 @@ All notable changes to this package are documented here.
 
 ### Added
 
+- Changes details include **Open file**, also available by double-clicking a file row. Relative paths use
+  conversation cwd, renamed records open their destination, and missing/aggregate targets are disabled.
 - A combined model control card with a discrete reasoning slider, separate Fast lightning button and
   model-default reasoning reset. The model button opens searchable selection and returns to the card.
   Fast is driven by model service-tier metadata. Config,
