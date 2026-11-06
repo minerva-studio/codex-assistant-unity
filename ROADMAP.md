@@ -11,6 +11,8 @@
 - Composer: send, start a thread on first send, stream assistant deltas, stop a running turn, Enter to send
   or queue, Ctrl+Enter to steer, Shift+Enter for a newline. Queued follow-ups show above the composer and
   auto-dispatch when the turn ends.
+- Serialized composer text/image drafts, server-acknowledged clearing for send/queue/steer, failure recovery,
+  duplicate-send protection and invalidation of late callbacks after connection replacement.
 - Model, reasoning effort and sandbox selectors, seeded from `config/read`, synced from `thread/resume`, and
   sent on `thread/start` / `turn/start`. Effort changes use `thread/settings/update` to keep the cache path
   stable; the transcript follows the bottom unless the reader scrolls up.

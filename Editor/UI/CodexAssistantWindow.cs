@@ -55,7 +55,10 @@ namespace Minerva.Codex
         VisualElement m_AttachmentStrip;
         VisualElement m_ReferenceChipStrip;
         readonly List<ReferenceChip> m_ReferenceChips = new List<ReferenceChip>();
-        readonly List<CodexImageAttachment> m_Attachments = new List<CodexImageAttachment>();
+        [SerializeField] List<CodexImageAttachment> m_Attachments = new List<CodexImageAttachment>();
+        [SerializeField] string m_DraftText = string.Empty;
+        bool m_Submitting;
+        int m_SubmissionVersion;
         int m_ReferenceTriggerIndex = -1;
         Button m_ModelButton;
         Button m_SandboxButton;
@@ -193,7 +196,10 @@ namespace Minerva.Codex
         void OnDisable()
         {
             ClosePopup();
-            ClearAttachments();
+            // Paths/text are the serialized draft; only disposable preview textures belong to this UI lifetime.
+            foreach (CodexImageAttachment attachment in m_Attachments) attachment.Dispose();
+            m_Submitting = false;
+            m_SubmissionVersion++;
             EditorApplication.update -= PlaceComposerImeWindow;
             CodexPreferences.Changed -= OnPreferencesChanged;
             CodexPreferences.ReloadRequested -= OnBackendReloadRequested;
@@ -1103,6 +1109,12 @@ namespace Minerva.Codex
 
         VisualElement BuildComposer()
         {
+            for (int index = 0; index < m_Attachments.Count; index++)
+            {
+                if (m_Attachments[index].Thumbnail != null) continue;
+                var restored = CodexImageAttachment.TryLoad(m_Attachments[index].Path);
+                if (restored != null) m_Attachments[index] = restored;
+            }
             var composer = new VisualElement();
             composer.style.flexShrink = 0;
             composer.style.backgroundColor = CodexPalette.Panel;
@@ -1153,7 +1165,7 @@ namespace Minerva.Codex
             m_ComposerCard.RegisterCallback<DragPerformEvent>(OnComposerDragPerform);
             m_ComposerCard.RegisterCallback<DragExitedEvent>(_ => ResetComposerDragStyle());
 
-            m_Composer = new TextField { multiline = true, name = "codex-composer" };
+            m_Composer = new TextField { multiline = true, name = "codex-composer", value = m_DraftText };
             // Keep the composer on legacy Text Core. UI Toolkit's Advanced Text
             // Generator has known caret/IME positioning defects; the transcript
             // can keep ATG, but the input field needs a correct composition cursor.
@@ -1172,8 +1184,9 @@ namespace Minerva.Codex
             m_Composer.textEdition.hidePlaceholderOnFocus = true;
             m_Composer.tooltip = "Enter to send · Shift+Enter for a new line · @, $ or / for references";
             m_Composer.RegisterCallback<KeyDownEvent>(OnComposerKeyDown, TrickleDown.TrickleDown);
-            m_Composer.RegisterValueChangedCallback(_ =>
+            m_Composer.RegisterValueChangedCallback(evt =>
             {
+                m_DraftText = evt.newValue;
                 UpdateComposer();
                 MaybeShowReferencePicker();
                 RebuildReferenceChips();
@@ -1320,6 +1333,8 @@ namespace Minerva.Codex
             m_ActionButton.style.unityFontStyleAndWeight = FontStyle.Bold;
             actions.Add(m_ActionButton);
 
+            RebuildAttachments();
+            RebuildReferenceChips();
             UpdateSettingsBar();
             UpdateUnityContextButton();
             UpdateComposer();
@@ -2185,17 +2200,25 @@ namespace Minerva.Codex
             }
 
             bool ready = m_Workspace != null && m_Workspace.IsConnected && m_Workspace.ThreadsLoaded;
+            if (m_Submitting && !ready)
+            {
+                m_Submitting = false;
+                m_SubmissionVersion++;
+            }
             bool running = m_Workspace != null && m_Workspace.IsRunning;
             bool hasContent = !string.IsNullOrWhiteSpace(m_Composer.value) || m_Attachments.Count > 0;
             bool settingsReady = m_Workspace != null && m_Workspace.SettingsLoaded;
             bool waitingForInteraction = m_Workspace != null && m_Workspace.HasPendingInteraction;
             bool archived = m_Workspace != null && m_Workspace.SelectedIsArchived;
 
-            m_Composer.SetEnabled(ready && settingsReady && !waitingForInteraction && !archived);
+            m_Composer.SetEnabled(ready && settingsReady && !waitingForInteraction && !archived && !m_Submitting);
+            m_AddReferenceButton.SetEnabled(!m_Submitting);
+            m_AttachmentStrip.SetEnabled(!m_Submitting);
+            m_ReferenceChipStrip.SetEnabled(!m_Submitting);
 
             bool actionEnabled = running
                 ? m_Workspace != null && m_Workspace.CanStop
-                : ready && settingsReady && hasContent && !waitingForInteraction && !archived;
+                : ready && settingsReady && hasContent && !waitingForInteraction && !archived && !m_Submitting;
 
             m_ActionButton.text = running ? "Stop" : "Send";
             m_ActionButton.SetEnabled(actionEnabled);
@@ -2211,6 +2234,8 @@ namespace Minerva.Codex
             string steerKey = Application.platform == RuntimePlatform.OSXEditor ? "Cmd+Enter" : "Ctrl+Enter";
             string hint = archived
                 ? "Restore this archived conversation to continue"
+                : m_Submitting
+                    ? "Waiting for server confirmation…"
                 : waitingForInteraction
                     ? "Resolve Codex's request above"
                     : running
@@ -3450,6 +3475,7 @@ namespace Minerva.Codex
             }
 
             string updated = text.Remove(chip.Start, chip.Length);
+            m_DraftText = updated;
             m_Composer.SetValueWithoutNotify(updated);
             UpdateComposer();
             RebuildReferenceChips();
@@ -3585,11 +3611,12 @@ namespace Minerva.Codex
             string inserted = value + token + " ";
             m_Composer.schedule.Execute(() =>
             {
-                if (m_Composer == null)
+                if (m_Composer == null || m_Submitting)
                 {
                     return;
                 }
 
+                m_DraftText = inserted;
                 m_Composer.SetValueWithoutNotify(inserted);
                 m_Composer.Focus();
                 CodexTextEditing.CaretAtEnd(m_Composer);
@@ -3879,6 +3906,7 @@ namespace Minerva.Codex
 
         void AddAttachment(string path)
         {
+            if (m_Submitting) return;
             if (m_Attachments.Count >= 4)
             {
                 m_StatusLabel.text = "At most 4 images per message.";
@@ -3971,7 +3999,14 @@ namespace Minerva.Codex
                         StartFileDrag(captured.Path, Path.GetFileName(captured.Path));
                     }
                 });
-                chip.Add(image);
+                if (attachment.Thumbnail != null) chip.Add(image);
+                else
+                {
+                    var missing = new Label("Missing") { tooltip = attachment.Path };
+                    missing.style.fontSize = 9;
+                    missing.style.color = CodexPalette.Warning;
+                    chip.Add(missing);
+                }
 
                 var remove = new Button(() => RemoveAttachment(captured)) { text = "×" };
                 remove.style.position = Position.Absolute;
@@ -4208,7 +4243,7 @@ namespace Minerva.Codex
 
         void SendComposer(bool steer = false)
         {
-            if (m_Workspace == null)
+            if (m_Workspace == null || m_Submitting)
             {
                 return;
             }
@@ -4231,37 +4266,49 @@ namespace Minerva.Codex
                 }
             }
 
+            CodexWorkspace workspace = m_Workspace;
+            int submission = ++m_SubmissionVersion;
+            m_Submitting = true;
+            UpdateComposer();
+            void Completed(bool success)
+            {
+                if (this == null || m_Workspace != workspace || submission != m_SubmissionVersion) return;
+                m_Submitting = false;
+                if (success)
+                {
+                    m_FollowTranscript = true;
+                    m_DraftText = string.Empty;
+                    m_Composer.SetValueWithoutNotify(string.Empty);
+                    CodexTextEditing.CaretAtEnd(m_Composer);
+                    m_Composer.schedule.Execute(() => CodexTextEditing.CaretAtEnd(m_Composer));
+                    ClearAttachments();
+                    RebuildReferenceChips();
+                }
+                UpdateComposer();
+            }
+
             bool accepted;
             if (m_Workspace.IsRunning)
             {
                 accepted = steer
-                    ? m_Workspace.SteerMessage(text, imagePaths)
-                    : m_Workspace.QueueMessage(text, imagePaths);
+                    ? m_Workspace.SteerMessage(text, imagePaths, Completed)
+                    : m_Workspace.QueueMessage(text, imagePaths, Completed);
                 if (!accepted && steer)
                 {
-                    accepted = m_Workspace.QueueMessage(text, imagePaths);
+                    accepted = m_Workspace.QueueMessage(text, imagePaths, Completed);
                 }
             }
             else
             {
-                accepted = m_Workspace.SendMessage(text, imagePaths);
+                accepted = m_Workspace.SendMessage(text, imagePaths, Completed);
             }
 
             if (!accepted)
             {
+                m_Submitting = false;
+                UpdateComposer();
                 return;
             }
-
-            m_FollowTranscript = true;
-            m_Composer.SetValueWithoutNotify(string.Empty);
-            // SetValueWithoutNotify changes the visible text but leaves the
-            // text-editing indices at the old position. The next typed character
-            // then inserts at a stale index and throws from ReplaceSelection.
-            CodexTextEditing.CaretAtEnd(m_Composer);
-            m_Composer.schedule.Execute(() => CodexTextEditing.CaretAtEnd(m_Composer));
-            ClearAttachments();
-            RebuildReferenceChips();
-            UpdateComposer();
         }
 
         static bool IsSlashCommand(string text)

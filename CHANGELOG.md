@@ -6,6 +6,11 @@ All notable changes to this package are documented here.
 
 ### Added
 
+- Draft text/image paths survive script reloads. Composer input clears after send/queue/steer acknowledgment,
+  remains available after rejection, and is protected from duplicate sends and late replies after reconnect.
+  Transport write failures now close the failed connection and fail pending callbacks instead of hanging.
+  Late initialization replies from a disposed/replaced client are ignored instead of accessing a released workspace.
+  Changes labels its existing summary as **Recorded** and explains its coverage in the tooltip.
 - Patch readers in Changes and the transcript now include old/new source line numbers, filename-based
   syntax highlighting using the existing ColorCode dependency, and lazy expandable unchanged-context
   regions. Source-looking markup stays literal; raw copy text and change totals remain unchanged.

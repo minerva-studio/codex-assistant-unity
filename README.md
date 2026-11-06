@@ -28,6 +28,10 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   and keeps the archived id filtered, so a stale list response cannot bring the conversation back.
 - **New conversation** starts a thread on the first message without creating a zero-turn thread. After the
   first turn it generates a short title, using the conversation model or a separate title model from Settings.
+- Composer text and staged image paths survive script reloads; preview textures are recreated. Send,
+  queue and steer retain the draft until the server confirms the request. Rejection keeps the input for
+  retry; reconnect cancels the wait without automatically resending. Editing is locked while confirmation
+  is pending, preventing accidental duplicate submissions.
 - The combined model/effort control opens a compact card: current reasoning level above the model picker,
   a discrete reasoning slider below, a **Fast** lightning button at top left, and default-effort reset at top
   right. Slider stops come from the selected model's advertised levels. Fast uses the advertised speed tier
@@ -51,6 +55,7 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   status adds no extra row, and repeated-edit numbers stay in the title. The toolbar offers optional
   file jumps and collapse/expand all. Long lines wrap while preserving source whitespace.
   Earlier turns use the same history pagination as the transcript.
+  Its **Recorded** summary explicitly identifies tool records; hover for the coverage limit.
   A running turn's aggregate snapshot starts folded, is excluded from per-file totals, and disappears
   when the turn ends. Totals describe recorded edits, not a cumulative working-tree comparison.
   Closing or switching right-side tabs preserves the Changes scope, folding and reading position. The column is resizable

@@ -99,6 +99,13 @@ namespace Minerva.Codex
             if (callback != null)
             {
                 m_Pending[id] = callback;
+                // The reader can close between the initial check and registering this request.
+                if (m_Closed)
+                {
+                    if (m_Pending.TryRemove(id, out var pending))
+                        EditorDispatcher.Enqueue(() => pending(null, TransportError("app-server connection is closed")));
+                    return;
+                }
             }
 
             var message = new JObject
@@ -160,6 +167,7 @@ namespace Minerva.Codex
             {
                 lock (m_SendLock)
                 {
+                    if (m_Closed) return;
                     if (m_Socket != null)
                     {
                         var segment = new ArraySegment<byte>(Encoding.UTF8.GetBytes(line));
@@ -179,6 +187,7 @@ namespace Minerva.Codex
             catch (Exception exception)
             {
                 Debug.LogWarning($"[Codex] Failed to write to app-server: {exception.Message}");
+                NotifyClosed("Failed to write to app-server: " + exception.Message);
             }
         }
 
@@ -273,12 +282,11 @@ namespace Minerva.Codex
 
         void NotifyClosed(string reason)
         {
-            if (m_Closed)
+            lock (m_SendLock)
             {
-                return;
+                if (m_Closed) return;
+                m_Closed = true;
             }
-
-            m_Closed = true;
             FailPending("app-server connection closed");
             Action<string> handler = Disconnected;
             if (handler != null)
@@ -359,7 +367,7 @@ namespace Minerva.Codex
 
         public void Dispose()
         {
-            m_Closed = true;
+            lock (m_SendLock) m_Closed = true;
 
             if (m_Socket != null)
             {

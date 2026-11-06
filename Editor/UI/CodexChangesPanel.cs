@@ -491,8 +491,9 @@ namespace Minerva.Codex
             int editCount = records.Count(record => !record.Live);
             string summary = fileCount + (fileCount == 1 ? " file" : " files")
                 + (editCount > fileCount ? " · " + editCount + " edits" : "");
-            m_Title.text = turn == null ? "" : (turn.Live ? "LIVE · " : "") + summary + " · " + turn.Title;
-            m_Title.tooltip = turn == null ? "" : turn.Title + "\n" + turn.Time;
+            m_Title.text = turn == null ? "" : (turn.Live ? "LIVE · " : "") + "Recorded · " + summary + " · " + turn.Title;
+            m_Title.tooltip = turn == null ? "" : turn.Title + "\n" + turn.Time
+                + "\nRecorded file-tool edits only. Shell, Unity-tool and manual changes may not appear here; this is not a working-tree diff.";
             UpdateCollapseButton();
         }
 

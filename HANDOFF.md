@@ -387,6 +387,33 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 
 ## Next tasks
 
+Daily acceptance follow-up (2026-11-06): the composer now serializes raw draft text and image paths on
+the window. CodexImageAttachment serializes only its path; thumbnails are released on OnDisable and
+recreated by BuildComposer. Reference chips derive from restored raw text. Send/queue/steer take an
+optional completion callback; immediate rejection returns false without invoking it. Accepted requests
+clear the draft only after their final server acknowledgment (thread creation alone does not count).
+Failure retains input and attachments. The window locks draft editing while pending and invalidates the
+submission identity when readiness is lost or the window disables; late acknowledgments cannot clear
+a newer draft. Reconnection never replays input. Explicit workspace disposal cancels callbacks; do not
+fire disposed metadata callbacks into a replacement session. Connection write failures fail pending
+requests and notify disconnection, with close transitions serialized against sends by the same lock.
+Initialization callbacks also capture the originating client; a queued acknowledgment after disposal or
+replacement must not initialize the new session or dereference released workspace state.
+
+CodexAcceptanceSmokeTest.Run uses an inert memory RPC sink for submissions, verifies failure/ack paths,
+queue rehydration, steer fallback, new-thread failure, image draft serialization and closed writes. The
+fixture briefly performs the window's normal initial handshake, then detaches it before any submission.
+It queues an initialization acknowledgment before disposal to cover that race and fails on asynchronous
+Editor errors, including exceptions otherwise swallowed by EditorDispatcher.Pump.
+Measure reports bounded synthetic CPU construction/processing times, excluding later Editor layout:
+200 historical turns ~730ms; 200 deltas/20 live redraws ~385ms total, slowest ~35ms, historical visuals
+reused; 4000 terminal chunks ~448ms with 199920 retained UTF-16 units. A 2000-line full-file patch first
+build took ~1028ms (parse ~1ms, syntax ~535ms): this remains a one-time loading hotspot, not a claim of
+smooth frame performance. No virtualization/background-highlighting redesign was added in this pass.
+Native Play Mode toggling, deliberate live connection loss and an actual new inference turn were not
+performed against the user's active conversation. Recompilation exercised the active window lifecycle,
+and its restored draft/model remained consistent without leaking fixture thread ids into preferences.
+
 1. MCP device verification and non-standard OpenAI elicitation forms.
 2. Investigate persisted plan history separately. The Changes panel is implemented; aggregate turn diffs
    are intentionally not cached as history.

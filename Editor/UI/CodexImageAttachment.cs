@@ -9,12 +9,14 @@ namespace Minerva.Codex
     /// One image staged in the composer. The source path is what gets sent as a
     /// <c>localImage</c> input; <see cref="Thumbnail"/> exists only for the UI.
     /// </summary>
+    [Serializable]
     internal sealed class CodexImageAttachment : IDisposable
     {
         const int ThumbnailSize = 128;
         const long MaxSourceBytes = 24L * 1024 * 1024;
 
-        public string Path { get; private set; }
+        [SerializeField] string m_Path;
+        public string Path => m_Path;
         public Texture2D Thumbnail { get; private set; }
 
         public static CodexImageAttachment TryLoad(string path)
@@ -53,7 +55,7 @@ namespace Minerva.Codex
                 thumbnail.hideFlags = HideFlags.HideAndDontSave;
                 return new CodexImageAttachment
                 {
-                    Path = path,
+                    m_Path = path,
                     Thumbnail = thumbnail,
                 };
             }

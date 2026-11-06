@@ -394,7 +394,10 @@ namespace Minerva.Codex
                 m_Connection.ServerRequest += OnServerRequest;
                 m_Client = new CodexClient(m_Connection);
                 m_Terminal = new CodexTerminalSession(m_Client);
-                m_Client.Initialize(OnInitialized, OnFailed);
+                CodexClient client = m_Client;
+                client.Initialize(
+                    result => { if (m_Client == client) OnInitialized(result); },
+                    message => { if (m_Client == client) OnFailed(message); });
             }
             catch (Exception exception)
             {
@@ -1046,7 +1049,8 @@ namespace Minerva.Codex
         /// accepted because the connection is not ready, a turn is already running,
         /// or the text is blank.
         /// </summary>
-        public bool SendMessage(string text, IReadOnlyList<string> imagePaths = null)
+        /// <param name="onCompleted">For an accepted request, receives true only after turn/start acknowledgment; false on failure. Immediate rejection has no callback; disposing the workspace cancels outstanding callbacks.</param>
+        public bool SendMessage(string text, IReadOnlyList<string> imagePaths = null, Action<bool> onCompleted = null)
         {
             bool hasImages = imagePaths != null && imagePaths.Count > 0;
             if (!m_Ready || IsRunning || SelectedIsArchived ||
@@ -1068,11 +1072,11 @@ namespace Minerva.Codex
 
             if (string.IsNullOrEmpty(SelectedThreadId))
             {
-                StartThread(text, imagePaths);
+                StartThread(text, imagePaths, onCompleted);
             }
             else
             {
-                StartTurn(SelectedThreadId, text, imagePaths);
+                StartTurn(SelectedThreadId, text, imagePaths, onCompleted);
             }
 
             return true;
@@ -1082,7 +1086,8 @@ namespace Minerva.Codex
         /// Adds <paramref name="text"/> to the active turn without interrupting it.
         /// Returns false when there is no steerable turn; the caller can queue instead.
         /// </summary>
-        public bool SteerMessage(string text, IReadOnlyList<string> imagePaths = null)
+        /// <param name="onCompleted">Reports server acknowledgment, including a queue fallback. Immediate rejection has no callback; disposing the workspace cancels outstanding callbacks.</param>
+        public bool SteerMessage(string text, IReadOnlyList<string> imagePaths = null, Action<bool> onCompleted = null)
         {
             bool hasImages = imagePaths != null && imagePaths.Count > 0;
             if (!m_Ready || !IsRunning || (string.IsNullOrWhiteSpace(text) && !hasImages) ||
@@ -1098,13 +1103,15 @@ namespace Minerva.Codex
             Status = "Steering...";
             Changed?.Invoke();
 
-            m_Client.SteerTurn(
+            CodexClient client = m_Client;
+            client.SteerTurn(
                 threadId,
                 turnId,
                 trimmed,
                 result =>
                 {
-                    if (SelectedThreadId != threadId)
+                    onCompleted?.Invoke(true);
+                    if (m_Client != client || SelectedThreadId != threadId)
                     {
                         return;
                     }
@@ -1120,17 +1127,19 @@ namespace Minerva.Codex
                 },
                 message =>
                 {
-                    if (SelectedThreadId != threadId)
+                    if (m_Client != client || SelectedThreadId != threadId)
                     {
+                        onCompleted?.Invoke(false);
                         return;
                     }
 
                     Debug.LogWarning($"[Codex] turn/steer failed, queueing instead: {message}");
-                    if (!QueueMessage(trimmed, imagePaths))
+                    if (!QueueMessage(trimmed, imagePaths, onCompleted))
                     {
                         Error = $"Steering failed: {message}";
                         Status = "Steering failed";
                         Changed?.Invoke();
+                        onCompleted?.Invoke(false);
                     }
                 },
                 imagePaths);
@@ -1142,7 +1151,8 @@ namespace Minerva.Codex
         /// Persists a future turn. app-server owns the queue; the next queued item
         /// starts when this thread becomes idle.
         /// </summary>
-        public bool QueueMessage(string text, IReadOnlyList<string> imagePaths = null)
+        /// <param name="onCompleted">Reports whether the server persisted the queued message. Immediate rejection has no callback; disposing the workspace cancels outstanding callbacks.</param>
+        public bool QueueMessage(string text, IReadOnlyList<string> imagePaths = null, Action<bool> onCompleted = null)
         {
             bool hasImages = imagePaths != null && imagePaths.Count > 0;
             if (!m_Ready || (string.IsNullOrWhiteSpace(text) && !hasImages) ||
@@ -1155,13 +1165,15 @@ namespace Minerva.Codex
             string trimmed = text?.Trim() ?? string.Empty;
             Error = null;
 
-            m_Client.AddQueuedTurn(
+            CodexClient client = m_Client;
+            client.AddQueuedTurn(
                 threadId,
                 Guid.NewGuid().ToString("N"),
                 trimmed,
                 _ =>
                 {
-                    if (SelectedThreadId != threadId)
+                    onCompleted?.Invoke(true);
+                    if (m_Client != client || SelectedThreadId != threadId)
                     {
                         return;
                     }
@@ -1172,7 +1184,8 @@ namespace Minerva.Codex
                 },
                 message =>
                 {
-                    if (SelectedThreadId != threadId)
+                    onCompleted?.Invoke(false);
+                    if (m_Client != client || SelectedThreadId != threadId)
                     {
                         return;
                     }
@@ -1714,25 +1727,35 @@ namespace Minerva.Codex
             return true;
         }
 
-        void StartThread(string text, IReadOnlyList<string> imagePaths)
+        void StartThread(string text, IReadOnlyList<string> imagePaths, Action<bool> onCompleted)
         {
-            m_Client.StartThread(
+            CodexClient client = m_Client;
+            client.StartThread(
                 m_ProjectRoot,
                 SelectedModel,
                 SelectedServiceTier,
                 SelectedSandbox,
                 m_ApprovalPolicy,
-                result => OnThreadStarted(result, text, imagePaths),
-                OnSendFailed);
+                result =>
+                {
+                    if (m_Client != client) { onCompleted?.Invoke(false); return; }
+                    OnThreadStarted(result, text, imagePaths, onCompleted);
+                },
+                message =>
+                {
+                    if (m_Client == client) OnSendFailed(message);
+                    onCompleted?.Invoke(false);
+                });
         }
 
-        void OnThreadStarted(JObject result, string text, IReadOnlyList<string> imagePaths)
+        void OnThreadStarted(JObject result, string text, IReadOnlyList<string> imagePaths, Action<bool> onCompleted)
         {
             JObject thread = result?["thread"] as JObject;
             string threadId = thread?["id"]?.Value<string>();
             if (string.IsNullOrEmpty(threadId))
             {
                 OnSendFailed("thread/start returned no thread id");
+                onCompleted?.Invoke(false);
                 return;
             }
 
@@ -1762,7 +1785,7 @@ namespace Minerva.Codex
             m_QueueGeneration++;
             m_LiveThreadId = threadId;
             Changed?.Invoke();
-            StartTurn(threadId, text, imagePaths);
+            StartTurn(threadId, text, imagePaths, onCompleted);
         }
 
         /// <summary>
@@ -2095,7 +2118,8 @@ namespace Minerva.Codex
         void StartTurn(
             string threadId,
             string text,
-            IReadOnlyList<string> imagePaths = null)
+            IReadOnlyList<string> imagePaths,
+            Action<bool> onCompleted)
         {
             m_ActiveThreadId = threadId;
             Status = "Starting turn...";
@@ -2105,7 +2129,8 @@ namespace Minerva.Codex
             JObject sandboxPolicy = BuildSandboxPolicy(SelectedSandbox);
             bool effortSynced = m_EffortSyncedThreadId == threadId;
             string effort = effortSynced ? null : SelectedEffort;
-            m_Client.StartTurn(
+            CodexClient client = m_Client;
+            client.StartTurn(
                 threadId,
                 text,
                 SelectedCwd,
@@ -2116,8 +2141,9 @@ namespace Minerva.Codex
                 m_ApprovalPolicy,
                 result =>
                 {
-                    if (!IsRunning || m_ActiveThreadId != requested)
+                    if (m_Client != client || !IsRunning || m_ActiveThreadId != requested)
                     {
+                        onCompleted?.Invoke(true);
                         return;
                     }
 
@@ -2141,8 +2167,13 @@ namespace Minerva.Codex
 
                     Status = "Codex is working...";
                     Changed?.Invoke();
+                    onCompleted?.Invoke(true);
                 },
-                OnSendFailed,
+                message =>
+                {
+                    if (m_Client == client) OnSendFailed(message);
+                    onCompleted?.Invoke(false);
+                },
                 imagePaths);
         }
 
