@@ -52,17 +52,16 @@ namespace Minerva.Codex
             }, painter =>
             {
                 painter.BeginPath();
-                for (int index = 0; index <= 12; index++)
-                {
-                    float angle = (index * 25 + 20) * Mathf.Deg2Rad;
-                    var point = new Vector2(12 + Mathf.Cos(angle) * 8, 12 + Mathf.Sin(angle) * 8);
-                    if (index == 0) painter.MoveTo(point); else painter.LineTo(point);
-                }
+                painter.MoveTo(new Vector2(20, 12));
+                painter.BezierCurveTo(new Vector2(20, 16.42f), new Vector2(16.42f, 20), new Vector2(12, 20));
+                painter.BezierCurveTo(new Vector2(7.58f, 20), new Vector2(4, 16.42f), new Vector2(4, 12));
+                painter.BezierCurveTo(new Vector2(4, 7.58f), new Vector2(7.58f, 4), new Vector2(12, 4));
+                painter.BezierCurveTo(new Vector2(15, 4), new Vector2(18, 6), new Vector2(20, 8));
                 painter.Stroke();
                 painter.BeginPath();
-                painter.MoveTo(new Vector2(15, 4));
-                painter.LineTo(new Vector2(20, 4));
-                painter.LineTo(new Vector2(20, 9));
+                painter.MoveTo(new Vector2(20, 3));
+                painter.LineTo(new Vector2(20, 8));
+                painter.LineTo(new Vector2(15, 8));
                 painter.Stroke();
             });
             m_Reset.tooltip = "Restore the model's default reasoning effort";
