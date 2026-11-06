@@ -53,11 +53,13 @@
   the latest console errors/warnings to each normal message, captured at send time.
 - Standalone console: `command/exec` (sandboxed) and `process/spawn` (local), with live output, stop, copy
   and clear.
+- Shared right-side Changes/Subagents tabs. Changes browses recorded per-file patches by turn with status,
+  copy and earlier-history loading; a running aggregate diff is labelled separately and cleared on completion.
 
 ## Next
 
 - MCP device verification and non-standard OpenAI elicitation forms.
-- Persisted plan/diff history panels.
+- Investigate persisted plan history separately; aggregate turn diffs remain live-only.
 - Verify composer IME placement on 6000.6+ (the workaround compiles out there) and on macOS.
 
 ## Later

@@ -20,13 +20,13 @@ namespace Minerva.Codex
     {
         const string LastThreadKey = "Minerva.Codex.LastThread";
         const string SidebarWidthKey = "Minerva.Codex.SidebarWidth";
-        const string AgentsWidthKey = "Minerva.Codex.AgentsWidth";
+        const string RightPanelWidthKey = "Minerva.Codex.AgentsWidth";
         const float DefaultSidebarWidth = 292f;
-        const float DefaultAgentsWidth = 250f;
+        const float DefaultRightPanelWidth = 360f;
         const float MinSidebarWidth = 230f;
         const float MaxSidebarWidth = 460f;
-        const float MinAgentsWidth = 200f;
-        const float MaxAgentsWidth = 420f;
+        const float MinRightPanelWidth = 240f;
+        const float MaxRightPanelWidth = 700f;
         const float MinTranscriptWidth = 320f;
 
         const string ScopeProject = "This project";
@@ -73,18 +73,24 @@ namespace Minerva.Codex
         VisualElement m_QuestionPanel;
         VisualElement m_Sidebar;
         VisualElement m_SidebarResizer;
-        VisualElement m_AgentsResizer;
+        VisualElement m_RightPanelResizer;
         float m_SidebarWidth = DefaultSidebarWidth;
-        float m_AgentsWidth = DefaultAgentsWidth;
+        float m_RightPanelWidth = DefaultRightPanelWidth;
         float m_ResizeStartX;
         float m_ResizeStartWidth;
         int m_ResizePointerId = -1;
-        VisualElement m_AgentsPanel;
+        VisualElement m_RightPanel;
         ScrollView m_AgentsList;
         Label m_AgentsCountLabel;
         Button m_AgentsButton;
+        Button m_ChangesButton;
+        Button m_ChangesTab;
+        Button m_SubagentsTab;
+        VisualElement m_SubagentsView;
+        CodexChangesPanel m_ChangesPanel;
         CodexPulseDot m_WorkingDot;
-        bool m_AgentsPanelCollapsed;
+        RightPanelDisplay m_RightPanelDisplay;
+        RightPanelTab m_RightTab = RightPanelTab.Subagents;
         string m_AgentsSignature;
         VisualElement m_Popup;
         VisualElement m_PopupScrim;
@@ -104,6 +110,9 @@ namespace Minerva.Codex
         bool m_ShowToolCalls = true;
         bool m_AttachUnityContext;
         string m_CodexHome;
+
+        enum RightPanelTab { Changes, Subagents }
+        enum RightPanelDisplay { Automatic, Open, Closed }
 
         sealed class PopupItem
         {
@@ -162,10 +171,10 @@ namespace Minerva.Codex
                 EditorPrefs.GetFloat(SidebarWidthKey, DefaultSidebarWidth),
                 MinSidebarWidth,
                 MaxSidebarWidth);
-            m_AgentsWidth = Mathf.Clamp(
-                EditorPrefs.GetFloat(AgentsWidthKey, DefaultAgentsWidth),
-                MinAgentsWidth,
-                MaxAgentsWidth);
+            m_RightPanelWidth = Mathf.Clamp(
+                EditorPrefs.GetFloat(RightPanelWidthKey, DefaultRightPanelWidth),
+                MinRightPanelWidth,
+                MaxRightPanelWidth);
             CodexPreferences.Changed += OnPreferencesChanged;
             CodexPreferences.ReloadRequested += OnBackendReloadRequested;
             EditorApplication.update += PlaceComposerImeWindow;
@@ -221,8 +230,12 @@ namespace Minerva.Codex
             main.Add(BuildSidebar());
             main.Add(BuildSidebarResizer());
             main.Add(BuildContent());
-            main.Add(BuildAgentsResizer());
-            main.Add(BuildAgentsPanel());
+            main.Add(BuildRightPanelResizer());
+            main.Add(BuildRightPanel());
+            main.RegisterCallback<GeometryChangedEvent>(evt =>
+            {
+                if (evt.newRect.width != evt.oldRect.width) FitColumnWidths(evt.newRect.width);
+            });
         }
 
         VisualElement BuildToolbar()
@@ -283,7 +296,13 @@ namespace Minerva.Codex
             consoleButton.tooltip = "Run standalone commands through app-server";
             toolbar.Add(consoleButton);
 
-            m_AgentsButton = new Button(ToggleAgentsPanel) { text = "Agents" };
+            m_ChangesButton = new Button(() => ToggleRightPanel(RightPanelTab.Changes)) { text = "Changes" };
+            StyleAccentSoftButton(m_ChangesButton);
+            m_ChangesButton.style.marginLeft = 6;
+            m_ChangesButton.tooltip = "Inspect recorded file edits for this conversation";
+            toolbar.Add(m_ChangesButton);
+
+            m_AgentsButton = new Button(() => ToggleRightPanel(RightPanelTab.Subagents)) { text = "Agents" };
             StyleAccentSoftButton(m_AgentsButton);
             m_AgentsButton.style.marginLeft = 6;
             m_AgentsButton.style.flexShrink = 0;
@@ -366,11 +385,11 @@ namespace Minerva.Codex
             return m_SidebarResizer;
         }
 
-        VisualElement BuildAgentsResizer()
+        VisualElement BuildRightPanelResizer()
         {
-            m_AgentsResizer = BuildResizer("codex-agents-resizer", false);
-            m_AgentsResizer.style.display = DisplayStyle.None;
-            return m_AgentsResizer;
+            m_RightPanelResizer = BuildResizer("codex-right-panel-resizer", false);
+            m_RightPanelResizer.style.display = DisplayStyle.None;
+            return m_RightPanelResizer;
         }
 
         VisualElement BuildResizer(string name, bool sidebar)
@@ -385,7 +404,7 @@ namespace Minerva.Codex
             handle.style.backgroundColor = Color.clear;
             handle.tooltip = sidebar
                 ? "Drag to resize conversations"
-                : "Drag to resize subagents";
+                : "Drag to resize Changes / Subagents";
 
             var line = new VisualElement();
             line.style.width = 1;
@@ -403,7 +422,7 @@ namespace Minerva.Codex
 
                 m_ResizePointerId = evt.pointerId;
                 m_ResizeStartX = evt.position.x;
-                m_ResizeStartWidth = sidebar ? m_SidebarWidth : m_AgentsWidth;
+                m_ResizeStartWidth = sidebar ? m_SidebarWidth : m_RightPanelWidth;
                 line.style.backgroundColor = CodexPalette.Accent;
                 handle.CapturePointer(evt.pointerId);
                 evt.StopPropagation();
@@ -427,10 +446,10 @@ namespace Minerva.Codex
                 }
                 else
                 {
-                    m_AgentsWidth = ClampAgentsWidth(m_ResizeStartWidth - delta);
-                    if (m_AgentsPanel != null)
+                    m_RightPanelWidth = ClampRightPanelWidth(m_ResizeStartWidth - delta);
+                    if (m_RightPanel != null)
                     {
-                        m_AgentsPanel.style.width = m_AgentsWidth;
+                        m_RightPanel.style.width = m_RightPanelWidth;
                     }
                 }
 
@@ -482,25 +501,39 @@ namespace Minerva.Codex
             }
 
             EditorPrefs.SetFloat(SidebarWidthKey, m_SidebarWidth);
-            EditorPrefs.SetFloat(AgentsWidthKey, m_AgentsWidth);
+            EditorPrefs.SetFloat(RightPanelWidthKey, m_RightPanelWidth);
         }
 
         float ClampSidebarWidth(float width)
         {
-            bool agentsVisible = m_AgentsPanel != null &&
-                                 m_AgentsPanel.style.display.value == DisplayStyle.Flex;
+            bool rightVisible = m_RightPanel != null &&
+                                 m_RightPanel.style.display.value == DisplayStyle.Flex;
             float available = rootVisualElement.layout.width -
                               MinTranscriptWidth -
-                              (agentsVisible ? m_AgentsWidth : 0f);
+                              (rightVisible ? m_RightPanel.resolvedStyle.width + 10 : 5);
             float upper = Mathf.Clamp(available, MinSidebarWidth, MaxSidebarWidth);
             return Mathf.Clamp(width, MinSidebarWidth, upper);
         }
 
-        float ClampAgentsWidth(float width)
+        float ClampRightPanelWidth(float width)
         {
-            float available = rootVisualElement.layout.width - MinTranscriptWidth - m_SidebarWidth;
-            float upper = Mathf.Clamp(available, MinAgentsWidth, MaxAgentsWidth);
-            return Mathf.Clamp(width, MinAgentsWidth, upper);
+            float available = rootVisualElement.layout.width - MinTranscriptWidth - m_Sidebar.resolvedStyle.width - 10;
+            float upper = Mathf.Clamp(available, MinRightPanelWidth, MaxRightPanelWidth);
+            return Mathf.Clamp(width, MinRightPanelWidth, upper);
+        }
+
+        void FitColumnWidths(float width)
+        {
+            bool rightVisible = m_RightPanel.style.display.value == DisplayStyle.Flex;
+            float available = width - MinTranscriptWidth - (rightVisible ? 10 : 5);
+            float sidebarMax = Math.Max(MinSidebarWidth, available - (rightVisible ? MinRightPanelWidth : 0));
+            float sidebar = Mathf.Clamp(m_SidebarWidth, MinSidebarWidth, Math.Min(MaxSidebarWidth, sidebarMax));
+            m_Sidebar.style.width = sidebar;
+            if (rightVisible)
+            {
+                float rightMax = Math.Max(MinRightPanelWidth, available - sidebar);
+                m_RightPanel.style.width = Mathf.Clamp(m_RightPanelWidth, MinRightPanelWidth, Math.Min(MaxRightPanelWidth, rightMax));
+            }
         }
 
         VisualElement BuildSidebar()
@@ -799,16 +832,16 @@ namespace Minerva.Codex
             return content;
         }
 
-        VisualElement BuildAgentsPanel()
+        VisualElement BuildRightPanel()
         {
-            m_AgentsPanel = new VisualElement { name = "codex-agents" };
-            m_AgentsPanel.style.width = m_AgentsWidth;
-            m_AgentsPanel.style.flexShrink = 0;
-            m_AgentsPanel.style.flexDirection = FlexDirection.Column;
-            m_AgentsPanel.style.backgroundColor = CodexPalette.Sidebar;
-            m_AgentsPanel.style.borderLeftWidth = 1;
-            m_AgentsPanel.style.borderLeftColor = CodexPalette.Border;
-            m_AgentsPanel.style.display = DisplayStyle.None;
+            m_RightPanel = new VisualElement { name = "codex-right-panel" };
+            m_RightPanel.style.width = m_RightPanelWidth;
+            m_RightPanel.style.flexShrink = 0;
+            m_RightPanel.style.flexDirection = FlexDirection.Column;
+            m_RightPanel.style.backgroundColor = CodexPalette.Sidebar;
+            m_RightPanel.style.borderLeftWidth = 1;
+            m_RightPanel.style.borderLeftColor = CodexPalette.Border;
+            m_RightPanel.style.display = DisplayStyle.None;
 
             var header = new VisualElement();
             header.style.flexDirection = FlexDirection.Row;
@@ -820,29 +853,25 @@ namespace Minerva.Codex
             header.style.borderBottomWidth = 1;
             header.style.borderBottomColor = CodexPalette.Border;
 
-            var title = new Label("SUBAGENTS");
-            title.style.fontSize = 8;
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.color = CodexPalette.TextDim;
-            header.Add(title);
-
-            m_AgentsCountLabel = new Label(string.Empty);
-            m_AgentsCountLabel.style.fontSize = 9;
-            m_AgentsCountLabel.style.color = CodexPalette.Muted;
-            m_AgentsCountLabel.style.marginLeft = 6;
-            m_AgentsCountLabel.style.flexGrow = 1;
-            header.Add(m_AgentsCountLabel);
+            m_ChangesTab = new Button(() => OpenRightTab(RightPanelTab.Changes)) { name = "codex-changes-tab", text = "Changes" };
+            m_SubagentsTab = new Button(() => OpenRightTab(RightPanelTab.Subagents)) { name = "codex-subagents-tab", text = "Subagents" };
+            StyleGhostButton(m_ChangesTab);
+            StyleGhostButton(m_SubagentsTab);
+            header.Add(m_ChangesTab);
+            header.Add(m_SubagentsTab);
+            var spacer = new VisualElement();
+            spacer.style.flexGrow = 1;
+            header.Add(spacer);
 
             var collapse = new Button(() =>
             {
-                m_AgentsPanelCollapsed = true;
-                m_AgentsSignature = null;
-                RefreshAgentsPanel();
+                m_RightPanelDisplay = RightPanelDisplay.Closed;
+                RefreshRightPanel();
             })
             {
                 text = "×",
             };
-            collapse.tooltip = "Hide subagents";
+            collapse.tooltip = "Hide the right panel";
             collapse.style.width = 18;
             collapse.style.height = 18;
             collapse.style.minWidth = 18;
@@ -863,22 +892,42 @@ namespace Minerva.Codex
             m_AgentsList.style.paddingTop = 8;
             m_AgentsList.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
 
-            m_AgentsPanel.Add(header);
-            m_AgentsPanel.Add(m_AgentsList);
+            m_RightPanel.Add(header);
+            m_ChangesPanel = new CodexChangesPanel();
+            m_RightPanel.Add(m_ChangesPanel);
+            m_SubagentsView = new VisualElement { name = "codex-subagents-view" };
+            m_SubagentsView.style.flexGrow = 1;
+            m_SubagentsView.style.minHeight = 0;
+            m_AgentsCountLabel = new Label();
+            m_AgentsCountLabel.style.fontSize = 10;
+            m_AgentsCountLabel.style.color = CodexPalette.Muted;
+            m_AgentsCountLabel.style.marginLeft = 12;
+            m_AgentsCountLabel.style.marginTop = 10;
+            m_SubagentsView.Add(m_AgentsCountLabel);
+            m_SubagentsView.Add(m_AgentsList);
+            m_RightPanel.Add(m_SubagentsView);
             m_AgentsSignature = null;
-            return m_AgentsPanel;
+            return m_RightPanel;
         }
 
-        void ToggleAgentsPanel()
+        void ToggleRightPanel(RightPanelTab tab)
         {
-            m_AgentsPanelCollapsed = !m_AgentsPanelCollapsed;
-            m_AgentsSignature = null;
-            RefreshAgentsPanel();
+            bool visible = m_RightPanel.style.display.value == DisplayStyle.Flex;
+            m_RightPanelDisplay = visible && m_RightTab == tab ? RightPanelDisplay.Closed : RightPanelDisplay.Open;
+            m_RightTab = tab;
+            RefreshRightPanel();
         }
 
-        void RefreshAgentsPanel()
+        void OpenRightTab(RightPanelTab tab)
         {
-            if (m_AgentsPanel == null || m_AgentsButton == null)
+            m_RightTab = tab;
+            m_RightPanelDisplay = RightPanelDisplay.Open;
+            RefreshRightPanel();
+        }
+
+        void RefreshRightPanel()
+        {
+            if (m_RightPanel == null || m_AgentsButton == null)
             {
                 return;
             }
@@ -901,14 +950,24 @@ namespace Minerva.Codex
             if (count > 0)
             {
                 m_AgentsButton.text = running > 0 ? $"Agents {count} · {running} running" : $"Agents {count}";
-                m_AgentsButton.tooltip = m_AgentsPanelCollapsed ? "Show subagents" : "Hide subagents";
+                m_AgentsButton.tooltip = "Show subagents for this conversation";
             }
 
-            bool visible = count > 0 && !m_AgentsPanelCollapsed;
-            m_AgentsPanel.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
-            if (m_AgentsResizer != null)
+            bool visible = m_RightPanelDisplay == RightPanelDisplay.Open ||
+                           (m_RightPanelDisplay == RightPanelDisplay.Automatic && count > 0);
+            bool changes = visible && m_RightTab == RightPanelTab.Changes;
+            // Save the Changes reading position before hiding its parent column.
+            m_ChangesPanel.SetVisible(changes);
+            m_SubagentsView.style.display = visible && !changes ? DisplayStyle.Flex : DisplayStyle.None;
+            m_RightPanel.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            FitColumnWidths(rootVisualElement.layout.width);
+            m_ChangesTab.style.backgroundColor = m_RightTab == RightPanelTab.Changes ? CodexPalette.AccentSoft : Color.clear;
+            m_ChangesTab.style.color = m_RightTab == RightPanelTab.Changes ? CodexPalette.Accent : CodexPalette.Muted;
+            m_SubagentsTab.style.backgroundColor = m_RightTab == RightPanelTab.Subagents ? CodexPalette.AccentSoft : Color.clear;
+            m_SubagentsTab.style.color = m_RightTab == RightPanelTab.Subagents ? CodexPalette.Accent : CodexPalette.Muted;
+            if (m_RightPanelResizer != null)
             {
-                m_AgentsResizer.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+                m_RightPanelResizer.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
             }
 
             if (!visible)
@@ -916,9 +975,15 @@ namespace Minerva.Codex
                 return;
             }
 
+            if (changes)
+            {
+                m_ChangesPanel.Refresh(m_Workspace);
+                return;
+            }
+
             m_AgentsCountLabel.text = running > 0
-                ? $"{running} running · {count}"
-                : count.ToString();
+                ? $"{running} running · {count} subagents"
+                : count > 0 ? $"{count} subagents" : "No subagents recorded for this conversation.";
 
             var signature = new System.Text.StringBuilder();
             foreach (CodexSubagentInfo agent in agents)
@@ -1925,7 +1990,7 @@ namespace Minerva.Codex
             UpdateComposer();
             RefreshQueueStrip();
             RefreshInteractionPanel();
-            RefreshAgentsPanel();
+            RefreshRightPanel();
             UpdateContextIndicator();
 
             bool hasError = !string.IsNullOrEmpty(m_Workspace.Error);
@@ -4648,7 +4713,7 @@ namespace Minerva.Codex
             if (liveTurn == null || m_LiveContainer == null)
             {
                 RebuildTranscript();
-                RefreshAgentsPanel();
+                RefreshRightPanel();
                 return;
             }
 
@@ -4659,7 +4724,7 @@ namespace Minerva.Codex
             RenderTurn(m_LiveContainer, liveTurn, true);
 
             RestoreScroll(previousOffset, stickToBottom);
-            RefreshAgentsPanel();
+            RefreshRightPanel();
         }
 
         void RenderTurn(VisualElement parent, JObject turn, bool isLive)

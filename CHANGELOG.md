@@ -6,6 +6,11 @@ All notable changes to this package are documented here.
 
 ### Added
 
+- Right-side **Changes / Subagents** tabs with a shared resizable column. Changes lists loaded turns and
+  individual file edits with their status, read-only patch detail, copy and history pagination. Repeated
+  paths remain separate; live aggregate patches disappear on completion. Selection and reading position
+  survive tab switches and background updates. Console guidance now explains executable vs shell aliases.
+
 - JSON-RPC over newline-delimited JSON transport for `codex app-server`, with the reader on a
   background thread and callbacks dispatched to the Unity main thread.
 - Persistent localhost WebSocket app-server per `CODEX_HOME`, with stdio fallback. Domain reloads and

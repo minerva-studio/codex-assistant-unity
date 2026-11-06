@@ -17,8 +17,8 @@ and the same one Codex Desktop lists in its sidebar (switch it to chronological 
 ## Status
 
 Conversation client with a composer, searchable/archivable thread navigation, collapsible reasoning and tool
-records, and a settings panel. Verified against Codex CLI 0.166.0 on Unity 6000.3. Approvals and Unity-side
-tools are next.
+records, approval cards, standalone console, right-side Changes/Subagents panels and a settings panel.
+Verified against Codex CLI 0.166.0 on Unity 6000.3.
 
 ## Features
 
@@ -33,8 +33,13 @@ tools are next.
 - Subagent tool calls and activity render as **Subagent** sections with **Open** buttons. Subagent threads
   are opened from their parent item, not listed as separate sidebar conversations; the header shows
   **← Parent** while viewing one.
-- A minimal **Subagents** rail on the right lists the selected conversation's agents with status, model and
-  current activity. Click a row to open that agent; the toolbar **Agents N** button hides/shows the rail.
+- The right column has **Changes / Subagents** tabs. Subagents lists the selected conversation's agents
+  with status, model and current activity. Click a row to open that agent; **Agents N** opens its tab.
+- **Changes** opens recorded file edits for the selected conversation. Pick a turn, then a file-change
+  record to read and copy its patch. Repeated edits to the same path remain separate, and failed/declined
+  changes keep their status. Earlier turns use the same history pagination as the transcript. A running
+  turn's aggregate diff appears separately while available; it is removed when the turn ends. Closing or
+  switching right-side tabs preserves the Changes selection and reading position. The column is resizable.
 - Running work has a pulsing hint: a dot in the toolbar, a dot on the active sidebar conversation, and
   pulsing dots on running subagent rows. Static green/yellow/red dots mark completed/failed agents.
   A historical subagent with a stale “running” state is shown as **idle** unless it appears in the current
@@ -52,7 +57,8 @@ tools are next.
   uses `command/exec`; Local mode uses `process/spawn` on the app-server host. Output streams live; Run
   becomes Stop while the process is alive; Copy, Clear and the working-directory field are available. The
   command line is split into argv (double/single quotes supported; backslashes and UNC paths are preserved),
-  not passed through a shell, so pipes, redirects and stdin/PTY sessions are not available yet.
+  not passed through a shell, so pipes, redirects and stdin/PTY sessions are not available yet. On Windows,
+  run `cmd.exe /c dir` or `powershell.exe -NoProfile -Command ls`; bare `ls` is not a Windows executable.
 - Codex output is plain document text; only user input uses a compact, right-aligned bubble (max 68% of the
   transcript width). Process and approval/question surfaces remain cards because they are interaction
   containers.
@@ -180,12 +186,14 @@ sends two real messages, one after creating a thread, and checks streaming and h
 - Subagent threads are not listed in the sidebar; open one from its parent's Subagent section, then use
   **← Parent** to return. The package does not add a manual "spawn subagent" button; the model decides when
   to delegate using the enabled `multi_agent` tools.
-- `request_user_input`, command/file-change/permission approvals and standard MCP form/URL elicitations are
-  handled. Legacy `execCommandApproval`/`applyPatchApproval`, MCP device verification and non-standard
-  OpenAI elicitation forms are not fully supported.
-- Plan/diff cards are live-turn state; they are not persisted as separate history panels. Standalone
-  `command/exec` and `process/spawn` sessions are not exposed by the window; terminal input is available
-  when a running `commandExecution` item exposes a PTY `processId`.
+- `request_user_input`, modern and legacy command/file-change approvals, permission approvals and standard
+  MCP form/URL elicitations are handled. MCP device verification and non-standard OpenAI elicitation forms
+  are not fully supported.
+- Changes shows app-server `fileChange` records, not the Git working tree or every filesystem/scene edit.
+  Shell and Unity-tool edits may have no such record. Historical per-file patches come from loaded history;
+  the live aggregate diff and turn-plan notifications are not cached as persistent history by this package.
+- Standalone Console runs programs without a conversation. Inline terminal input remains available when
+  a running conversation's `commandExecution` item exposes a PTY `processId`.
 - A CODEX_HOME change restarts the app-server. That home has its own threads, auth and model provider; moving
   between homes does not migrate conversations.
 - The context indicator needs a token-usage notification. It shows `ctx —` until the conversation has run a

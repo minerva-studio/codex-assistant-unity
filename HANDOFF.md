@@ -383,13 +383,27 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
 ## Next tasks
 
 1. MCP device verification and non-standard OpenAI elicitation forms.
-2. Persisted plan/diff history panels.
+2. Investigate persisted plan history separately. The Changes panel is implemented; aggregate turn diffs
+   are intentionally not cached as history.
 3. The IMM32 IME workaround is compiled out from 6000.6 on (`UNITY_6000_6_OR_NEWER`) on the assumption that
    UUM-143713 covers the candidate-window position; that assumption has not been checked on a 6.6+ editor.
    Verify it there and remove the workaround if the position is correct. macOS is not available on this
    machine, so leave the macOS check for whoever can run it.
 
 ## Workflow that works on this machine
+
+The right column now hosts Changes/Subagents tabs. `CodexAssistantWindow` owns its tab, visibility and
+width (the existing `Minerva.Codex.AgentsWidth` preference key is retained). `CodexChangesPanel.Refresh`
+reads workspace turns and retains only UI selection/scroll state. Each file record is keyed by item id
+and change index within its selected turn; duplicate paths are not merged. A matching live turn replaces
+its history copy. Synthetic aggregate patches require `IsRunning`, because a completed `LiveTurn` can
+remain present until history hydration succeeds. `Load earlier turns` uses the workspace's existing pager.
+The focused `Tools/Minerva/Codex/Check Changes Panel` smoke check opens and closes an isolated fixture
+window and sends no Codex message.
+
+Console runs argv, not shell text. The reported Windows `ls` case reached `program not found`; use
+`cmd.exe /c dir` or `powershell.exe -NoProfile -Command ls`. A direct `cmd.exe /c echo` was verified to
+stream output and exit 0 during Changes implementation. Do not turn an argv error into a silent shell fallback.
 
 Unity CLI + Pipeline package are installed. Use them instead of killing the editor:
 

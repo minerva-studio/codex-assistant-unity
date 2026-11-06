@@ -173,7 +173,8 @@ namespace Minerva.Codex
             rootVisualElement.Add(title);
 
             var subtitle = new Label(
-                "Standalone command, no conversation. Sandboxed mode uses command/exec; Local uses process/spawn.");
+                "Run a program with arguments. Shell aliases and commands need a shell, for example " +
+                (Application.platform == RuntimePlatform.WindowsEditor ? "cmd.exe /c dir or powershell.exe -NoProfile -Command ls." : "/bin/sh -c \"ls -la\"."));
             subtitle.style.fontSize = 10;
             subtitle.style.color = CodexPalette.Muted;
             subtitle.style.whiteSpace = WhiteSpace.Normal;
@@ -195,7 +196,9 @@ namespace Minerva.Codex
             m_Command = new TextField { name = "codex-console-command" };
             m_Command.style.flexGrow = 1;
             m_Command.style.height = 26;
-            m_Command.textEdition.placeholder = "Command line, argv with quotes";
+            m_Command.textEdition.placeholder = Application.platform == RuntimePlatform.WindowsEditor
+                ? "cmd.exe /c dir"
+                : "/bin/ls -la";
             m_Command.textEdition.hidePlaceholderOnFocus = true;
             m_Command.RegisterCallback<KeyDownEvent>(evt =>
             {
@@ -434,6 +437,12 @@ namespace Minerva.Codex
             else if (!string.IsNullOrEmpty(m_Workspace.ConsoleError))
             {
                 m_Status.text = m_Workspace.ConsoleError;
+                if (m_Workspace.ConsoleError.IndexOf("program not found", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    m_Status.text += Application.platform == RuntimePlatform.WindowsEditor
+                        ? "\nUse an executable name, or run shell commands with powershell.exe -NoProfile -Command \"…\"."
+                        : "\nUse an executable path, or run shell commands with /bin/sh -c \"…\".";
+                }
                 m_Status.style.color = CodexPalette.Error;
             }
             else if (m_Workspace.ConsoleExitCode.HasValue)
