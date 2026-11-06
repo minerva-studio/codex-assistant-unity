@@ -438,6 +438,11 @@ menus reuse the window-owned searchable popup (eight visible rows). Cleaned turn
 `CodexWorkspace.ExtractUserText`. Each record view owns its folding state and is reconciled by record
 key within the rendered turn, retaining identity across refreshes; changing turn/thread resets it.
 File headers include path, counts, Open and Copy. Repeat edits are numbered rather than combined.
+Headers are single 26px rows, with paths in tooltips. Each original header is the record's last child,
+absolutely positioned above the body with reserved top padding. Its translate.y is clamped between zero
+and the record height minus header height, based on the shared scroll offset and record layout.y.
+Scrollbar, viewport and record geometry callbacks update the visual offset without writing scroll state
+or changing layout. No duplicate sticky controls or independently writable active-file state are kept.
 Only Changes requests whitespace-preserving wrapping from CodexPatchView; transcript patches retain
 their existing layout. Patch classification supplies counts; scope totals exclude the live aggregate,
 which starts folded and disappears at completion. Totals count recorded edits, including repeat edits,

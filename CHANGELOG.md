@@ -25,6 +25,8 @@ All notable changes to this package are documented here.
   Repeated edits remain separate; a folded live aggregate is excluded from the recorded-edit totals.
   File operations use colored symbols beside the filename; exceptional status stays inline, and completed
   status no longer consumes a separate row. Repeated-edit numbering is part of the filename title.
+  File headers are compact single rows that stay visible while scrolling their diff and are pushed out by
+  the next file. Full paths use tooltips, and patch padding is reduced in the Changes reader.
 
 - JSON-RPC over newline-delimited JSON transport for `codex app-server`, with the reader on a
   background thread and callbacks dispatched to the Unity main thread.

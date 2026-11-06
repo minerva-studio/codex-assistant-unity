@@ -38,12 +38,13 @@ namespace Minerva.Codex
 
         sealed class RecordView : VisualElement
         {
+            const float HeaderHeight = 26;
             readonly CodexChangesPanel m_Owner;
+            readonly VisualElement m_Header;
             readonly Button m_Toggle;
             readonly Label m_Arrow;
             readonly Label m_Operation;
             readonly Label m_Name;
-            readonly Label m_Location;
             readonly Label m_Status;
             readonly Label m_Added;
             readonly Label m_Removed;
@@ -63,11 +64,16 @@ namespace Minerva.Codex
                 style.minWidth = 0;
                 style.borderBottomWidth = 1;
                 style.borderBottomColor = CodexPalette.Border;
-                var header = new VisualElement();
-                header.style.flexDirection = FlexDirection.Row;
-                header.style.alignItems = Align.Center;
-                header.style.paddingTop = header.style.paddingBottom = 6;
-                header.style.backgroundColor = CodexPalette.Surface;
+                style.paddingTop = HeaderHeight;
+                m_Header = new VisualElement { name = "codex-change-header" };
+                m_Header.style.position = Position.Absolute;
+                m_Header.style.top = m_Header.style.left = m_Header.style.right = 0;
+                m_Header.style.height = HeaderHeight;
+                m_Header.style.flexDirection = FlexDirection.Row;
+                m_Header.style.alignItems = Align.Center;
+                m_Header.style.backgroundColor = CodexPalette.Surface;
+                m_Header.style.borderBottomWidth = 1;
+                m_Header.style.borderBottomColor = CodexPalette.Border;
                 m_Toggle = new Button(() =>
                 {
                     SetExpanded(!Expanded);
@@ -78,6 +84,8 @@ namespace Minerva.Codex
                 m_Toggle.style.flexGrow = 1;
                 m_Toggle.style.flexShrink = 1;
                 m_Toggle.style.minWidth = 0;
+                m_Toggle.style.height = HeaderHeight;
+                m_Toggle.style.marginTop = m_Toggle.style.marginBottom = 0;
                 m_Toggle.style.backgroundColor = Color.clear;
                 m_Toggle.style.borderTopWidth = m_Toggle.style.borderBottomWidth = 0;
                 m_Toggle.style.borderLeftWidth = m_Toggle.style.borderRightWidth = 0;
@@ -91,31 +99,27 @@ namespace Minerva.Codex
                 m_Operation.style.flexShrink = 0;
                 m_Operation.style.unityFontStyleAndWeight = FontStyle.Bold;
                 m_Toggle.Add(m_Operation);
-                var title = new VisualElement();
-                title.style.flexGrow = 1;
-                title.style.minWidth = 0;
                 m_Name = Text("", 11, CodexPalette.Text);
                 m_Name.name = "codex-change-filename";
+                m_Name.style.flexGrow = 1;
+                m_Name.style.flexShrink = 1;
+                m_Name.style.minWidth = 0;
                 m_Name.style.unityFontStyleAndWeight = FontStyle.Bold;
                 Ellipsis(m_Name);
-                m_Location = Text("", 9, CodexPalette.Muted);
-                Ellipsis(m_Location);
-                title.Add(m_Name);
-                title.Add(m_Location);
-                m_Toggle.Add(title);
-                header.Add(m_Toggle);
+                m_Toggle.Add(m_Name);
+                m_Header.Add(m_Toggle);
                 m_Status = Text("", 11, CodexPalette.Muted);
                 m_Status.name = "codex-change-status";
                 m_Status.style.flexShrink = 0;
                 m_Status.style.marginRight = 5;
-                header.Add(m_Status);
+                m_Header.Add(m_Status);
                 m_Added = Text("", 10, CodexPalette.Success);
                 m_Removed = Text("", 10, CodexPalette.Error);
                 foreach (Label count in new[] { m_Added, m_Removed })
                 {
                     count.style.flexShrink = 0;
                     count.style.marginRight = 5;
-                    header.Add(count);
+                    m_Header.Add(count);
                 }
                 m_Open = new Button(() =>
                 {
@@ -129,14 +133,16 @@ namespace Minerva.Codex
                 {
                     action.style.flexShrink = 0;
                     action.style.fontSize = 9;
+                    action.style.height = 20;
+                    action.style.marginTop = action.style.marginBottom = 0;
                     action.style.marginLeft = action.style.marginRight = 1;
-                    header.Add(action);
+                    m_Header.Add(action);
                 }
-                Add(header);
                 m_Body = new VisualElement { name = "codex-change-body" };
                 m_Body.style.flexShrink = 0;
                 m_Body.style.minWidth = 0;
                 Patch = new CodexPatchView(wrap: true) { name = "codex-change-diff" };
+                Patch.style.paddingTop = Patch.style.paddingBottom = 2;
                 m_Body.Add(Patch);
                 m_NoPatch = Text("No patch was provided for this recorded change.", 10, CodexPalette.Muted);
                 m_NoPatch.name = "codex-change-no-patch";
@@ -144,6 +150,9 @@ namespace Minerva.Codex
                 m_NoPatch.style.paddingTop = m_NoPatch.style.paddingBottom = 8;
                 m_Body.Add(m_NoPatch);
                 Add(m_Body);
+                // Paint the original header above its body without adding another row or duplicate controls.
+                Add(m_Header);
+                RegisterCallback<GeometryChangedEvent>(_ => UpdateStickyOffset(m_Owner.m_Content.scrollOffset.y));
                 SetExpanded(!record.Live);
             }
 
@@ -164,10 +173,10 @@ namespace Minerva.Codex
                     _ => CodexPalette.Warning,
                 };
                 m_Operation.tooltip = record.Live ? "Live aggregate snapshot" : record.PreviousPath != null ? "Renamed file" : record.Operation;
-                m_Location.text = record.Live ? "Combined snapshot · overlaps individual edits" : record.DisplayPath;
                 string status = record.Live ? "Live snapshot · available while this turn is running"
                     : record.Operation + " · " + record.Status + (edits > 1 ? " · edit " + edit + " / " + edits : "");
                 m_Toggle.tooltip = record.DisplayPath + "\n" + status + "\nClick to expand or collapse";
+                m_Name.tooltip = m_Toggle.tooltip;
                 Patch.SetPatch(record.Diff, record.Operation);
                 m_Added.text = "+" + Patch.Additions;
                 m_Removed.text = "−" + Patch.Deletions;
@@ -189,6 +198,13 @@ namespace Minerva.Codex
                 Expanded = expanded;
                 m_Arrow.text = expanded ? "▾" : "▸";
                 m_Body.style.display = expanded ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
+            /// <summary>Moves only the existing header's paint/hit area, clamped inside its file section.</summary>
+            public void UpdateStickyOffset(float scroll)
+            {
+                float offset = Mathf.Clamp(scroll - layout.y, 0, Mathf.Max(0, layout.height - HeaderHeight));
+                m_Header.style.translate = new Translate(0, offset);
             }
         }
 
@@ -220,8 +236,8 @@ namespace Minerva.Codex
             name = "codex-changes";
             style.flexGrow = 1;
             style.minHeight = 0;
-            style.paddingLeft = style.paddingRight = 8;
-            style.paddingTop = style.paddingBottom = 8;
+            style.paddingLeft = style.paddingRight = 6;
+            style.paddingTop = style.paddingBottom = 6;
             var toolbar = new VisualElement { name = "codex-changes-toolbar" };
             toolbar.style.flexDirection = FlexDirection.Row;
             toolbar.style.alignItems = Align.Center;
@@ -278,8 +294,8 @@ namespace Minerva.Codex
             m_Title.name = "codex-changes-summary";
             Ellipsis(m_Title);
             m_Title.style.flexShrink = 0;
-            m_Title.style.marginTop = 4;
-            m_Title.style.marginBottom = 8;
+            m_Title.style.marginTop = 0;
+            m_Title.style.marginBottom = 4;
             Add(m_Title);
             m_Empty = Text("No recorded file changes in the loaded turns.", 11, CodexPalette.Muted);
             m_Empty.name = "codex-changes-empty";
@@ -298,7 +314,12 @@ namespace Minerva.Codex
             m_Content.contentContainer.style.minWidth = 0;
             m_Content.contentContainer.style.backgroundColor = CodexPalette.CodeBackground;
             Add(m_Content);
-            m_Content.contentViewport.RegisterCallback<GeometryChangedEvent>(_ => RestoreReadingPosition());
+            m_Content.verticalScroller.valueChanged += _ => UpdateStickyHeaders();
+            m_Content.contentViewport.RegisterCallback<GeometryChangedEvent>(_ =>
+            {
+                RestoreReadingPosition();
+                UpdateStickyHeaders();
+            });
         }
 
         /// <summary>Refreshes recorded data without rebuilding unchanged file sections or losing folding.</summary>
@@ -363,6 +384,12 @@ namespace Minerva.Codex
             if (!m_RestoreScroll || style.display.value == DisplayStyle.None || m_Content.contentViewport.layout.height <= 0) return;
             m_RestoreScroll = false;
             m_Content.scrollOffset = m_ReadingOffset;
+        }
+
+        void UpdateStickyHeaders()
+        {
+            float scroll = m_Content.scrollOffset.y;
+            foreach (RecordView view in m_Records.Values) view.UpdateStickyOffset(scroll);
         }
 
         void AddTurn(JObject source, bool live)

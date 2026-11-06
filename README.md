@@ -44,7 +44,8 @@ Verified against Codex CLI 0.166.0 on Unity 6000.3.
   with status, model and current activity. Click a row to open that agent; **Agents N** opens its tab.
 - **Changes** shows all recorded file edits in one turn as a continuous, scrollable diff. The top scope
   menu defaults to **Latest turn**, following new recorded turns; choose a historical turn to pin it.
-  Each file header shows its path and addition/deletion counts, with independent folding, **Open** and
+  Each compact single-line header stays pinned while reading its file and yields to the next header.
+  Full paths are in the filename tooltip. Headers include addition/deletion counts, independent folding, **Open** and
   **Copy** actions. Repeated edits remain separate and show their order; failed/declined changes keep
   their status in an inline indicator. Colored operation symbols sit beside the filename; completed
   status adds no extra row, and repeated-edit numbers stay in the title. The toolbar offers optional
