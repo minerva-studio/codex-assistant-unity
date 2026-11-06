@@ -1664,7 +1664,7 @@ namespace Minerva.Codex
                 !string.IsNullOrEmpty(thread["title"]?.Value<string>());
             if (!hasStoredPreview)
             {
-                info.Preview = text;
+                info.Preview = CodexUnityContext.UserText(text);
             }
 
             // A thread is only persisted once it has a turn, so it is absent from
@@ -1949,7 +1949,7 @@ namespace Minerva.Codex
                 }
             }
 
-            return CodexAnnotations.Clean(builder.ToString().Trim());
+            return CodexUnityContext.UserText(CodexAnnotations.Clean(builder.ToString().Trim()));
         }
 
         static string FindTitleAgentText(JObject turn)
@@ -4057,8 +4057,8 @@ namespace Minerva.Codex
             {
                 Id = thread["id"]?.Value<string>(),
                 Title = thread["name"]?.Value<string>(),
-                Preview = thread["preview"]?.Value<string>()
-                          ?? thread["title"]?.Value<string>()
+                Preview = CodexUnityContext.UserText(
+                              thread["preview"]?.Value<string>() ?? thread["title"]?.Value<string>())
                           ?? "(untitled)",
                 Cwd = thread["cwd"]?.Value<string>(),
                 ParentThreadId = thread["parentThreadId"]?.Value<string>(),

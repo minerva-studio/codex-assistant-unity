@@ -4494,7 +4494,7 @@ namespace Minerva.Codex
             string detail = !string.IsNullOrEmpty(thread.Snippet)
                 ? thread.Snippet
                 : !string.IsNullOrEmpty(thread.Title) && !string.IsNullOrEmpty(thread.Preview)
-                    ? thread.Preview
+                    ? CodexUnityContext.UserText(thread.Preview)
                     : null;
             if (!string.IsNullOrEmpty(detail))
             {
@@ -5285,7 +5285,7 @@ namespace Minerva.Codex
 
             if (!string.IsNullOrWhiteSpace(thread.Preview))
             {
-                return Truncate(thread.Preview, 110);
+                return Truncate(CodexUnityContext.UserText(thread.Preview), 110);
             }
 
             return "(untitled)";

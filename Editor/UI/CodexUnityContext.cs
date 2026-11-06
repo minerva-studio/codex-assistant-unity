@@ -158,6 +158,36 @@ namespace Minerva.Codex
             return remainder.Length == 0 ? "Unity state" : remainder;
         }
 
+        /// <summary>
+        /// Returns the user's part of a message for previews, titles and prompts.
+        /// A preview truncated before the closing tag is treated as context-only,
+        /// so the raw "&lt;unity-context&gt;" prefix never becomes a title.
+        /// </summary>
+        public static string UserText(string text, string fallback = "Unity state")
+        {
+            if (TryExtract(text, out _, out string remainder))
+            {
+                return remainder.Length == 0 ? fallback : remainder;
+            }
+
+            if (!string.IsNullOrEmpty(text))
+            {
+                int start = 0;
+                while (start < text.Length && char.IsWhiteSpace(text[start]))
+                {
+                    start++;
+                }
+
+                if (start + OpenTag.Length <= text.Length &&
+                    string.CompareOrdinal(text, start, OpenTag, 0, OpenTag.Length) == 0)
+                {
+                    return fallback;
+                }
+            }
+
+            return text;
+        }
+
         /// <summary>One-line label for the collapsed transcript chip.</summary>
         public static string Summarize(string context)
         {

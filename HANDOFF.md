@@ -172,6 +172,9 @@ Test projects: `markdown-proto-2` (GUI, has Pipeline installed, port 7800), `mar
   leading block with `TryExtract`, renders a compact chip (`Summarize`) whose details label (`FormatDetails`)
   expands on click, and passes the full raw text to the footer's Select/Copy. Before this, UMarkdown treated
   `<unity-context>` as raw HTML and hid the whole block, leaving no visible sign that context was attached.
+  `UserText` is used by `CodexWorkspace.Parse`, `OnThreadStarted`, `ExtractTitleUserText`, `DisplayTitle` and
+  the sidebar detail so previews, fallback titles and auto-title input start at the user's request; a preview
+  truncated before the closing tag falls back to "Unity state" instead of leaking the XML prefix.
 - Panel resizing: `BuildResizer` adds a five-pixel handle with a one-pixel grip on both sides of the content.
   Pointer capture drives `m_SidebarWidth`/`m_AgentsWidth`; `ClampSidebarWidth`/`ClampAgentsWidth` keep at least
   320px for the transcript. Widths persist under `Minerva.Codex.SidebarWidth` and
